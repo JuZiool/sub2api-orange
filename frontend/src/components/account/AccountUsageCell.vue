@@ -119,6 +119,13 @@
     <!-- OpenAI OAuth accounts: single source from /usage API -->
     <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
+        <div
+          v-if="usageInfo?.codex_quota_overdraft"
+          class="text-[10px] font-medium"
+          :class="codexOverdraftStatusClass"
+        >
+          {{ codexOverdraftStatusLabel }}
+        </div>
         <UsageProgressBar
           v-if="usageInfo?.five_hour"
           label="5h"
@@ -1119,6 +1126,27 @@ const geminiUsageBars = computed(() => {
   return bars
 })
 
+const codexOverdraftStatusLabel = computed(() => {
+  const status = usageInfo.value?.codex_quota_overdraft?.status
+  const labels: Record<string, string> = {
+    pending: t('admin.accounts.openai.codexQuotaOverdraftPending'),
+    passed: t('admin.accounts.openai.codexQuotaOverdraftPassed'),
+    failed: t('admin.accounts.openai.codexQuotaOverdraftFailed'),
+    inconclusive: t('admin.accounts.openai.codexQuotaOverdraftInconclusive'),
+    recovered: t('admin.accounts.openai.codexQuotaOverdraftRecovered')
+  }
+  return status ? labels[status] || '' : ''
+})
+
+const codexOverdraftStatusClass = computed(() => {
+  switch (usageInfo.value?.codex_quota_overdraft?.status) {
+    case 'passed': return 'text-amber-600 dark:text-amber-400'
+    case 'failed': return 'text-red-600 dark:text-red-400'
+    case 'pending': case 'inconclusive': return 'text-blue-600 dark:text-blue-400'
+    case 'recovered': return 'text-emerald-600 dark:text-emerald-400'
+    default: return 'text-gray-500 dark:text-gray-400'
+  }
+})
 interface GrokQuotaBarInfo {
   utilization: number
   resetsAt: string | null
