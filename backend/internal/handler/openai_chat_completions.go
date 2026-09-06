@@ -295,6 +295,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					SessionID:          sessionID,
 					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, res.UpstreamModel),
 					PricingAt:          pricingAt,
+					RateResolution:     openAIRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, reqModel),
 					CyberBlocked:       cyberBlocked,
 				}); err != nil {
 					logger.L().With(

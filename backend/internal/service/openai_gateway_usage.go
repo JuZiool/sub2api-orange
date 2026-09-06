@@ -47,6 +47,30 @@ type OpenAIRecordUsageInput struct {
 	ChannelUsageFields
 }
 
+// ResolveRateResolution freezes the complete downstream multiplier for an
+// OpenAI request before its asynchronous usage task is submitted.
+func (s *OpenAIGatewayService) ResolveRateResolution(ctx context.Context, userID int64, group *Group, requestedModel string) *RateResolution {
+	resolution := &RateResolution{RequestedModel: strings.TrimSpace(requestedModel), Multiplier: 1, Source: "system_default"}
+	if s != nil && s.cfg != nil {
+		resolution.Multiplier = s.cfg.Default.RateMultiplier
+	}
+	if group == nil {
+		return resolution
+	}
+	resolution.Multiplier = group.RateMultiplier
+	resolution.Source = "group_default"
+	if group.ID > 0 {
+		resolution.Multiplier = s.ResolveUserGroupRateMultiplier(ctx, userID, group.ID, group.RateMultiplier)
+		resolution.Source = "user_group"
+	}
+	if multiplier, model, ok := ResolveModelRateMultiplier(resolution.RequestedModel, group.ModelRateMultipliers); ok {
+		resolution.Multiplier = multiplier
+		resolution.MatchedModel = model
+		resolution.Source = "model_exact"
+	}
+	return resolution
+}
+
 // CyberPolicyUsageInput 是 cyber 拒绝、未走正常 RecordUsage 的请求记录用量的入参。
 // 用量按上游真实 token 计费，与 WS cyber 及正常请求口径一致（InputTokens/OutputTokens
 // 取自上游 response.failed 报告的 usage，即 mark.UpstreamInTok/OutTok）。

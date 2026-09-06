@@ -591,6 +591,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					SessionID:          sessionID,
 					RequestPayloadHash: requestPayloadHash,
 					ForceCacheBilling:  forceCacheBilling,
+					RateResolution:     gatewayRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, reqModel),
 					APIKeyService:      h.apiKeyService,
 					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 				}); err != nil {
@@ -953,6 +954,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						SessionID:          sessionID,
 						RequestPayloadHash: requestPayloadHash,
 						ForceCacheBilling:  forceCacheBilling,
+						RateResolution:     gatewayRateSnapshot(c.Request.Context(), h.gatewayService, currentAPIKey, reqModel),
 						APIKeyService:      h.apiKeyService,
 						ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 					}); err != nil {

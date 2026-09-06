@@ -275,6 +275,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 				SessionID:          sessionID,
 				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 				PricingAt:          pricingAt,
+				RateResolution:     openAIRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, reqModel),
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.embeddings"),

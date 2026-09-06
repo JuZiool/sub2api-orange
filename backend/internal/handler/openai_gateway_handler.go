@@ -820,6 +820,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					SessionID:          sessionID,
 					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, res.UpstreamModel),
 					PricingAt:          pricingAt,
+					RateResolution:     openAIRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, reqModel),
 					CyberBlocked:       cyberBlocked,
 					NativeCompactionV2: nativeV2,
 				}); err != nil {
@@ -1387,6 +1388,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					SessionID:          sessionID,
 					ChannelUsageFields: clientRequestedUsageFields(c, channelMappingMsg, reqModel, res.UpstreamModel),
 					PricingAt:          pricingAt,
+					RateResolution:     openAIRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, reqModel),
 					CyberBlocked:       cyberBlocked,
 				}); err != nil {
 					logger.L().With(
@@ -2940,6 +2942,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						SessionID:          sessionID,
 						ChannelUsageFields: turnUsageFields,
 						PricingAt:          turnRecordPricingAt,
+						RateResolution:     openAIRateSnapshot(ctx, h.gatewayService, apiKey, turnRequestedModel),
 						CyberBlocked:       cyberBlocked,
 					}); err != nil {
 						reqLog.Error("openai.websocket_record_usage_failed",

@@ -34,6 +34,31 @@ func (s *GatewayService) ResolveUserGroupRateMultiplier(ctx context.Context, use
 	return s.getUserGroupRateMultiplier(ctx, userID, groupID, groupDefaultMultiplier)
 }
 
+// ResolveRateResolution freezes the complete downstream multiplier at request start.
+// Handlers pass this value into deferred usage tasks so later group edits cannot
+// change an already-started request's charge.
+func (s *GatewayService) ResolveRateResolution(ctx context.Context, userID int64, group *Group, requestedModel string) *RateResolution {
+	resolution := &RateResolution{RequestedModel: strings.TrimSpace(requestedModel), Multiplier: 1, Source: "system_default"}
+	if s != nil && s.cfg != nil {
+		resolution.Multiplier = s.cfg.Default.RateMultiplier
+	}
+	if group == nil {
+		return resolution
+	}
+	resolution.Multiplier = group.RateMultiplier
+	resolution.Source = "group_default"
+	if group.ID > 0 {
+		resolution.Multiplier = s.ResolveUserGroupRateMultiplier(ctx, userID, group.ID, group.RateMultiplier)
+		resolution.Source = "user_group"
+	}
+	if multiplier, model, ok := ResolveModelRateMultiplier(resolution.RequestedModel, group.ModelRateMultipliers); ok {
+		resolution.Multiplier = multiplier
+		resolution.MatchedModel = model
+		resolution.Source = "model_exact"
+	}
+	return resolution
+}
+
 // RecordUsageInput 记录使用量的输入参数。
 // 异步 worker 只接收计费所需快照，不能持有 ParsedRequest/RequestBodyRef 这类大请求体引用。
 type RecordUsageInput struct {

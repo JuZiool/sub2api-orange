@@ -247,6 +247,7 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 			RequestPayloadHash: requestPayloadHash,
 			APIKeyService:      h.apiKeyService,
 			QuotaPlatform:      quotaPlatform,
+			RateResolution:     gatewayRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, "grok-"+strings.ReplaceAll(searchLabel, "_", "-")),
 		}); err != nil {
 			logger.L().With(
 				zap.String("component", "handler.gateway.web_search"),
