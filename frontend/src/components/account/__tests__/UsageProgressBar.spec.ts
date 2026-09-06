@@ -37,6 +37,27 @@ describe('UsageProgressBar', () => {
     expect(wrapper.text()).not.toContain('2h 30m')
   })
 
+  it('成本估算使用米白色信息框承载', () => {
+    const wrapper = mount(UsageProgressBar, {
+      props: {
+        label: '7d',
+        utilization: 25,
+        estimatedCost: 0,
+        estimatedUsedCost: 0,
+        color: 'emerald'
+      }
+    })
+
+    const estimate = wrapper.get('[data-testid="usage-cost-estimate"]')
+    expect(estimate.classes()).toEqual(expect.arrayContaining([
+      'rounded-md',
+      'border-amber-100/80',
+      'bg-amber-50/70',
+      'text-stone-600'
+    ]))
+    expect(estimate.text()).toContain('$0.00')
+  })
+
   it('showNowWhenIdle=true 但利用率大于 0 时显示倒计时', () => {
     const wrapper = mount(UsageProgressBar, {
       props: {

@@ -54,7 +54,7 @@
     <div
       v-if="estimatedCost != null || estimatedUsedCost != null"
       data-testid="usage-cost-estimate"
-      class="mb-0.5 flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400"
+      class="mb-0.5 inline-flex w-fit items-center gap-1.5 rounded-md border border-amber-100/80 bg-amber-50/70 px-1.5 py-1 text-[9px] text-stone-600 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100"
     >
       <span :title="t('usage.costEstimateHint')">
         {{ estimateLabel || t('usage.estimatedCost') }}: ${{ formatEstimatedCost }}
