@@ -174,11 +174,13 @@ describe('UsageProgressBar', () => {
         resetsAt: '2026-03-17T08:00:00Z',
         color: 'emerald',
         overdraftActive: true,
-        overdraftStats: { requests: 0, tokens: 0, cost: 4.38, user_cost: 4.38 }
+        overdraftStats: { requests: 0, tokens: 0, cost: 4.38, user_cost: 4.38 },
+        overdraftStatus: 'usage.codexStatusPassed',
+        overdraftStatusClass: 'text-amber-600'
       }
     })
 
-    expect(wrapper.get('[data-testid="overdraft-stats"]').text()).toContain('usage.overdraft')
+    expect(wrapper.get('[data-testid="overdraft-stats"]').text()).toContain('usage.codexStatusPassed')
     expect(wrapper.get('[data-testid="overdraft-stats"]').text()).toContain('$4.38')
     expect(wrapper.find('[data-testid="overdraft-recover"]').exists()).toBe(false)
   })

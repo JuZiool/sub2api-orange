@@ -119,13 +119,6 @@
     <!-- OpenAI OAuth accounts: single source from /usage API -->
     <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
-        <div
-          v-if="usageInfo?.codex_quota_overdraft"
-          class="text-[10px] font-medium"
-          :class="codexOverdraftStatusClass"
-        >
-          {{ codexOverdraftStatusLabel }}
-        </div>
         <UsageProgressBar
           v-if="usageInfo?.five_hour"
           label="5h"
@@ -134,6 +127,8 @@
           :window-stats="usageInfo.five_hour.window_stats"
           :overdraft-active="usageInfo.five_hour.overdraft_active"
           :overdraft-stats="usageInfo.five_hour.overdraft_stats"
+          :overdraft-status="codexOverdraftStatusLabel"
+          :overdraft-status-class="codexOverdraftStatusClass"
           :show-now-when-idle="true"
           color="indigo"
         />
@@ -145,6 +140,8 @@
           :window-stats="usageInfo.seven_day.window_stats"
           :overdraft-active="usageInfo.seven_day.overdraft_active"
           :overdraft-stats="usageInfo.seven_day.overdraft_stats"
+          :overdraft-status="codexOverdraftStatusLabel"
+          :overdraft-status-class="codexOverdraftStatusClass"
           :estimated-cost="sevenDayEstimatedCost"
           :estimated-used-cost="sevenDayUsedCost"
           estimate-label="约"

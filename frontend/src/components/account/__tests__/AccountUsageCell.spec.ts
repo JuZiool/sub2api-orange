@@ -396,7 +396,8 @@ describe('AccountUsageCell', () => {
         overdraft_active: true,
         overdraft_stats: { requests: 50, tokens: 5000, cost: 5 },
         overdraft_recover_at: '2099-03-14T12:00:00Z'
-      }
+      },
+      codex_quota_overdraft: { status: 'passed' }
     })
 
     const wrapper = mount(AccountUsageCell, {
@@ -406,8 +407,8 @@ describe('AccountUsageCell', () => {
       global: {
         stubs: {
           UsageProgressBar: {
-            props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color', 'overdraftActive', 'overdraftStats'],
-            template: '<div class="usage-bar">{{ label }}|{{ overdraftStats?.requests }}|{{ overdraftStats?.tokens }}</div>'
+            props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color', 'overdraftActive', 'overdraftStats', 'overdraftStatus', 'overdraftStatusClass'],
+            template: '<div class="usage-bar">{{ label }}|{{ overdraftStats?.requests }}|{{ overdraftStats?.tokens }}|{{ overdraftStatus }}</div>'
           },
           AccountQuotaInfo: true
         }
@@ -416,8 +417,8 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('5h|5|500')
-    expect(wrapper.text()).toContain('7d|50|5000')
+    expect(wrapper.text()).toContain('5h|5|500|admin.accounts.openai.codexQuotaOverdraftPassed')
+    expect(wrapper.text()).toContain('7d|50|5000|admin.accounts.openai.codexQuotaOverdraftPassed')
   })
 
   it('OpenAI OAuth 有 codex 快照时仍然使用 /usage API 数据渲染', async () => {

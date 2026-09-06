@@ -70,8 +70,13 @@
       class="mb-0.5 flex items-center"
     >
       <div class="flex items-center gap-1.5 text-[9px] text-orange-600 dark:text-orange-400">
-        <span class="rounded bg-orange-50 px-1.5 py-0.5 dark:bg-orange-900/30">
-          {{ t('usage.overdraft') }}
+        <span
+          :class="[
+            'rounded bg-orange-50 px-1.5 py-0.5 dark:bg-orange-900/30',
+            overdraftStatusClass || 'text-orange-600 dark:text-orange-400',
+          ]"
+        >
+          {{ overdraftStatus || t('usage.overdraft') }}
         </span>
         <span class="rounded bg-orange-50 px-1.5 py-0.5 dark:bg-orange-900/30">
           {{ formatOverdraftRequests }} req
@@ -103,6 +108,8 @@ const props = withDefaults(
     windowStats?: WindowStats | null
     overdraftActive?: boolean
     overdraftStats?: WindowStats | null
+    overdraftStatus?: string
+    overdraftStatusClass?: string
     estimatedCost?: number | null
     estimatedUsedCost?: number | null
     estimateLabel?: string
