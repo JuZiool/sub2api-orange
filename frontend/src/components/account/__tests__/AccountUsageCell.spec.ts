@@ -422,6 +422,38 @@ describe('AccountUsageCell', () => {
 
   it('OpenAI OAuth 有 codex 快照时仍然使用 /usage API 数据渲染', async () => {
     getUsage.mockResolvedValue({
+      five_hour: null,
+      seven_day: {
+        utilization: 50,
+        resets_at: '2099-03-13T12:00:00Z',
+        remaining_seconds: 3600,
+        window_stats: { requests: 20, tokens: 2000, cost: 10 },
+        overdraft_active: true,
+        overdraft_stats: { requests: 5, tokens: 500, cost: 2 },
+        overdraft_recover_at: '2099-03-14T12:00:00Z'
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 2021, platform: 'openai', type: 'oauth' }) },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'estimatedCost', 'estimatedUsedCost'],
+            template: '<div data-testid="cost-estimate">{{ label }}|{{ estimatedCost }}|{{ estimatedUsedCost }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="cost-estimate"]').text()).toContain('7d|16|8')
+  })
+
+  it('OpenAI OAuth 有 codex 快照时仍然使用 /usage API 数据渲染', async () => {
+    getUsage.mockResolvedValue({
       five_hour: {
         utilization: 18,
         resets_at: '2099-03-07T12:00:00Z',

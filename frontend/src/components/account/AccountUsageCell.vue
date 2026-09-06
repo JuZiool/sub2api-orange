@@ -147,6 +147,9 @@
           :overdraft-active="usageInfo.seven_day.overdraft_active"
           :overdraft-stats="usageInfo.seven_day.overdraft_stats"
           :overdraft-recover-at="usageInfo.seven_day.overdraft_recover_at"
+          :estimated-cost="sevenDayEstimatedCost"
+          :estimated-used-cost="sevenDayUsedCost"
+          estimate-label="约"
           :show-now-when-idle="true"
           color="emerald"
         />
@@ -1160,6 +1163,23 @@ interface GrokQuotaBarInfo {
 }
 
 const grokBilling = computed(() => usageInfo.value?.grok_billing || null)
+
+const sevenDayUsedCost = computed(() => {
+  const progress = usageInfo.value?.seven_day
+  const total = progress?.window_stats?.cost
+  const overdraft = progress?.overdraft_stats?.cost ?? 0
+  if (total == null || !Number.isFinite(total)) return null
+  return Math.max(0, total - overdraft)
+})
+
+const sevenDayEstimatedCost = computed(() => {
+  const progress = usageInfo.value?.seven_day
+  const used = sevenDayUsedCost.value
+  const utilization = progress?.utilization
+  if (used == null || utilization == null || utilization <= 0 || !Number.isFinite(utilization)) return null
+  return used / (utilization / 100)
+})
+
 const grokLocalUsage7d = computed(() => (
   usageInfo.value?.grok_local_usage_7d || usageInfo.value?.seven_day?.window_stats || null
 ))

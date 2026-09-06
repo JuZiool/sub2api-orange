@@ -26,6 +26,19 @@
     </div>
 
     <div
+      v-if="estimatedCost != null || estimatedUsedCost != null"
+      data-testid="usage-cost-estimate"
+      class="mb-0.5 flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400"
+    >
+      <span :title="t('usage.costEstimateHint')">
+        {{ estimateLabel || t('usage.estimatedCost') }}: ${{ formatEstimatedCost }}
+      </span>
+      <span>
+        {{ t('usage.usedCost') }}: ${{ formatEstimatedUsedCost }}
+      </span>
+    </div>
+
+    <div
       v-if="overdraftActive && overdraftStats"
       data-testid="overdraft-stats"
       class="mb-0.5 flex items-center"
@@ -93,6 +106,9 @@ const props = withDefaults(
     overdraftActive?: boolean
     overdraftStats?: WindowStats | null
     overdraftRecoverAt?: string | null
+    estimatedCost?: number | null
+    estimatedUsedCost?: number | null
+    estimateLabel?: string
     showNowWhenIdle?: boolean
     remainingCapacity?: boolean
     /** fixed: 定宽居中徽章（账号页纵向对齐）；auto: 限宽截断左对齐（监控页组合标签） */
@@ -233,6 +249,10 @@ const formatResetTime = computed(() => {
     return `${diffMins}m`
   }
 })
+
+const formatEstimatedCost = computed(() => (props.estimatedCost ?? 0).toFixed(2))
+
+const formatEstimatedUsedCost = computed(() => (props.estimatedUsedCost ?? 0).toFixed(2))
 
 const formatOverdraftRequests = computed(() => {
   return formatCompactNumber(props.overdraftStats?.requests ?? 0, { allowBillions: false })
