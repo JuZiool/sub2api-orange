@@ -166,6 +166,38 @@ describe('UsageProgressBar', () => {
     expect(mountAt(90).get('.h-1\\.5 + span').classes()).toContain('text-red-600')
   })
 
+  it('透支中显示独立统计和恢复倒计时，即使请求数与 Token 为 0', () => {
+    const wrapper = mount(UsageProgressBar, {
+      props: {
+        label: '7d',
+        utilization: 100,
+        resetsAt: '2026-03-17T08:00:00Z',
+        color: 'emerald',
+        overdraftActive: true,
+        overdraftStats: { requests: 0, tokens: 0, cost: 4.38, user_cost: 4.38 },
+        overdraftRecoverAt: '2026-03-17T02:30:00Z'
+      }
+    })
+
+    expect(wrapper.get('[data-testid="overdraft-stats"]').text()).toContain('usage.overdraft')
+    expect(wrapper.get('[data-testid="overdraft-stats"]').text()).toContain('$4.38')
+    expect(wrapper.get('[data-testid="overdraft-recover"]').text()).toContain('usage.overdraftRecoverAt')
+  })
+
+  it('未启用透支或缺少透支统计时不渲染透支行', () => {
+    const wrapper = mount(UsageProgressBar, {
+      props: {
+        label: '5h',
+        utilization: 100,
+        color: 'indigo',
+        overdraftActive: false,
+        overdraftStats: { requests: 10, tokens: 1000, cost: 1 }
+      }
+    })
+
+    expect(wrapper.find('[data-testid="overdraft-stats"]').exists()).toBe(false)
+  })
+
   it('labelWidth 默认 fixed：标签保持定宽居中，百分比列不变', () => {
     const wrapper = mount(UsageProgressBar, {
       props: { label: '5h', utilization: 30, color: 'indigo' }

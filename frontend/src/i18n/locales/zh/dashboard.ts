@@ -313,6 +313,8 @@ export default {
     accountCost: '成本',
     userBilled: '用户扣费',
     accountBilled: '账号计费',
+    overdraft: '透支',
+    overdraftRecoverAt: '{time} 后恢复',
     resetNow: '现在',
     resetPending: '待刷新',
     accountMultiplier: '账号倍率',

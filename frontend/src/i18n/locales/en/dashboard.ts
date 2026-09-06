@@ -308,6 +308,8 @@ export default {
     accountCost: 'Cost',
     userBilled: 'User billed',
     accountBilled: 'Account billed',
+    overdraft: 'Overdraft',
+    overdraftRecoverAt: 'recovers in {time}',
     resetNow: 'Now',
     resetPending: 'Pending refresh',
     accountMultiplier: 'Account rate',

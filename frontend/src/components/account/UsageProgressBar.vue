@@ -25,7 +25,30 @@
       </div>
     </div>
 
-    <!-- Progress bar row -->
+    <div
+      v-if="overdraftActive && overdraftStats"
+      data-testid="overdraft-stats"
+      class="mb-0.5 flex items-center"
+    >
+      <div class="flex items-center gap-1.5 text-[9px] text-orange-600 dark:text-orange-400">
+        <span class="rounded bg-orange-50 px-1.5 py-0.5 dark:bg-orange-900/30">
+          {{ t('usage.overdraft') }}
+        </span>
+        <span class="rounded bg-orange-50 px-1.5 py-0.5 dark:bg-orange-900/30">
+          {{ formatOverdraftRequests }} req
+        </span>
+        <span class="rounded bg-orange-50 px-1.5 py-0.5 dark:bg-orange-900/30">
+          {{ formatOverdraftTokens }}
+        </span>
+        <span class="rounded bg-orange-50 px-1.5 py-0.5 dark:bg-orange-900/30" :title="t('usage.accountBilled')">
+          A ${{ formatOverdraftCost }}
+        </span>
+      </div>
+      <span v-if="overdraftRecoverAt" data-testid="overdraft-recover" class="ml-1 text-[9px] text-orange-500 dark:text-orange-400">
+        {{ t('usage.overdraftRecoverAt', { time: formatOverdraftRecoverTime }) }}
+      </span>
+    </div>
+
     <div class="flex items-center gap-1">
       <!-- Label badge (label-width: fixed = 定宽居中, auto = 限宽截断左对齐) -->
       <span :class="[labelSizeClass, labelClass]">
@@ -67,6 +90,9 @@ const props = withDefaults(
     resetsAt?: string | null
     color: 'indigo' | 'emerald' | 'purple' | 'amber'
     windowStats?: WindowStats | null
+    overdraftActive?: boolean
+    overdraftStats?: WindowStats | null
+    overdraftRecoverAt?: string | null
     showNowWhenIdle?: boolean
     remainingCapacity?: boolean
     /** fixed: 定宽居中徽章（账号页纵向对齐）；auto: 限宽截断左对齐（监控页组合标签） */
@@ -87,17 +113,17 @@ const { pause: pauseClock, resume: resumeClock } = useIntervalFn(
   60_000,
   { immediate: false },
 )
-if (props.resetsAt) resumeClock()
+if (props.resetsAt || props.overdraftRecoverAt) resumeClock()
 watch(
-  () => props.resetsAt,
-  (val) => {
-    if (val) {
+  () => [props.resetsAt, props.overdraftRecoverAt],
+  ([resetsAt, overdraftRecoverAt]) => {
+    if (resetsAt || overdraftRecoverAt) {
       now.value = new Date()
       resumeClock()
     } else {
       pauseClock()
     }
-  },
+  }
 )
 
 // Label background colors
@@ -208,7 +234,30 @@ const formatResetTime = computed(() => {
   }
 })
 
-// Window stats formatters
+const formatOverdraftRequests = computed(() => {
+  return formatCompactNumber(props.overdraftStats?.requests ?? 0, { allowBillions: false })
+})
+
+const formatOverdraftTokens = computed(() => {
+  return formatCompactNumber(props.overdraftStats?.tokens ?? 0)
+})
+
+const formatOverdraftCost = computed(() => {
+  return (props.overdraftStats?.cost ?? 0).toFixed(2)
+})
+
+const formatOverdraftRecoverTime = computed(() => {
+  if (!props.overdraftRecoverAt) return '-'
+  const date = new Date(props.overdraftRecoverAt)
+  const diffMs = date.getTime() - now.value.getTime()
+  if (!Number.isFinite(diffMs) || diffMs <= 0) return t('usage.resetPending')
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+  const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+  if (diffHours >= 24) return `${Math.floor(diffHours / 24)}d ${diffHours % 24}h`
+  if (diffHours > 0) return `${diffHours}h ${diffMins}m`
+  return `${diffMins}m`
+})
+
 const formatRequests = computed(() => {
   if (!props.windowStats) return ''
   return formatCompactNumber(props.windowStats.requests, { allowBillions: false })
