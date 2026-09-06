@@ -22165,6 +22165,8 @@ type GroupMutation struct {
 	default_mapped_model                    *string
 	messages_dispatch_model_config          *domain.OpenAIMessagesDispatchModelConfig
 	models_list_config                      *domain.GroupModelsListConfig
+	model_rate_multipliers                  *[]domain.ModelRateMultiplierRule
+	appendmodel_rate_multipliers            []domain.ModelRateMultiplierRule
 	codex_models_manifest_config            *domain.GroupCodexModelsManifestConfig
 	rpm_limit                               *int
 	addrpm_limit                            *int
@@ -25200,6 +25202,57 @@ func (m *GroupMutation) ResetModelsListConfig() {
 	m.models_list_config = nil
 }
 
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (m *GroupMutation) SetModelRateMultipliers(drmr []domain.ModelRateMultiplierRule) {
+	m.model_rate_multipliers = &drmr
+	m.appendmodel_rate_multipliers = nil
+}
+
+// ModelRateMultipliers returns the value of the "model_rate_multipliers" field in the mutation.
+func (m *GroupMutation) ModelRateMultipliers() (r []domain.ModelRateMultiplierRule, exists bool) {
+	v := m.model_rate_multipliers
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModelRateMultipliers returns the old "model_rate_multipliers" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldModelRateMultipliers(ctx context.Context) (v []domain.ModelRateMultiplierRule, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModelRateMultipliers is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModelRateMultipliers requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModelRateMultipliers: %w", err)
+	}
+	return oldValue.ModelRateMultipliers, nil
+}
+
+// AppendModelRateMultipliers adds drmr to the "model_rate_multipliers" field.
+func (m *GroupMutation) AppendModelRateMultipliers(drmr []domain.ModelRateMultiplierRule) {
+	m.appendmodel_rate_multipliers = append(m.appendmodel_rate_multipliers, drmr...)
+}
+
+// AppendedModelRateMultipliers returns the list of values that were appended to the "model_rate_multipliers" field in this mutation.
+func (m *GroupMutation) AppendedModelRateMultipliers() ([]domain.ModelRateMultiplierRule, bool) {
+	if len(m.appendmodel_rate_multipliers) == 0 {
+		return nil, false
+	}
+	return m.appendmodel_rate_multipliers, true
+}
+
+// ResetModelRateMultipliers resets all changes to the "model_rate_multipliers" field.
+func (m *GroupMutation) ResetModelRateMultipliers() {
+	m.model_rate_multipliers = nil
+	m.appendmodel_rate_multipliers = nil
+}
+
 // SetCodexModelsManifestConfig sets the "codex_models_manifest_config" field.
 func (m *GroupMutation) SetCodexModelsManifestConfig(dcmmc domain.GroupCodexModelsManifestConfig) {
 	m.codex_models_manifest_config = &dcmmc
@@ -25921,7 +25974,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 66)
+	fields := make([]string, 0, 67)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26096,6 +26149,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.models_list_config != nil {
 		fields = append(fields, group.FieldModelsListConfig)
 	}
+	if m.model_rate_multipliers != nil {
+		fields = append(fields, group.FieldModelRateMultipliers)
+	}
 	if m.codex_models_manifest_config != nil {
 		fields = append(fields, group.FieldCodexModelsManifestConfig)
 	}
@@ -26244,6 +26300,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.MessagesDispatchModelConfig()
 	case group.FieldModelsListConfig:
 		return m.ModelsListConfig()
+	case group.FieldModelRateMultipliers:
+		return m.ModelRateMultipliers()
 	case group.FieldCodexModelsManifestConfig:
 		return m.CodexModelsManifestConfig()
 	case group.FieldRpmLimit:
@@ -26385,6 +26443,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldMessagesDispatchModelConfig(ctx)
 	case group.FieldModelsListConfig:
 		return m.OldModelsListConfig(ctx)
+	case group.FieldModelRateMultipliers:
+		return m.OldModelRateMultipliers(ctx)
 	case group.FieldCodexModelsManifestConfig:
 		return m.OldCodexModelsManifestConfig(ctx)
 	case group.FieldRpmLimit:
@@ -26815,6 +26875,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetModelsListConfig(v)
+		return nil
+	case group.FieldModelRateMultipliers:
+		v, ok := value.([]domain.ModelRateMultiplierRule)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModelRateMultipliers(v)
 		return nil
 	case group.FieldCodexModelsManifestConfig:
 		v, ok := value.(domain.GroupCodexModelsManifestConfig)
@@ -27556,6 +27623,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldModelsListConfig:
 		m.ResetModelsListConfig()
+		return nil
+	case group.FieldModelRateMultipliers:
+		m.ResetModelRateMultipliers()
 		return nil
 	case group.FieldCodexModelsManifestConfig:
 		m.ResetCodexModelsManifestConfig()

@@ -2350,6 +2350,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model is required in first response.create payload")
 		return
 	}
+	if apiKey.Group != nil && service.IsGroupModelHidden(apiKey.Group.ModelsListConfig, reqModel) {
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "the requested model is not available for this group")
+		return
+	}
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	ctx = c.Request.Context()
 	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
@@ -2765,6 +2769,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if model == "" {
 					model = reqModel
 				}
+				if apiKey.Group != nil && service.IsGroupModelHidden(apiKey.Group.ModelsListConfig, model) {
+					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "the requested model is not available for this group", nil)
+				}
 				if decision := h.checkSecurityAuditStage(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload, "subsequent_turn"); decision != nil && !decision.AllowNextStage {
 					writeSecurityAuditWSError(ctx, wsConn, decision)
 					return service.NewOpenAIWSClientCloseError(securityAuditWSCloseStatus(decision), securityAuditWSCloseReason(decision), nil)
@@ -2775,6 +2782,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				model := strings.TrimSpace(originalModel)
 				if model == "" {
 					model = reqModel
+				}
+				if apiKey.Group != nil && service.IsGroupModelHidden(apiKey.Group.ModelsListConfig, model) {
+					return "", service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "the requested model is not available for this group", nil)
 				}
 				setOpsRequestContext(c, model, true)
 				mapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, model)

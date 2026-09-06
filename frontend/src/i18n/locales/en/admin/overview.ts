@@ -1035,6 +1035,17 @@ export default {
         longContextHint: 'When checked, channel intervals or official preset tiers apply. Otherwise the first tier is used unless the account explicitly enables long-context billing.',
         add: 'Add model price'
       },
+      modelRateMultipliers: {
+        title: 'Model-specific multipliers',
+        description: 'Match the full client model name exactly. A match takes precedence over user-specific group rates. Wildcards are not supported.',
+        add: 'Add rule',
+        model: 'Model name',
+        modelPlaceholder: 'e.g. gpt-5.6',
+        multiplier: 'Multiplier',
+        remove: 'Remove rule',
+        displayLabel: 'Model rates',
+        validation: 'Each model multiplier must use a unique full model name and a value greater than 0 and no greater than 1000.'
+      },
       voicePricing: {
         title: 'Grok Voice Pricing',
         description: 'Optional per-group prices for Voice realtime / TTS / STT (USD). Leave empty to leave unpriced.',
@@ -1076,7 +1087,10 @@ export default {
         empty: 'No displayable models',
         selectedSummary: 'Selected {selected} / {total}',
         selectAll: 'Select all',
-        invertSelection: 'Invert'
+        invertSelection: 'Invert',
+        hiddenTitle: 'Models hidden from clients',
+        hiddenHint: 'One model per line. Exact names and trailing-* prefix rules are supported and apply independently of the switch above.',
+        hiddenPlaceholder: 'e.g. gpt-5.6 or gemini-3-*'
       },
       codexModelsManifest: {
         title: 'Pinned Accounts for Codex Model Manifest',

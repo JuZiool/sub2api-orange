@@ -1087,6 +1087,18 @@ func (_u *GroupUpdate) SetNillableModelsListConfig(v *domain.GroupModelsListConf
 	return _u
 }
 
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (_u *GroupUpdate) SetModelRateMultipliers(v []domain.ModelRateMultiplierRule) *GroupUpdate {
+	_u.mutation.SetModelRateMultipliers(v)
+	return _u
+}
+
+// AppendModelRateMultipliers appends value to the "model_rate_multipliers" field.
+func (_u *GroupUpdate) AppendModelRateMultipliers(v []domain.ModelRateMultiplierRule) *GroupUpdate {
+	_u.mutation.AppendModelRateMultipliers(v)
+	return _u
+}
+
 // SetCodexModelsManifestConfig sets the "codex_models_manifest_config" field.
 func (_u *GroupUpdate) SetCodexModelsManifestConfig(v domain.GroupCodexModelsManifestConfig) *GroupUpdate {
 	_u.mutation.SetCodexModelsManifestConfig(v)
@@ -1878,6 +1890,14 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.ModelsListConfig(); ok {
 		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ModelRateMultipliers(); ok {
+		_spec.SetField(group.FieldModelRateMultipliers, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedModelRateMultipliers(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldModelRateMultipliers, value)
+		})
 	}
 	if value, ok := _u.mutation.CodexModelsManifestConfig(); ok {
 		_spec.SetField(group.FieldCodexModelsManifestConfig, field.TypeJSON, value)
@@ -3281,6 +3301,18 @@ func (_u *GroupUpdateOne) SetNillableModelsListConfig(v *domain.GroupModelsListC
 	return _u
 }
 
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (_u *GroupUpdateOne) SetModelRateMultipliers(v []domain.ModelRateMultiplierRule) *GroupUpdateOne {
+	_u.mutation.SetModelRateMultipliers(v)
+	return _u
+}
+
+// AppendModelRateMultipliers appends value to the "model_rate_multipliers" field.
+func (_u *GroupUpdateOne) AppendModelRateMultipliers(v []domain.ModelRateMultiplierRule) *GroupUpdateOne {
+	_u.mutation.AppendModelRateMultipliers(v)
+	return _u
+}
+
 // SetCodexModelsManifestConfig sets the "codex_models_manifest_config" field.
 func (_u *GroupUpdateOne) SetCodexModelsManifestConfig(v domain.GroupCodexModelsManifestConfig) *GroupUpdateOne {
 	_u.mutation.SetCodexModelsManifestConfig(v)
@@ -4102,6 +4134,14 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.ModelsListConfig(); ok {
 		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ModelRateMultipliers(); ok {
+		_spec.SetField(group.FieldModelRateMultipliers, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedModelRateMultipliers(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldModelRateMultipliers, value)
+		})
 	}
 	if value, ok := _u.mutation.CodexModelsManifestConfig(); ok {
 		_spec.SetField(group.FieldCodexModelsManifestConfig, field.TypeJSON, value)

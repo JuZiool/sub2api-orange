@@ -48,7 +48,17 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 
 	// 强制 antigravity 模式：返回 antigravity 支持的模型列表
 	if forcePlatform == service.PlatformAntigravity {
-		c.JSON(http.StatusOK, antigravity.FallbackGeminiModelsList())
+		list := antigravity.FallbackGeminiModelsList()
+		if apiKey.Group != nil {
+			visible := list.Models[:0]
+			for _, model := range list.Models {
+				if !service.IsGroupModelHidden(apiKey.Group.ModelsListConfig, model.Name) {
+					visible = append(visible, model)
+				}
+			}
+			list.Models = visible
+		}
+		c.JSON(http.StatusOK, list)
 		return
 	}
 
@@ -63,7 +73,7 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		hasAntigravity, _ := h.geminiCompatService.HasAntigravityAccounts(c.Request.Context(), apiKey.GroupID)
 		if hasAntigravity {
 			// antigravity 账户使用静态模型列表
-			c.JSON(http.StatusOK, gemini.FallbackModelsList())
+			c.JSON(http.StatusOK, filterGeminiModelsList(apiKey.Group, gemini.FallbackModelsList()))
 			return
 		}
 		markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
@@ -77,9 +87,10 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		return
 	}
 	if shouldFallbackGeminiModels(res) {
-		c.JSON(http.StatusOK, gemini.FallbackModelsList())
+		c.JSON(http.StatusOK, filterGeminiModelsList(apiKey.Group, gemini.FallbackModelsList()))
 		return
 	}
+	res.Body = filterGeminiModelsBody(apiKey.Group, res.Body)
 	writeUpstreamResponse(c, res)
 }
 
@@ -89,9 +100,42 @@ func customGeminiModelsList(group *service.Group) (gemini.ModelsListResponse, bo
 	}
 	models := make([]gemini.Model, 0, len(group.ModelsListConfig.Models))
 	for _, modelID := range group.ModelsListConfig.Models {
+		if service.IsGroupModelHidden(group.ModelsListConfig, modelID) {
+			continue
+		}
 		models = append(models, gemini.FallbackModel(modelID))
 	}
 	return gemini.ModelsListResponse{Models: models}, true
+}
+
+func filterGeminiModelsList(group *service.Group, list gemini.ModelsListResponse) gemini.ModelsListResponse {
+	if group == nil {
+		return list
+	}
+	visible := make([]gemini.Model, 0, len(list.Models))
+	for _, model := range list.Models {
+		name := model.Name
+		if !service.IsGroupModelHidden(group.ModelsListConfig, name) {
+			visible = append(visible, model)
+		}
+	}
+	list.Models = visible
+	return list
+}
+
+func filterGeminiModelsBody(group *service.Group, body []byte) []byte {
+	if group == nil || len(body) == 0 {
+		return body
+	}
+	var list gemini.ModelsListResponse
+	if err := json.Unmarshal(body, &list); err != nil {
+		return body
+	}
+	filtered, err := json.Marshal(filterGeminiModelsList(group, list))
+	if err != nil {
+		return body
+	}
+	return filtered
 }
 
 // GeminiV1BetaGetModel proxies:

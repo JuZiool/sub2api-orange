@@ -1136,6 +1136,9 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	if platform == service.PlatformComposite {
 		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID)
+		if apiKey != nil && apiKey.Group != nil {
+			availableModels = service.FilterGroupHiddenModels(apiKey.Group.ModelsListConfig, availableModels)
+		}
 		if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
 			availableModels = filterModelsByCustomList(availableModels, defaultModelIDsForPlatform(service.PlatformComposite), apiKey.Group.ModelsListConfig.Models)
 			writeCustomModelsList(c, service.PlatformComposite, availableModels)
@@ -1145,12 +1148,19 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 			writeModelsList(c, service.PlatformComposite, availableModels)
 			return
 		}
-		writeModelsList(c, service.PlatformComposite, defaultModelIDsForPlatform(service.PlatformComposite))
+		fallback := defaultModelIDsForPlatform(service.PlatformComposite)
+		if apiKey != nil && apiKey.Group != nil {
+			fallback = service.FilterGroupHiddenModels(apiKey.Group.ModelsListConfig, fallback)
+		}
+		writeModelsList(c, service.PlatformComposite, fallback)
 		return
 	}
 
 	// Get available models from account configurations for the selected group platform.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
+	if apiKey != nil && apiKey.Group != nil {
+		availableModels = service.FilterGroupHiddenModels(apiKey.Group.ModelsListConfig, availableModels)
+	}
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
 		fallbackModels := defaultModelIDsForPlatform(platform)
 		availableModels = filterModelsByCustomList(customModelsListSource(platform, availableModels, fallbackModels), fallbackModels, apiKey.Group.ModelsListConfig.Models)
@@ -1165,29 +1175,36 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	// Fallback to default models
 	if platform == service.PlatformOpenAI {
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   openai.DefaultModels,
-		})
+		fallback := defaultModelIDsForPlatform(platform)
+		if apiKey != nil && apiKey.Group != nil {
+			fallback = service.FilterGroupHiddenModels(apiKey.Group.ModelsListConfig, fallback)
+		}
+		writeOpenAIModelsList(c, fallback)
 		return
 	}
 
 	if platform == service.PlatformGemini {
-		c.JSON(http.StatusOK, gin.H{
-			"object": "list",
-			"data":   geminicli.DefaultModels,
-		})
+		fallback := defaultModelIDsForPlatform(platform)
+		if apiKey != nil && apiKey.Group != nil {
+			fallback = service.FilterGroupHiddenModels(apiKey.Group.ModelsListConfig, fallback)
+		}
+		writeGeminiCLIModelsList(c, fallback)
 		return
 	}
 	if platform == service.PlatformGrok {
-		writeGrokModelsList(c, xai.DefaultModelIDs())
+		fallback := xai.DefaultModelIDs()
+		if apiKey != nil && apiKey.Group != nil {
+			fallback = service.FilterGroupHiddenModels(apiKey.Group.ModelsListConfig, fallback)
+		}
+		writeGrokModelsList(c, fallback)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"object": "list",
-		"data":   claude.DefaultModels,
-	})
+	fallback := defaultModelIDsForPlatform(platform)
+	if apiKey != nil && apiKey.Group != nil {
+		fallback = service.FilterGroupHiddenModels(apiKey.Group.ModelsListConfig, fallback)
+	}
+	writeModelsList(c, platform, fallback)
 }
 
 // CodexModels returns the effective group model list using the manifest shape
@@ -1206,6 +1223,7 @@ func (h *GatewayHandler) CodexModels(c *gin.Context) {
 	}
 	modelIDs := h.codexModelIDsForGroup(c.Request.Context(), apiKey.Group, forcedPlatform)
 	modelIDs = service.FilterCodexModelIDsForGroup(modelIDs, apiKey.Group)
+	modelIDs = service.FilterGroupHiddenModels(apiKey.Group.ModelsListConfig, modelIDs)
 	body, err := h.gatewayService.BuildCodexModelsManifestForGroup(
 		c.Request.Context(),
 		apiKey.Group,
@@ -1240,27 +1258,27 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 		availableModels := h.compositeAvailableModels(ctx, groupID)
 		fallbackModels := defaultCodexModelIDsForPlatform(service.PlatformComposite)
 		if group.CustomModelsListEnabled() {
-			return filterModelsByCustomList(availableModels, fallbackModels, group.ModelsListConfig.Models)
+			return service.FilterGroupHiddenModels(group.ModelsListConfig, filterModelsByCustomList(availableModels, fallbackModels, group.ModelsListConfig.Models))
 		}
 		if len(availableModels) > 0 {
 			return availableModels
 		}
-		return fallbackModels
+		return service.FilterGroupHiddenModels(group.ModelsListConfig, fallbackModels)
 	}
 
 	availableModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
 	fallbackModels := defaultCodexModelIDsForPlatform(platform)
 	if group.CustomModelsListEnabled() {
-		return filterModelsByCustomList(
+		return service.FilterGroupHiddenModels(group.ModelsListConfig, filterModelsByCustomList(
 			customModelsListSource(platform, availableModels, fallbackModels),
 			fallbackModels,
 			group.ModelsListConfig.Models,
-		)
+		))
 	}
 	if len(availableModels) > 0 {
 		return availableModels
 	}
-	return fallbackModels
+	return service.FilterGroupHiddenModels(group.ModelsListConfig, fallbackModels)
 }
 
 func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *int64) []string {
@@ -1412,6 +1430,22 @@ func writeOpenAIModelsList(c *gin.Context, modelIDs []string) {
 	})
 }
 
+func writeGeminiCLIModelsList(c *gin.Context, modelIDs []string) {
+	defaultsByID := make(map[string]geminicli.Model, len(geminicli.DefaultModels))
+	for _, model := range geminicli.DefaultModels {
+		defaultsByID[model.ID] = model
+	}
+	models := make([]geminicli.Model, 0, len(modelIDs))
+	for _, modelID := range modelIDs {
+		if model, ok := defaultsByID[modelID]; ok {
+			models = append(models, model)
+			continue
+		}
+		models = append(models, geminicli.Model{ID: modelID, Type: "model", DisplayName: modelID})
+	}
+	c.JSON(http.StatusOK, gin.H{"object": "list", "data": models})
+}
+
 func customModelsListSource(platform string, availableModels, fallbackModels []string) []string {
 	if platform == service.PlatformAnthropic && len(availableModels) > 0 {
 		return mergeModelIDs(availableModels, fallbackModels)
@@ -1552,9 +1586,25 @@ func mergeModelIDs(primary, secondary []string) []string {
 // AntigravityModels 返回 Antigravity 支持的全部模型
 // GET /antigravity/models
 func (h *GatewayHandler) AntigravityModels(c *gin.Context) {
+	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
+	models := antigravity.DefaultModels()
+	if apiKey != nil && apiKey.Group != nil {
+		visibleIDs := service.FilterGroupHiddenModels(apiKey.Group.ModelsListConfig, defaultModelIDsForPlatform(service.PlatformAntigravity))
+		visible := make(map[string]struct{}, len(visibleIDs))
+		for _, id := range visibleIDs {
+			visible[id] = struct{}{}
+		}
+		filtered := make([]antigravity.ClaudeModel, 0, len(models))
+		for _, model := range models {
+			if _, ok := visible[model.ID]; ok {
+				filtered = append(filtered, model)
+			}
+		}
+		models = filtered
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
-		"data":   antigravity.DefaultModels(),
+		"data":   models,
 	})
 }
 

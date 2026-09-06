@@ -609,6 +609,7 @@ export interface Group {
   allow_live: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
+  model_rate_multipliers?: ModelRateMultiplierRule[]
   require_oauth_only: boolean
   require_privacy_set: boolean
   created_at: string
@@ -644,6 +645,7 @@ export interface AdminGroup extends Group {
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   models_list_config?: ModelsListConfig
+  model_rate_multipliers?: ModelRateMultiplierRule[]
   codex_models_manifest_config?: CodexModelsManifestConfig
 
   // 分组排序
@@ -653,6 +655,12 @@ export interface AdminGroup extends Group {
 export interface ModelsListConfig {
   enabled: boolean
   models: string[]
+  hidden_models?: string[]
+}
+
+export interface ModelRateMultiplierRule {
+  model: string
+  multiplier: number
 }
 
 // 固定账号获取 Codex Model Manifest 配置（仅 openai 分组）
@@ -827,6 +835,7 @@ export interface CreateGroupRequest {
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
   models_list_config?: ModelsListConfig
+  model_rate_multipliers?: ModelRateMultiplierRule[]
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
@@ -893,6 +902,7 @@ export interface UpdateGroupRequest {
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
   models_list_config?: ModelsListConfig
+  model_rate_multipliers?: ModelRateMultiplierRule[]
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean

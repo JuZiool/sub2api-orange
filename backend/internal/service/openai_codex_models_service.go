@@ -1947,6 +1947,41 @@ func CodexModelsManifestETag(body []byte) string {
 	return codexModelsManifestBodyETag(body)
 }
 
+// FilterCodexModelsManifestBody applies the group hidden-model policy to the
+// final manifest body. ETag callers must calculate it after this function.
+func FilterCodexModelsManifestBody(group *Group, body []byte) []byte {
+	if group == nil || len(body) == 0 || len(group.ModelsListConfig.HiddenModels) == 0 {
+		return body
+	}
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return body
+	}
+	var models []json.RawMessage
+	if err := json.Unmarshal(envelope["models"], &models); err != nil {
+		return body
+	}
+	filtered := make([]json.RawMessage, 0, len(models))
+	for _, raw := range models {
+		var model map[string]json.RawMessage
+		if json.Unmarshal(raw, &model) != nil {
+			filtered = append(filtered, raw)
+			continue
+		}
+		var slug string
+		_ = json.Unmarshal(model["slug"], &slug)
+		if !IsGroupModelHidden(group.ModelsListConfig, slug) {
+			filtered = append(filtered, raw)
+		}
+	}
+	envelope["models"], _ = json.Marshal(filtered)
+	result, err := json.Marshal(envelope)
+	if err != nil {
+		return body
+	}
+	return result
+}
+
 var apiKeyCodexModelsWithoutResponsesLite = map[string]struct{}{
 	"gpt-6-astra":   {},
 	"gpt-5.6-sol":   {},
