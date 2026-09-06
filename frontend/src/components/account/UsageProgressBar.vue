@@ -25,6 +25,32 @@
       </div>
     </div>
 
+    <!-- Progress bar row -->
+    <div class="flex items-center gap-1">
+      <!-- Label badge (label-width: fixed = 定宽居中, auto = 限宽截断左对齐) -->
+      <span :class="[labelSizeClass, labelClass]">
+        {{ label }}
+      </span>
+
+      <!-- Progress bar container -->
+      <div class="h-1.5 w-8 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+        <div
+          :class="['h-full transition-all duration-300', barClass]"
+          :style="{ width: barWidth }"
+        ></div>
+      </div>
+
+      <!-- Percentage -->
+      <span :class="['w-[32px] shrink-0 text-right text-[10px] font-medium', textClass]">
+        {{ displayPercent }}
+      </span>
+
+      <!-- Reset time -->
+      <span v-if="shouldShowResetTime" class="shrink-0 text-[10px] text-gray-400">
+        {{ formatResetTime }}
+      </span>
+    </div>
+
     <div
       v-if="estimatedCost != null || estimatedUsedCost != null"
       data-testid="usage-cost-estimate"
@@ -59,31 +85,6 @@
       </div>
       <span v-if="overdraftRecoverAt" data-testid="overdraft-recover" class="ml-1 text-[9px] text-orange-500 dark:text-orange-400">
         {{ t('usage.overdraftRecoverAt', { time: formatOverdraftRecoverTime }) }}
-      </span>
-    </div>
-
-    <div class="flex items-center gap-1">
-      <!-- Label badge (label-width: fixed = 定宽居中, auto = 限宽截断左对齐) -->
-      <span :class="[labelSizeClass, labelClass]">
-        {{ label }}
-      </span>
-
-      <!-- Progress bar container -->
-      <div class="h-1.5 w-8 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-        <div
-          :class="['h-full transition-all duration-300', barClass]"
-          :style="{ width: barWidth }"
-        ></div>
-      </div>
-
-      <!-- Percentage -->
-      <span :class="['w-[32px] shrink-0 text-right text-[10px] font-medium', textClass]">
-        {{ displayPercent }}
-      </span>
-
-      <!-- Reset time -->
-      <span v-if="shouldShowResetTime" class="shrink-0 text-[10px] text-gray-400">
-        {{ formatResetTime }}
       </span>
     </div>
   </div>
