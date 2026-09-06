@@ -83,9 +83,6 @@
           A ${{ formatOverdraftCost }}
         </span>
       </div>
-      <span v-if="overdraftRecoverAt" data-testid="overdraft-recover" class="ml-1 text-[9px] text-orange-500 dark:text-orange-400">
-        {{ t('usage.overdraftRecoverAt', { time: formatOverdraftRecoverTime }) }}
-      </span>
     </div>
   </div>
 </template>
@@ -106,7 +103,6 @@ const props = withDefaults(
     windowStats?: WindowStats | null
     overdraftActive?: boolean
     overdraftStats?: WindowStats | null
-    overdraftRecoverAt?: string | null
     estimatedCost?: number | null
     estimatedUsedCost?: number | null
     estimateLabel?: string
@@ -130,11 +126,11 @@ const { pause: pauseClock, resume: resumeClock } = useIntervalFn(
   60_000,
   { immediate: false },
 )
-if (props.resetsAt || props.overdraftRecoverAt) resumeClock()
+if (props.resetsAt) resumeClock()
 watch(
-  () => [props.resetsAt, props.overdraftRecoverAt],
-  ([resetsAt, overdraftRecoverAt]) => {
-    if (resetsAt || overdraftRecoverAt) {
+  () => props.resetsAt,
+  (resetsAt) => {
+    if (resetsAt) {
       now.value = new Date()
       resumeClock()
     } else {
@@ -265,18 +261,6 @@ const formatOverdraftTokens = computed(() => {
 
 const formatOverdraftCost = computed(() => {
   return (props.overdraftStats?.cost ?? 0).toFixed(2)
-})
-
-const formatOverdraftRecoverTime = computed(() => {
-  if (!props.overdraftRecoverAt) return '-'
-  const date = new Date(props.overdraftRecoverAt)
-  const diffMs = date.getTime() - now.value.getTime()
-  if (!Number.isFinite(diffMs) || diffMs <= 0) return t('usage.resetPending')
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-  const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
-  if (diffHours >= 24) return `${Math.floor(diffHours / 24)}d ${diffHours % 24}h`
-  if (diffHours > 0) return `${diffHours}h ${diffMins}m`
-  return `${diffMins}m`
 })
 
 const formatRequests = computed(() => {

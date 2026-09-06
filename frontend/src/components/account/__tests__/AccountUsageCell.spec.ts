@@ -406,8 +406,8 @@ describe('AccountUsageCell', () => {
       global: {
         stubs: {
           UsageProgressBar: {
-            props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color', 'overdraftActive', 'overdraftStats', 'overdraftRecoverAt'],
-            template: '<div class="usage-bar">{{ label }}|{{ overdraftStats?.requests }}|{{ overdraftStats?.tokens }}|{{ overdraftRecoverAt }}</div>'
+            props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color', 'overdraftActive', 'overdraftStats'],
+            template: '<div class="usage-bar">{{ label }}|{{ overdraftStats?.requests }}|{{ overdraftStats?.tokens }}</div>'
           },
           AccountQuotaInfo: true
         }
@@ -416,8 +416,8 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('5h|5|500|2099-03-07T14:00:00Z')
-    expect(wrapper.text()).toContain('7d|50|5000|2099-03-14T12:00:00Z')
+    expect(wrapper.text()).toContain('5h|5|500')
+    expect(wrapper.text()).toContain('7d|50|5000')
   })
 
   it('OpenAI OAuth 有 codex 快照时仍然使用 /usage API 数据渲染', async () => {

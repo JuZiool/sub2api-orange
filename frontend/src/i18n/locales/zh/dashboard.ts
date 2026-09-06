@@ -314,7 +314,6 @@ export default {
     userBilled: '用户扣费',
     accountBilled: '账号计费',
     overdraft: '透支',
-    overdraftRecoverAt: '{time} 后恢复',
     estimatedCost: '约',
     usedCost: '已用',
     costEstimateHint: '根据上游 7 天使用率和本地已用成本估算，不是上游官方账单值',

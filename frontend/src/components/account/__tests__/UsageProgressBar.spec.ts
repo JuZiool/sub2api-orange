@@ -166,7 +166,7 @@ describe('UsageProgressBar', () => {
     expect(mountAt(90).get('.h-1\\.5 + span').classes()).toContain('text-red-600')
   })
 
-  it('透支中显示独立统计和恢复倒计时，即使请求数与 Token 为 0', () => {
+  it('透支中显示独立统计，即使请求数与 Token 为 0', () => {
     const wrapper = mount(UsageProgressBar, {
       props: {
         label: '7d',
@@ -174,14 +174,13 @@ describe('UsageProgressBar', () => {
         resetsAt: '2026-03-17T08:00:00Z',
         color: 'emerald',
         overdraftActive: true,
-        overdraftStats: { requests: 0, tokens: 0, cost: 4.38, user_cost: 4.38 },
-        overdraftRecoverAt: '2026-03-17T02:30:00Z'
+        overdraftStats: { requests: 0, tokens: 0, cost: 4.38, user_cost: 4.38 }
       }
     })
 
     expect(wrapper.get('[data-testid="overdraft-stats"]').text()).toContain('usage.overdraft')
     expect(wrapper.get('[data-testid="overdraft-stats"]').text()).toContain('$4.38')
-    expect(wrapper.get('[data-testid="overdraft-recover"]').text()).toContain('usage.overdraftRecoverAt')
+    expect(wrapper.find('[data-testid="overdraft-recover"]').exists()).toBe(false)
   })
 
   it('未启用透支或缺少透支统计时不渲染透支行', () => {

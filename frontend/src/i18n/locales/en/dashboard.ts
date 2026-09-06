@@ -309,7 +309,6 @@ export default {
     userBilled: 'User billed',
     accountBilled: 'Account billed',
     overdraft: 'Overdraft',
-    overdraftRecoverAt: 'recovers in {time}',
     estimatedCost: 'Est.',
     usedCost: 'Used',
     costEstimateHint: 'Estimated from upstream 7-day utilization and local usage; not an official upstream bill',
