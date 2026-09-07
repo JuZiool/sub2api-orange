@@ -198,9 +198,15 @@ release:
     docker pull ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/sub2api-orange:{{ .Version }}
     ```
 
-    **One-line install (Linux):**
+    **One-line Docker install (Linux):**
     ```bash
-    curl -sSL https://raw.githubusercontent.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }}/main/deploy/install.sh | sudo bash
+    mkdir -p /opt/sub2api-orange && cd /opt/sub2api-orange
+    curl -fsSL https://raw.githubusercontent.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }}/main/deploy/to-install.sh | bash -s -- --mode 1
+    ```
+
+    **One-line binary install (Linux):**
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }}/main/deploy/install.sh | sudo bash
     ```
 
     **Manual download:**
