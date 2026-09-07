@@ -18,6 +18,9 @@ ASSUME_YES=false
 INSTALL_DOCKER=true
 COMPOSE_MODE=""
 LOCK_FILE=""
+LOCK_DIR=""
+LOCK_MODE=""
+LOCK_ACQUIRED=false
 STATE_FILE=""
 BACKUP_ROOT=""
 TEMP_FILES=()
@@ -26,6 +29,9 @@ log() { printf '[Sub2API] %s\n' "$*"; }
 warn() { printf '[Sub2API] 警告：%s\n' "$*" >&2; }
 die() { printf '[Sub2API] 错误：%s\n' "$*" >&2; exit 1; }
 cleanup() {
+  if [[ "$LOCK_MODE" == mkdir && "$LOCK_ACQUIRED" == true ]]; then
+    rm -rf -- "$LOCK_DIR" 2>/dev/null || true
+  fi
   local file
   for file in "${TEMP_FILES[@]}"; do
     rm -f -- "$file" 2>/dev/null || true
@@ -199,7 +205,6 @@ start_docker() {
 }
 
 ensure_docker() {
-  command -v flock >/dev/null 2>&1 || die "缺少 flock，请先安装 util-linux。"
   command -v curl >/dev/null 2>&1 || die "缺少 curl，请先安装 curl。"
   command -v openssl >/dev/null 2>&1 || die "缺少 openssl，请先安装 openssl。"
 
@@ -550,6 +555,24 @@ rollback_command() {
   log "回滚完成。数据库迁移不会自动回滚，请按备份恢复流程处理。"
 }
 
+acquire_lock() {
+  if command -v flock >/dev/null 2>&1; then
+    exec 9>"$LOCK_FILE"
+    flock -n 9 || die "另一个 Docker 安装、更新或备份任务正在运行。"
+    LOCK_MODE=flock
+    LOCK_ACQUIRED=true
+    return 0
+  fi
+
+  LOCK_DIR="${LOCK_FILE}.d"
+  if ! mkdir -- "$LOCK_DIR" 2>/dev/null; then
+    die "另一个 Docker 安装、更新或备份任务正在运行。"
+  fi
+  printf '%s\n' "$$" > "$LOCK_DIR/pid"
+  LOCK_MODE=mkdir
+  LOCK_ACQUIRED=true
+}
+
 main() {
   parse_args "$@"
   resolve_deploy_dir
@@ -560,8 +583,7 @@ main() {
   else
     SOURCE_DIR=""
   fi
-  exec 9>"$LOCK_FILE"
-  flock -n 9 || die "另一个 Docker 安装、更新或备份任务正在运行。"
+  acquire_lock
 
   case "$MODE" in
     1) ensure_docker; fresh_install ;;
