@@ -14,6 +14,7 @@ HEALTH_TIMEOUT="${SUB2API_HEALTH_TIMEOUT:-$DEFAULT_HEALTH_TIMEOUT}"
 MODE=""
 IMAGE_OVERRIDE=""
 NO_BACKUP=false
+NO_PULL=false
 ASSUME_YES=false
 INSTALL_DOCKER=true
 COMPOSE_MODE=""
@@ -57,6 +58,7 @@ Orange Docker 部署入口
   --image <tag|digest>                覆盖 SUB2API_IMAGE
   --health-timeout <秒>              健康检查超时时间，默认 180
   --no-backup                         更新前跳过数据库逻辑备份
+  --no-pull                           使用本地已有镜像，不从注册表拉取
   --no-install-docker                 缺少 Docker 时不尝试安装
   --yes                               跳过可确认的交互提示
   -h, --help                          显示帮助
@@ -95,6 +97,10 @@ parse_args() {
         ;;
       --no-backup)
         NO_BACKUP=true
+        shift
+        ;;
+      --no-pull)
+        NO_PULL=true
         shift
         ;;
       --no-install-docker)
@@ -350,7 +356,7 @@ set_image() {
   local configured_image
   configured_image="$(read_env_value SUB2API_IMAGE "")"
   if [[ -z "$IMAGE_OVERRIDE" && "$configured_image" == ghcr.io/juziool/sub2api:* ]]; then
-    warn "现有 .env 仍使用旧镜像 $configured_image；请使用 --image ghcr.io/juziool/sub2api-orange:<tag> 完成镜像迁移。"
+    die "现有 .env 仍使用旧镜像 $configured_image；请使用 --image ghcr.io/juziool/sub2api-orange:<tag> 完成镜像迁移。"
   fi
   export SUB2API_IMAGE="${IMAGE_OVERRIDE:-${configured_image:-$DEFAULT_IMAGE}}"
   [[ -n "$SUB2API_IMAGE" ]] || die "SUB2API_IMAGE 不能为空。"
@@ -470,6 +476,15 @@ backup_command() {
   log "备份完成：$BACKUP_ROOT/$stamp"
 }
 
+pull_image() {
+  if [[ "$NO_PULL" == true ]]; then
+    docker image inspect "$SUB2API_IMAGE" >/dev/null 2>&1 || die "本地不存在镜像：$SUB2API_IMAGE；请先构建镜像或移除 --no-pull。"
+    log "使用本地镜像：$SUB2API_IMAGE"
+  else
+    compose pull sub2api || return 1
+  fi
+}
+
 fresh_install() {
   [[ ! -e "$DEPLOY_DIR/.env" ]] || die "当前目录已有 .env，请使用迁移或更新模式。"
   if has_persistent_data; then
@@ -480,7 +495,7 @@ fresh_install() {
   write_fresh_env
   set_image
   compose config --quiet
-  compose pull sub2api || die "GHCR 镜像拉取失败，请检查网络或设置 --image。"
+  pull_image || die "GHCR 镜像拉取失败，请检查网络或设置 --image。"
   compose up -d --remove-orphans
   wait_for_health || die "全新安装未通过健康检查。"
   log "Docker 全新安装完成。"
@@ -495,7 +510,7 @@ migration_install() {
   chmod 600 "$DEPLOY_DIR/.env"
   set_image
   compose config --quiet
-  compose pull sub2api || die "GHCR 镜像拉取失败。"
+  pull_image || die "GHCR 镜像拉取失败。"
   compose up -d --remove-orphans
   wait_for_health || die "迁移安装未通过健康检查。"
   log "Docker 迁移安装完成，原有 .env 和数据未重新生成。"
@@ -522,8 +537,8 @@ update_command() {
     backup_dir="$(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name '20*' -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -n 1 | cut -d' ' -f2-)"
   fi
 
-  log "拉取应用镜像：$SUB2API_IMAGE"
-  if ! compose pull sub2api; then
+  log "准备应用镜像：$SUB2API_IMAGE"
+  if ! pull_image; then
     write_state failed "$SUB2API_IMAGE" "" "$rollback_tag" "$old_image" "$backup_dir" "镜像拉取失败"
     die "镜像拉取失败，未重建现有应用容器。"
   fi
