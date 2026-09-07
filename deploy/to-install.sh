@@ -523,7 +523,7 @@ update_command() {
     die "镜像拉取失败，未重建现有应用容器。"
   fi
   if compose up -d --force-recreate --remove-orphans sub2api && wait_for_health; then
-    new_id="$(docker image inspect -q "$SUB2API_IMAGE" 2>/dev/null || compose images -q sub2api 2>/dev/null | head -n 1 || true)"
+    new_id="$(docker image inspect --format '{{.Id}}' "$SUB2API_IMAGE" 2>/dev/null || compose images -q sub2api 2>/dev/null | head -n 1 || true)"
     write_state success "$SUB2API_IMAGE" "$new_id" "$rollback_tag" "$old_image" "$backup_dir"
     log "应用更新完成。"
     return 0
@@ -551,7 +551,7 @@ rollback_command() {
   compose config --quiet
   compose up -d --no-build --force-recreate sub2api || die "回滚容器启动失败。"
   wait_for_health || die "回滚后健康检查失败。"
-  write_state rollback-success "$rollback_tag" "$(docker image inspect -q "$rollback_tag")" "" "$(state_value image)" "$(state_value backup)"
+  write_state rollback-success "$rollback_tag" "$(docker image inspect --format '{{.Id}}' "$rollback_tag")" "" "$(state_value image)" "$(state_value backup)"
   log "回滚完成。数据库迁移不会自动回滚，请按备份恢复流程处理。"
 }
 
