@@ -12,6 +12,7 @@ DEPLOY_DIR="${SUB2API_DEPLOY_DIR:-$(pwd -P)}"
 RAW_BASE_URL="${SUB2API_RAW_BASE_URL:-$DEFAULT_RAW_BASE_URL}"
 HEALTH_TIMEOUT="${SUB2API_HEALTH_TIMEOUT:-$DEFAULT_HEALTH_TIMEOUT}"
 MODE=""
+MODE_EXPLICIT=false
 IMAGE_OVERRIDE=""
 NO_BACKUP=false
 NO_PULL=false
@@ -53,8 +54,10 @@ Orange Docker 部署入口
   to-install.sh health                检查 Compose、容器和 /health
   to-install.sh rollback              回滚到上一次成功更新前的镜像
 
+  无参数且存在终端时会进入操作菜单；无终端时默认全新安装。
+
 选项：
-  --dir <路径>                        部署目录，默认当前目录
+  --mode <模式>                        1/2/3、update、backup、health 或 rollback
   --image <tag|digest>                覆盖 SUB2API_IMAGE
   --health-timeout <秒>              健康检查超时时间，默认 180
   --no-backup                         更新前跳过数据库逻辑备份
@@ -81,8 +84,9 @@ parse_args() {
         shift 2
         ;;
       --mode)
-        (($# >= 2)) || die "--mode 需要提供 1、2 或 3。"
+        (($# >= 2)) || die "--mode 需要提供 1、2、3、update、backup、health 或 rollback。"
         MODE="$2"
+        MODE_EXPLICIT=true
         shift 2
         ;;
       --image)
@@ -114,11 +118,13 @@ parse_args() {
       backup|health|rollback|update)
         [[ -z "$MODE" ]] || die "不能同时使用位置命令和 --mode。"
         MODE="$1"
+        MODE_EXPLICIT=true
         shift
         ;;
       1|2|3)
         [[ -z "$MODE" ]] || die "重复指定安装模式。"
         MODE="$1"
+        MODE_EXPLICIT=true
         shift
         ;;
       -h|--help)
@@ -131,9 +137,57 @@ parse_args() {
     esac
   done
 
-  MODE="${MODE:-1}"
-  [[ "$MODE" =~ ^(1|2|3|backup|health|rollback|update)$ ]] || die "模式必须是 1、2、3、backup、health、rollback 或 update。"
+  if [[ -n "$MODE" ]]; then
+    [[ "$MODE" =~ ^(1|2|3|backup|health|rollback|update)$ ]] || die "模式必须是 1、2、3、update、backup、health 或 rollback。"
+  fi
   [[ "$HEALTH_TIMEOUT" =~ ^[1-9][0-9]*$ ]] || die "健康检查超时时间必须是正整数。"
+}
+
+choose_mode() {
+  [[ "$MODE_EXPLICIT" == true ]] && return 0
+
+  local tty_fd=0 input
+  if [[ ! -t 0 ]]; then
+    if [[ -r /dev/tty && -w /dev/tty ]]; then
+      exec {tty_fd}<>/dev/tty || tty_fd=-1
+    else
+      tty_fd=-1
+    fi
+  fi
+
+  if ((tty_fd < 0)); then
+    MODE=1
+    warn "未检测到交互式终端，默认使用全新安装。"
+    return 0
+  fi
+
+  printf '\n请选择操作：\n'
+  printf '  1) 全新安装\n'
+  printf '  2) 迁移安装\n'
+  printf '  3) 更新镜像\n'
+  printf '  4) 创建备份\n'
+  printf '  5) 健康检查\n'
+  printf '  6) 回滚镜像\n\n'
+
+  while true; do
+    if ! IFS= read -r -u "$tty_fd" -p '请输入 1-6 [1]: ' input; then
+      ((tty_fd > 0)) && eval "exec ${tty_fd}<&-"
+      die "无法读取操作选择。"
+    fi
+    input="${input//[[:space:]]/}"
+    case "${input:-1}" in
+      1) MODE=1; break ;;
+      2) MODE=2; break ;;
+      3) MODE=3; break ;;
+      4) MODE=backup; break ;;
+      5) MODE=health; break ;;
+      6) MODE=rollback; break ;;
+      *) warn "请输入 1 到 6 之间的数字。" ;;
+    esac
+  done
+
+  ((tty_fd > 0)) && eval "exec ${tty_fd}<&-"
+  log "已选择操作：$MODE"
 }
 
 resolve_deploy_dir() {
@@ -595,6 +649,7 @@ acquire_lock() {
 
 main() {
   parse_args "$@"
+  choose_mode
   resolve_deploy_dir
   if [[ ${BASH_SOURCE[0]:-} != bash && -f "${BASH_SOURCE[0]:-}" ]]; then
     SOURCE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"

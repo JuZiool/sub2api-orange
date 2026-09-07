@@ -198,11 +198,12 @@ release:
     docker pull ghcr.io/{{ .Env.GITHUB_REPO_OWNER_LOWER }}/sub2api-orange:{{ .Version }}
     ```
 
-    **One-line Docker install (Linux):**
+    **Docker install menu (Linux):**
     ```bash
     mkdir -p /opt/sub2api-orange && cd /opt/sub2api-orange
-    curl -fsSL https://raw.githubusercontent.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }}/main/deploy/to-install.sh | bash -s -- --mode 1
+    curl -fsSL https://raw.githubusercontent.com/{{ .Env.GITHUB_REPO_OWNER }}/{{ .Env.GITHUB_REPO_NAME }}/main/deploy/to-install.sh | bash
     ```
+    The interactive menu provides new installation, migration, image update, backup, health check, and rollback. Use `bash -s -- --mode 1` for automation.
 
     **One-line binary install (Linux):**
     ```bash

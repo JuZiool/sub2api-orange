@@ -25,6 +25,26 @@ ghcr.io/juziool/sub2api-orange:latest
 mkdir -p /opt/sub2api-orange
 cd /opt/sub2api-orange
 curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/to-install.sh \
+  | bash
+```
+
+不带参数且在交互终端执行时会进入菜单：
+
+```text
+1) 全新安装
+2) 迁移安装
+3) 更新镜像
+4) 创建备份
+5) 健康检查
+6) 回滚镜像
+```
+
+选择 **1：全新安装** 后，脚本会询问服务端口、管理员邮箱和管理员初始密码。选择其他操作时使用已有 `.env` 和数据，不会重新生成密钥。
+
+自动化或明确指定模式时，可使用：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/to-install.sh \
   | bash -s -- --mode 1
 ```
 

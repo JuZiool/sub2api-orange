@@ -56,8 +56,25 @@ Use the automated preparation script for the easiest setup:
 
 ```bash
 # Download and run the Docker deployment entrypoint
+# With an interactive terminal, this opens the operation menu.
+curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/to-install.sh | bash
+
+# For automation, select the mode explicitly.
 curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/to-install.sh | bash -s -- --mode 1
 ```
+
+The interactive menu is:
+
+```text
+1) New installation
+2) Migration installation
+3) Update image
+4) Create backup
+5) Health check
+6) Roll back image
+```
+
+Selecting **1** asks for the server port, administrator email, and initial administrator password. Other operations reuse the existing `.env` and persistent data.
 
 **What the script does:**
 - Downloads the local Compose file and GHCR image overlay

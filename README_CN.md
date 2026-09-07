@@ -307,8 +307,16 @@ curl -sSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/i
 # 创建部署目录
 mkdir -p sub2api-deploy && cd sub2api-deploy
 
-# 下载并运行 Docker 部署入口
+# 下载并运行 Docker 部署入口（交互终端会进入菜单）
+curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/to-install.sh | bash
+
+菜单选项：
+# 1 全新安装；2 迁移安装；3 更新镜像；4 创建备份；5 健康检查；6 回滚镜像
+
+# 自动化场景可显式选择全新安装
 curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/to-install.sh | bash -s -- --mode 1
+
+选择 1 后会询问服务端口、管理员邮箱和管理员初始密码；其他选项使用已有 .env 和数据，不会重新生成密钥。
 
 # 启动或迁移已有部署
 to-install.sh --mode 2

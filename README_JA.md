@@ -306,8 +306,16 @@ PostgreSQL と Redis のコンテナを含む Docker Compose でデプロイし�
 # デプロイ用ディレクトリを作成
 mkdir -p sub2api-deploy && cd sub2api-deploy
 
-# Docker デプロイエントリポイントをダウンロードして実行
+# Docker デプロイエントリポイントをダウンロードして実行（対話端末ではメニューを表示）
+curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/to-install.sh | bash
+
+メニュー：
+# 1 新規インストール、2 移行、3 イメージ更新、4 バックアップ、5 health 確認、6 ロールバック
+
+# 自動化ではモードを明示
 curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/to-install.sh | bash -s -- --mode 1
+
+1 を選ぶとポート、管理者メールアドレス、初期パスワードを入力します。他の操作は既存の .env とデータを使用します。
 
 # 起動または既存デプロイの移行
 to-install.sh --mode 2
