@@ -12,7 +12,7 @@
 
 services:
   sub2api:
-    image: ghcr.io/juziool/sub2api:latest
+    image: ghcr.io/juziool/sub2api-orange:latest
     container_name: sub2api
     restart: unless-stopped
     security_opt:

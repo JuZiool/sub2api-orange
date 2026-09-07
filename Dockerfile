@@ -109,7 +109,7 @@ FROM ${ALPINE_IMAGE}
 
 # Labels
 LABEL maintainer="JuZiool <github.com/JuZiool>"
-LABEL description="Sub2API - AI API Gateway Platform"
+LABEL description="Sub2API Orange - AI API Gateway Platform"
 LABEL org.opencontainers.image.source="https://github.com/JuZiool/sub2api-orange"
 
 # Install runtime dependencies

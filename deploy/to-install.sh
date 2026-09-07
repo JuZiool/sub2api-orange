@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-readonly DEFAULT_IMAGE="ghcr.io/juziool/sub2api:latest"
+readonly DEFAULT_IMAGE="ghcr.io/juziool/sub2api-orange:latest"
 readonly DEFAULT_HEALTH_TIMEOUT=180
 readonly DEFAULT_RAW_BASE_URL="https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy"
 readonly ROLLBACK_IMAGE_PREFIX="sub2api-orange:rollback-"
@@ -63,7 +63,7 @@ Orange Docker 部署入口
 
 环境变量：
   SUB2API_DEPLOY_DIR                  默认部署目录
-  SUB2API_IMAGE                       默认 ghcr.io/juziool/sub2api:latest
+  SUB2API_IMAGE                       默认 ghcr.io/juziool/sub2api-orange:latest
   SUB2API_RAW_BASE_URL                部署文件下载地址
   SUB2API_HEALTH_TIMEOUT              健康检查超时时间
   SUB2API_BACKUP_DIR                  备份根目录
@@ -347,7 +347,12 @@ read_env_value() {
 }
 
 set_image() {
-  export SUB2API_IMAGE="${IMAGE_OVERRIDE:-$(read_env_value SUB2API_IMAGE "$DEFAULT_IMAGE")}"
+  local configured_image
+  configured_image="$(read_env_value SUB2API_IMAGE "")"
+  if [[ -z "$IMAGE_OVERRIDE" && "$configured_image" == ghcr.io/juziool/sub2api:* ]]; then
+    warn "现有 .env 仍使用旧镜像 $configured_image；请使用 --image ghcr.io/juziool/sub2api-orange:<tag> 完成镜像迁移。"
+  fi
+  export SUB2API_IMAGE="${IMAGE_OVERRIDE:-${configured_image:-$DEFAULT_IMAGE}}"
   [[ -n "$SUB2API_IMAGE" ]] || die "SUB2API_IMAGE 不能为空。"
 }
 
