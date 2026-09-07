@@ -7,7 +7,6 @@ import DateRangePicker from '../DateRangePicker.vue'
 const messages: Record<string, string> = {
   'dates.today': 'Today',
   'dates.yesterday': 'Yesterday',
-  'dates.last24Hours': 'Last 24 Hours',
   'dates.last7Days': 'Last 7 Days',
   'dates.last14Days': 'Last 14 Days',
   'dates.last30Days': 'Last 30 Days',
@@ -34,14 +33,13 @@ const formatLocalDate = (date: Date): string => {
 }
 
 describe('DateRangePicker', () => {
-  it('uses last 24 hours as the default recognized preset', () => {
-    const now = new Date()
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+  it('uses today as the default recognized preset', () => {
+    const today = formatLocalDate(new Date())
 
     const wrapper = mount(DateRangePicker, {
       props: {
-        startDate: formatLocalDate(yesterday),
-        endDate: formatLocalDate(now)
+        startDate: today,
+        endDate: today
       },
       global: {
         stubs: {
@@ -50,10 +48,10 @@ describe('DateRangePicker', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('Last 24 Hours')
+    expect(wrapper.text()).toContain('Today')
   })
 
-  it('emits range updates with last24Hours preset when applied', async () => {
+  it('emits range updates with today preset when applied', async () => {
     const now = new Date()
     const today = formatLocalDate(now)
 
@@ -71,17 +69,15 @@ describe('DateRangePicker', () => {
 
     await wrapper.find('.date-picker-trigger').trigger('click')
     const presetButton = wrapper.findAll('.date-picker-preset').find((node) =>
-      node.text().includes('Last 24 Hours')
+      node.text().includes('Today')
     )
     expect(presetButton).toBeDefined()
 
     await presetButton!.trigger('click')
     await wrapper.find('.date-picker-apply').trigger('click')
 
-    const nowAfterClick = new Date()
-    const yesterdayAfterClick = new Date(nowAfterClick.getTime() - 24 * 60 * 60 * 1000)
-    const expectedStart = formatLocalDate(yesterdayAfterClick)
-    const expectedEnd = formatLocalDate(nowAfterClick)
+    const expectedStart = formatLocalDate(new Date())
+    const expectedEnd = expectedStart
 
     expect(wrapper.emitted('update:startDate')?.[0]).toEqual([expectedStart])
     expect(wrapper.emitted('update:endDate')?.[0]).toEqual([expectedEnd])
@@ -89,7 +85,7 @@ describe('DateRangePicker', () => {
       {
         startDate: expectedStart,
         endDate: expectedEnd,
-        preset: 'last24Hours'
+        preset: 'today'
       }
     ])
   })

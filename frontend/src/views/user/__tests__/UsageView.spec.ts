@@ -3,6 +3,13 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import UsageView from '../UsageView.vue'
 
+const formatLocalDate = (date: Date): string => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 const {
   query,
   getStats,
@@ -198,6 +205,24 @@ describe('user UsageView', () => {
   it('loads logs, stats, model stats, and snapshot on first render', async () => {
     mountUsageView()
     await flushPromises()
+
+    const today = formatLocalDate(new Date())
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({
+      start_date: today,
+      end_date: today,
+    }), expect.anything())
+    expect(getStats).toHaveBeenCalledWith(expect.objectContaining({
+      start_date: today,
+      end_date: today,
+    }))
+    expect(getDashboardModels).toHaveBeenCalledWith(expect.objectContaining({
+      start_date: today,
+      end_date: today,
+    }))
+    expect(getDashboardSnapshotV2).toHaveBeenCalledWith(expect.objectContaining({
+      start_date: today,
+      end_date: today,
+    }))
 
     expect(query).toHaveBeenCalled()
     expect(getStats).toHaveBeenCalled()

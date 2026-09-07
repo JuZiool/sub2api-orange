@@ -106,7 +106,7 @@ const isOpen = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
 const localStartDate = ref(props.startDate)
 const localEndDate = ref(props.endDate)
-const activePreset = ref<string | null>('last24Hours')
+const activePreset = ref<string | null>('today')
 
 const today = computed(() => {
   // Use local timezone to avoid UTC timezone issues
@@ -150,18 +150,6 @@ const presets: DatePreset[] = [
       d.setDate(d.getDate() - 1)
       const yesterday = formatDateToString(d)
       return { start: yesterday, end: yesterday }
-    }
-  },
-  {
-    labelKey: 'dates.last24Hours',
-    value: 'last24Hours',
-    getRange: () => {
-      const end = new Date()
-      const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
-      return {
-        start: formatDateToString(start),
-        end: formatDateToString(end)
-      }
     }
   },
   {
