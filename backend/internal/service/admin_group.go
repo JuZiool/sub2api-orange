@@ -323,6 +323,10 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if err != nil {
 		return nil, err
 	}
+	modelRateMultipliers, err := NormalizeModelRateMultiplierRules(input.ModelRateMultipliers)
+	if err != nil {
+		return nil, err
+	}
 	maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(platform, input.MaxReasoningEffort)
 	if err != nil {
 		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_MAX_REASONING_EFFORT", "%v", err)
@@ -529,6 +533,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
+		ModelRateMultipliers:            modelRateMultipliers,
 		// 固定账号 manifest 配置：账号绑定发生在分组创建之后，创建路径禁止开启，
 		// 成员关系无从校验（前端创建对话框也不展示）。
 		CodexModelsManifestConfig:   normalizeCodexModelsManifestConfig(platform, input.CodexModelsManifestConfig),
@@ -703,6 +708,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, normalizeErr
 		}
 		group.ModelPricing = modelPricing
+	}
+	if input.ModelRateMultipliers != nil {
+		modelRateMultipliers, normalizeErr := NormalizeModelRateMultiplierRules(*input.ModelRateMultipliers)
+		if normalizeErr != nil {
+			return nil, normalizeErr
+		}
+		group.ModelRateMultipliers = modelRateMultipliers
 	}
 
 	// 订阅相关字段

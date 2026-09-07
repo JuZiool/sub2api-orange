@@ -37,6 +37,27 @@ describe('UsageProgressBar', () => {
     expect(wrapper.text()).not.toContain('2h 30m')
   })
 
+  it('成本估算使用米白色信息框承载', () => {
+    const wrapper = mount(UsageProgressBar, {
+      props: {
+        label: '7d',
+        utilization: 25,
+        estimatedCost: 0,
+        estimatedUsedCost: 0,
+        color: 'emerald'
+      }
+    })
+
+    const estimate = wrapper.get('[data-testid="usage-cost-estimate"]')
+    expect(estimate.classes()).toEqual(expect.arrayContaining([
+      'rounded-md',
+      'border-amber-100/80',
+      'bg-amber-50/70',
+      'text-stone-600'
+    ]))
+    expect(estimate.text()).toContain('$0.00')
+  })
+
   it('showNowWhenIdle=true 但利用率大于 0 时显示倒计时', () => {
     const wrapper = mount(UsageProgressBar, {
       props: {
@@ -164,6 +185,39 @@ describe('UsageProgressBar', () => {
     expect(mountAt(75).get('.h-1\\.5 + span').classes()).toContain('text-amber-600')
     expect(mountAt(89).get('.h-1\\.5 + span').classes()).toContain('text-amber-600')
     expect(mountAt(90).get('.h-1\\.5 + span').classes()).toContain('text-red-600')
+  })
+
+  it('透支中显示独立统计，即使请求数与 Token 为 0', () => {
+    const wrapper = mount(UsageProgressBar, {
+      props: {
+        label: '7d',
+        utilization: 100,
+        resetsAt: '2026-03-17T08:00:00Z',
+        color: 'emerald',
+        overdraftActive: true,
+        overdraftStats: { requests: 0, tokens: 0, cost: 4.38, user_cost: 4.38 },
+        overdraftStatus: 'usage.codexStatusPassed',
+        overdraftStatusClass: 'text-amber-600'
+      }
+    })
+
+    expect(wrapper.get('[data-testid="overdraft-stats"]').text()).toContain('usage.codexStatusPassed')
+    expect(wrapper.get('[data-testid="overdraft-stats"]').text()).toContain('$4.38')
+    expect(wrapper.find('[data-testid="overdraft-recover"]').exists()).toBe(false)
+  })
+
+  it('未启用透支或缺少透支统计时不渲染透支行', () => {
+    const wrapper = mount(UsageProgressBar, {
+      props: {
+        label: '5h',
+        utilization: 100,
+        color: 'indigo',
+        overdraftActive: false,
+        overdraftStats: { requests: 10, tokens: 1000, cost: 1 }
+      }
+    })
+
+    expect(wrapper.find('[data-testid="overdraft-stats"]').exists()).toBe(false)
   })
 
   it('labelWidth 默认 fixed：标签保持定宽居中，百分比列不变', () => {

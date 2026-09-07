@@ -701,6 +701,7 @@ func recordGrokMediaUsage(
 			APIKeyService:      h.apiKeyService,
 			QuotaPlatform:      quotaPlatform,
 			SessionID:          sessionID,
+			RateResolution:     openAIRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, clientRequestedModel(c, result.Model)),
 			ChannelUsageFields: channelUsageFields,
 		}); err != nil {
 			if videoTaskID != "" {

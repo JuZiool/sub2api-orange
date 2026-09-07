@@ -1412,7 +1412,12 @@ const groupOptions = computed(() =>
   groups.value.map((group) => ({
     value: group.id,
     label: group.name,
-    description: group.description,
+    description: [
+      group.description,
+      (group.model_rate_multipliers ?? []).length > 0
+        ? `${t('admin.groups.modelRateMultipliers.displayLabel')}: ${(group.model_rate_multipliers ?? []).map((rule) => `${rule.model}: ${rule.multiplier}x`).join('；')}`
+        : '',
+    ].filter(Boolean).join('\n'),
     rate: group.rate_multiplier,
     userRate: userGroupRates.value[group.id] ?? null,
     peakRateEnabled: group.peak_rate_enabled,

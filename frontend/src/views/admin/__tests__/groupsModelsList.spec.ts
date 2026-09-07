@@ -93,6 +93,20 @@ describe("groupsModelsList", () => {
     });
   });
 
+  it("preserves hidden rules independently of the display-list switch", () => {
+    const state = createModelsListState({
+      enabled: false,
+      models: [],
+      hidden_models: [" gpt-5.6 ", "gemini-3-*"],
+    });
+
+    expect(buildModelsListConfig(state)).toEqual({
+      enabled: false,
+      models: [],
+      hidden_models: ["gpt-5.6", "gemini-3-*"],
+    });
+  });
+
   it("selects all candidate models from the toolbar action", () => {
     const state = hydrateModelsListState({
       enabled: true,

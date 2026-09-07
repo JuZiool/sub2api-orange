@@ -15,12 +15,12 @@ This directory contains files for deploying Sub2API on Linux servers and Apple-s
 | File | Description |
 |------|-------------|
 | `docker-compose.yml` | Docker Compose configuration (named volumes) |
-| `docker-compose.local.yml` | Docker Compose configuration (local directories, easy migration) |
-| `docker-deploy.sh` | **One-click Docker deployment script (recommended)** |
+| `docker-compose.ghcr.yml` | GHCR image overlay used by `to-install.sh` |
+| `docker-deploy.sh` | Compatibility preparation script for older deployments |
 | `apple-container.sh` | Native Apple `container` lifecycle script |
 | `APPLE_CONTAINER.md` | Apple `container` deployment and operations guide |
 | `.env.example` | Container environment variables template |
-| `DOCKER.md` | Docker Hub documentation |
+| `DOCKER.md` | GHCR Docker image documentation |
 | `install.sh` | One-click binary installation script |
 | `install-datamanagementd.sh` | datamanagementd 一键安装脚本 |
 | `sub2api.service` | Systemd service unit file |
@@ -55,65 +55,55 @@ See [APPLE_CONTAINER.md](./APPLE_CONTAINER.md) for configuration, upgrades, pers
 Use the automated preparation script for the easiest setup:
 
 ```bash
-# Download and run the preparation script
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
-
-# Or download first, then run
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh -o docker-deploy.sh
-chmod +x docker-deploy.sh
-./docker-deploy.sh
+# Download and run the Docker deployment entrypoint
+curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/to-install.sh | bash -s -- --mode 1
 ```
 
 **What the script does:**
-- Downloads `docker-compose.local.yml` and `.env.example`
-- Automatically generates secure secrets (JWT_SECRET, TOTP_ENCRYPTION_KEY, POSTGRES_PASSWORD)
-- Creates `.env` file with generated secrets
-- Creates necessary data directories (data/, postgres_data/, redis_data/)
-- **Displays generated credentials** (POSTGRES_PASSWORD, JWT_SECRET, etc.)
+- Downloads the local Compose file and GHCR image overlay
+- Generates secure secrets without printing their full values
+- Refuses to overwrite an existing `.env` or persistent data
+- Starts PostgreSQL, Redis, and Sub2API
+- Waits for container health and the `/health` endpoint
+
+For existing deployments, use `to-install.sh --mode 2` for migration or `to-install.sh update` for updates. The older `docker-deploy.sh` remains only as a compatibility wrapper and delegates to `to-install.sh`.
 
 **After running the script:**
 ```bash
-# Start services
-docker compose -f docker-compose.local.yml up -d
+# View status and health
+to-install.sh health
 
 # View logs
-docker compose -f docker-compose.local.yml logs -f sub2api
-
-# If admin password was auto-generated, find it in logs:
-docker compose -f docker-compose.local.yml logs sub2api | grep "admin password"
+docker compose --env-file .env -f docker-compose.local.yml -f docker-compose.ghcr.yml logs -f sub2api
 
 # Access Web UI
 # http://localhost:8080
 ```
+
+The local-directory deployment is always run with the GHCR overlay:
+
+```bash
+docker compose --env-file .env \
+  -f docker-compose.local.yml \
+  -f docker-compose.ghcr.yml \
+  ps
+```
+
+Use `to-install.sh` for lifecycle operations so configuration protection, backups, locking, health checks, and rollback are applied consistently.
 
 ### Method 2: Manual Deployment
 
 If you prefer manual control:
 
 ```bash
-# Clone repository
-git clone https://github.com/Wei-Shaw/sub2api.git
-cd sub2api/deploy
+# Start or migrate an existing deployment
+to-install.sh --mode 2
 
-# Configure environment
-cp .env.example .env
-chmod 600 .env
-nano .env  # Set POSTGRES_PASSWORD and other required variables
+# View status and health
+to-install.sh health
 
-# Generate secure secrets (recommended)
-JWT_SECRET=$(openssl rand -hex 32)
-TOTP_ENCRYPTION_KEY=$(openssl rand -hex 32)
-echo "JWT_SECRET=${JWT_SECRET}" >> .env
-echo "TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}" >> .env
-
-# Create data directories
-mkdir -p data postgres_data redis_data
-
-# Start all services using local directory version
-docker compose -f docker-compose.local.yml up -d
-
-# View logs (check for auto-generated admin password)
-docker compose -f docker-compose.local.yml logs -f sub2api
+# View logs
+docker compose --env-file .env -f docker-compose.local.yml -f docker-compose.ghcr.yml logs -f sub2api
 
 # Access Web UI
 # http://localhost:8080
@@ -126,7 +116,7 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 | **docker-compose.local.yml** | Local directories (./data, ./postgres_data, ./redis_data) | ✅ Easy (tar entire directory) | Production, need frequent backups/migration |
 | **docker-compose.yml** | Named volumes (/var/lib/docker/volumes/) | ⚠️ Requires docker commands | Simple setup, don't need migration |
 
-**Recommendation:** Use `docker-compose.local.yml` (deployed by `docker-deploy.sh`) for easier data management and migration.
+**Recommendation:** Use `docker-compose.local.yml` with the `docker-compose.ghcr.yml` overlay (managed by `to-install.sh`) for easier data management and migration.
 
 ### How Auto-Setup Works
 
@@ -168,6 +158,30 @@ Kubernetes, use a PostgreSQL readiness probe and retain the Sub2API startup
 retry behavior; configure the application liveness probe separately so a
 database recovery period is not treated as a permanent process failure.
 
+### Lifecycle commands
+
+```bash
+# Migration install in an existing directory
+to-install.sh --mode 2
+
+# Update the application image with backup and health check
+to-install.sh update
+
+# Skip the automatic PostgreSQL backup only when explicitly intended
+to-install.sh update --no-backup
+
+# Create a standalone backup
+to-install.sh backup
+
+# Check services and /health
+to-install.sh health
+
+# Roll back to the previous application image
+to-install.sh rollback
+```
+
+The script never regenerates an existing `.env`, never removes Docker volumes, and updates only the `sub2api` container. PostgreSQL and Redis remain running during application updates.
+
 ### Database Migration Notes (PostgreSQL)
 
 - Migrations are applied in lexicographic order (e.g. `001_...sql`, `002_...sql`).
@@ -206,24 +220,19 @@ For **local directory version** (docker-compose.local.yml):
 
 ```bash
 # Start services
-docker compose -f docker-compose.local.yml up -d
+to-install.sh --mode 2
 
-# Stop services
-docker compose -f docker-compose.local.yml down
+# Stop services (preserve data)
+docker compose --env-file .env -f docker-compose.local.yml -f docker-compose.ghcr.yml stop
 
 # View logs
-docker compose -f docker-compose.local.yml logs -f sub2api
+docker compose --env-file .env -f docker-compose.local.yml -f docker-compose.ghcr.yml logs -f sub2api
 
-# Restart Sub2API only
-docker compose -f docker-compose.local.yml restart sub2api
+# Update safely with backup, health check, and automatic rollback
+to-install.sh update
 
-# Update to latest version
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
-
-# Remove all data (caution!)
-docker compose -f docker-compose.local.yml down
-rm -rf data/ postgres_data/ redis_data/
+# Create a standalone backup
+to-install.sh backup
 ```
 
 For **named volumes version** (docker-compose.yml):
@@ -268,7 +277,7 @@ docker compose down -v
 
 See `.env.example` for all available options.
 
-> **Note:** The `docker-deploy.sh` script automatically generates `JWT_SECRET`, `TOTP_ENCRYPTION_KEY`, and `POSTGRES_PASSWORD` for you.
+> **Note:** `to-install.sh` creates backups under `backups/<timestamp>/`. The backup contains the protected `.env`, Compose files, application data, PostgreSQL logical export, Redis data archive, and image metadata. The old `docker-deploy.sh` is retained only as a compatibility wrapper.
 
 ### Easy Migration (Local Directory Version)
 
@@ -398,12 +407,12 @@ For production servers using systemd.
 ### One-Line Installation
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/install.sh | sudo bash
 ```
 
 ### Manual Installation
 
-1. Download the latest release from [GitHub Releases](https://github.com/Wei-Shaw/sub2api/releases)
+1. Download the latest release from [GitHub Releases](https://github.com/JuZiool/sub2api-orange/releases)
 2. Extract and copy the binary to `/opt/sub2api/`
 3. Copy `sub2api.service` to `/etc/systemd/system/`
 4. Run:

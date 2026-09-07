@@ -34,6 +34,31 @@ func (s *GatewayService) ResolveUserGroupRateMultiplier(ctx context.Context, use
 	return s.getUserGroupRateMultiplier(ctx, userID, groupID, groupDefaultMultiplier)
 }
 
+// ResolveRateResolution freezes the complete downstream multiplier at request start.
+// Handlers pass this value into deferred usage tasks so later group edits cannot
+// change an already-started request's charge.
+func (s *GatewayService) ResolveRateResolution(ctx context.Context, userID int64, group *Group, requestedModel string) *RateResolution {
+	resolution := &RateResolution{RequestedModel: strings.TrimSpace(requestedModel), Multiplier: 1, Source: "system_default"}
+	if s != nil && s.cfg != nil {
+		resolution.Multiplier = s.cfg.Default.RateMultiplier
+	}
+	if group == nil {
+		return resolution
+	}
+	resolution.Multiplier = group.RateMultiplier
+	resolution.Source = "group_default"
+	if group.ID > 0 {
+		resolution.Multiplier = s.ResolveUserGroupRateMultiplier(ctx, userID, group.ID, group.RateMultiplier)
+		resolution.Source = "user_group"
+	}
+	if multiplier, model, ok := ResolveModelRateMultiplier(resolution.RequestedModel, group.ModelRateMultipliers); ok {
+		resolution.Multiplier = multiplier
+		resolution.MatchedModel = model
+		resolution.Source = "model_exact"
+	}
+	return resolution
+}
+
 // RecordUsageInput 记录使用量的输入参数。
 // 异步 worker 只接收计费所需快照，不能持有 ParsedRequest/RequestBodyRef 这类大请求体引用。
 type RecordUsageInput struct {
@@ -52,6 +77,7 @@ type RecordUsageInput struct {
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
 	QuotaPlatform      string             // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
+	RateResolution     *RateResolution    // request-start billing multiplier snapshot
 
 	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
 }
@@ -614,6 +640,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
 		QuotaPlatform:      input.QuotaPlatform,
+		RateResolution:     input.RateResolution,
 		ChannelUsageFields: input.ChannelUsageFields,
 	})
 }
@@ -635,6 +662,7 @@ type recordUsageCoreInput struct {
 	ForceCacheBilling  bool
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string
+	RateResolution     *RateResolution
 	ChannelUsageFields
 }
 
@@ -739,14 +767,23 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		cacheTTLOverridden = (result.Usage.CacheCreation5mTokens + result.Usage.CacheCreation1hTokens) > 0
 	}
 
-	// 获取费率倍数（优先级：用户专属 > 分组默认 > 系统默认）
+	// 获取费率倍数（Orange 优先级：模型精确 > 用户专属 > 分组默认 > 系统默认）
 	multiplier := 1.0
 	if s.cfg != nil {
 		multiplier = s.cfg.Default.RateMultiplier
 	}
-	if apiKey.GroupID != nil && apiKey.Group != nil {
+	requestedModelForRate := strings.TrimSpace(input.OriginalModel)
+	if requestedModelForRate == "" {
+		requestedModelForRate = strings.TrimSpace(result.Model)
+	}
+	if input.RateResolution != nil {
+		multiplier = input.RateResolution.Multiplier
+	} else if apiKey.GroupID != nil && apiKey.Group != nil {
 		groupDefault := apiKey.Group.RateMultiplier
 		multiplier = s.ResolveUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
+		if modelMultiplier, _, matched := ResolveModelRateMultiplier(requestedModelForRate, apiKey.Group.ModelRateMultipliers); matched {
+			multiplier = modelMultiplier
+		}
 	}
 	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。高峰因子按请求时刻现算，
 	// 不并入上面的 getUserGroupRateMultiplier，以免污染 user:group 倍率缓存。

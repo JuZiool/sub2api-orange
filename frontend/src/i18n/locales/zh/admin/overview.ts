@@ -1032,6 +1032,17 @@ export default {
         longContextHint: '勾选后按渠道区间或官方预设阶梯计费；关闭后默认按第一档，账号显式开启时除外。',
         add: '添加模型价格'
       },
+      modelRateMultipliers: {
+        title: '模型专属倍率',
+        description: '按客户端提交的完整模型名精确匹配；命中后优先于用户专属分组倍率。不支持通配符。',
+        add: '添加规则',
+        model: '模型名',
+        modelPlaceholder: '例如 gpt-5.6',
+        multiplier: '倍率',
+        remove: '删除规则',
+        displayLabel: '特定倍率',
+        validation: '模型倍率规则必须填写唯一的完整模型名，倍率需大于 0 且不超过 1000。'
+      },
       voicePricing: {
         title: 'Grok Voice 定价',
         description: '分组级 Voice realtime / TTS / STT 单价（USD）。留空表示未配置。',
@@ -1073,7 +1084,10 @@ export default {
         empty: '暂无可展示模型',
         selectedSummary: '已选 {selected} / {total}',
         selectAll: '全选',
-        invertSelection: '反选'
+        invertSelection: '反选',
+        hiddenTitle: '客户端不可见模型',
+        hiddenHint: '每行一个模型名；支持精确匹配和末尾 * 前缀匹配，独立于上方开关生效。',
+        hiddenPlaceholder: '例如：gpt-5.6 或 gemini-3-*'
       },
       codexModelsManifest: {
         title: '固定账号获取 Codex Model Manifest',

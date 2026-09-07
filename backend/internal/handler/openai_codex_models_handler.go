@@ -47,6 +47,8 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		return
 	}
 	if configured {
+		configuredManifest.Body = service.FilterCodexModelsManifestBody(apiKey.Group, configuredManifest.Body)
+		configuredManifest.ETag = service.CodexModelsManifestETag(configuredManifest.Body)
 		writeCodexModelsManifestResponse(c, configuredManifest)
 		return
 	}
@@ -77,9 +79,15 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		} else {
 			// 让 ops 错误日志携带实际拉取成功的首个固定账号。
 			setOpsSelectedAccount(c, pinnedAccount.ID, pinnedAccount.Platform)
-			if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, pinnedManifest, ifNoneMatch); err != nil {
+			if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, pinnedManifest, ""); err != nil {
 				h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
 				return
+			}
+			pinnedManifest.Body = service.FilterCodexModelsManifestBody(apiKey.Group, pinnedManifest.Body)
+			pinnedManifest.ETag = service.CodexModelsManifestETag(pinnedManifest.Body)
+			if service.CodexModelsManifestETagMatches(ifNoneMatch, pinnedManifest.ETag) {
+				pinnedManifest.NotModified = true
+				pinnedManifest.Body = nil
 			}
 			if c.Request.Context().Err() != nil {
 				return
@@ -133,9 +141,15 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to complete Codex models manifest")
 			return
 		}
-		if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, manifest, ifNoneMatch); err != nil {
+		if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, manifest, ""); err != nil {
 			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
 			return
+		}
+		manifest.Body = service.FilterCodexModelsManifestBody(apiKey.Group, manifest.Body)
+		manifest.ETag = service.CodexModelsManifestETag(manifest.Body)
+		if service.CodexModelsManifestETagMatches(ifNoneMatch, manifest.ETag) {
+			manifest.NotModified = true
+			manifest.Body = nil
 		}
 		if c.Request.Context().Err() != nil {
 			return

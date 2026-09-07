@@ -2417,6 +2417,9 @@ func (s *OpenAIGatewayService) isOpenAIAccountTransportCompatible(account *Accou
 }
 
 func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Account, model string, success bool, firstTokenMs *int, observedErr ...error) bool {
+	if success && len(observedErr) == 0 && s != nil && s.codexQuotaOverdraft != nil {
+		s.codexQuotaOverdraft.ObserveBusinessSuccess(account, model)
+	}
 	if account == nil {
 		return false
 	}

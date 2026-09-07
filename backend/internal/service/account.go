@@ -1299,6 +1299,29 @@ func (a *Account) IsOpenAIOAuthLike() bool {
 	return a != nil && a.IsOpenAI() && (a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken)
 }
 
+// ResolveCodexQuotaOverdraftEnabled resolves the account override against the
+// gateway default. Missing/false means inherit; only explicit true disables.
+func (a *Account) ResolveCodexQuotaOverdraftEnabled(globalDefault bool) bool {
+	if a == nil || !a.IsOpenAIOAuth() || a.IsShadow() {
+		return false
+	}
+	if a.Extra == nil {
+		return globalDefault
+	}
+	raw, exists := a.Extra["codex_quota_overdraft_disabled"]
+	if !exists || raw == nil {
+		return globalDefault
+	}
+	switch value := raw.(type) {
+	case bool:
+		return globalDefault && !value
+	case string:
+		return globalDefault && strings.TrimSpace(strings.ToLower(value)) != "true"
+	default:
+		return globalDefault
+	}
+}
+
 // UsesOpenAICodexProtocol preserves legacy OpenAI gateway OAuth routing for
 // accounts whose platform is implicit, while adding OpenAI SetupToken.
 func (a *Account) UsesOpenAICodexProtocol() bool {

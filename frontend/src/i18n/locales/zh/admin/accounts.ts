@@ -656,6 +656,13 @@ export default {
       openai: {
         baseUrlHint: '留空使用官方 OpenAI API',
         apiKeyHint: '您的 OpenAI API Key',
+        codexQuotaOverdraftDisabled: '禁用 Codex 额度透支',
+        codexQuotaOverdraftDisabledDesc: 'Docker 全局默认开启。勾选后仅禁用当前 OpenAI OAuth 账号的额度透支。',
+        codexQuotaOverdraftPending: '透支探测中',
+        codexQuotaOverdraftPassed: '透支中',
+        codexQuotaOverdraftFailed: '已确认限额',
+        codexQuotaOverdraftInconclusive: '探测无法确认',
+        codexQuotaOverdraftRecovered: '额度已恢复',
         oauthPassthrough: '自动透传（仅替换认证）',
         oauthPassthroughDesc:
           '开启后，该 OpenAI 账号将自动透传请求与响应，仅替换认证并保留计费/并发/审计及必要安全过滤；如遇兼容性问题可随时关闭回滚。',

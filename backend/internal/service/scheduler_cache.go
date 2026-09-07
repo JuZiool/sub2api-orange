@@ -13,6 +13,8 @@ const (
 	SchedulerModeSingle = "single"
 	SchedulerModeMixed  = "mixed"
 	SchedulerModeForced = "forced"
+
+	SchedulerContextCodexOverdraft = "codex_overdraft"
 )
 
 var (
@@ -48,15 +50,19 @@ type SchedulerBucket struct {
 	GroupID  int64
 	Platform string
 	Mode     string
+	Context  string
 }
 
 func (b SchedulerBucket) String() string {
+	if b.Context != "" {
+		return fmt.Sprintf("%d:%s:%s:%s", b.GroupID, b.Platform, b.Mode, b.Context)
+	}
 	return fmt.Sprintf("%d:%s:%s", b.GroupID, b.Platform, b.Mode)
 }
 
 func ParseSchedulerBucket(raw string) (SchedulerBucket, bool) {
 	parts := strings.Split(raw, ":")
-	if len(parts) != 3 {
+	if len(parts) != 3 && len(parts) != 4 {
 		return SchedulerBucket{}, false
 	}
 	groupID, err := strconv.ParseInt(parts[0], 10, 64)
@@ -66,11 +72,14 @@ func ParseSchedulerBucket(raw string) (SchedulerBucket, bool) {
 	if parts[1] == "" || parts[2] == "" {
 		return SchedulerBucket{}, false
 	}
-	return SchedulerBucket{
-		GroupID:  groupID,
-		Platform: parts[1],
-		Mode:     parts[2],
-	}, true
+	bucket := SchedulerBucket{GroupID: groupID, Platform: parts[1], Mode: parts[2]}
+	if len(parts) == 4 {
+		if parts[3] != SchedulerContextCodexOverdraft || bucket.Platform != PlatformOpenAI {
+			return SchedulerBucket{}, false
+		}
+		bucket.Context = parts[3]
+	}
+	return bucket, true
 }
 
 // SchedulerCache 负责调度快照与账号快照的缓存读写。

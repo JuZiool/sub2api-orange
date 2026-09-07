@@ -62,6 +62,8 @@ func cloneGroupForDuplicateTest(group *Group) *Group {
 	cloned.SupportedModelScopes = append([]string(nil), group.SupportedModelScopes...)
 	cloned.MessagesDispatchModelConfig = cloneGroupMessagesDispatchModelConfig(group.MessagesDispatchModelConfig)
 	cloned.ModelsListConfig.Models = append([]string(nil), group.ModelsListConfig.Models...)
+	cloned.ModelsListConfig.HiddenModels = append([]string(nil), group.ModelsListConfig.HiddenModels...)
+	cloned.ModelRateMultipliers = append([]ModelRateMultiplierRule(nil), group.ModelRateMultipliers...)
 	cloned.AccountGroups = append([]AccountGroup(nil), group.AccountGroups...)
 	return &cloned
 }

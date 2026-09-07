@@ -50,6 +50,45 @@
         {{ formatResetTime }}
       </span>
     </div>
+
+    <div
+      v-if="estimatedCost != null || estimatedUsedCost != null"
+      data-testid="usage-cost-estimate"
+      class="mb-0.5 inline-flex w-fit items-center gap-1.5 rounded-md border border-amber-100/80 bg-amber-50/70 px-1.5 py-1 text-[9px] text-stone-600 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100"
+    >
+      <span :title="t('usage.costEstimateHint')">
+        {{ estimateLabel || t('usage.estimatedCost') }}: ${{ formatEstimatedCost }}
+      </span>
+      <span>
+        {{ t('usage.usedCost') }}: ${{ formatEstimatedUsedCost }}
+      </span>
+    </div>
+
+    <div
+      v-if="overdraftActive && overdraftStats"
+      data-testid="overdraft-stats"
+      class="mb-0.5 flex items-center"
+    >
+      <div class="flex items-center gap-1.5 text-[9px] text-orange-600 dark:text-orange-400">
+        <span
+          :class="[
+            'rounded bg-orange-50 px-1.5 py-0.5 dark:bg-orange-900/30',
+            overdraftStatusClass || 'text-orange-600 dark:text-orange-400',
+          ]"
+        >
+          {{ overdraftStatus || t('usage.overdraft') }}
+        </span>
+        <span class="rounded bg-orange-50 px-1.5 py-0.5 dark:bg-orange-900/30">
+          {{ formatOverdraftRequests }} req
+        </span>
+        <span class="rounded bg-orange-50 px-1.5 py-0.5 dark:bg-orange-900/30">
+          {{ formatOverdraftTokens }}
+        </span>
+        <span class="rounded bg-orange-50 px-1.5 py-0.5 dark:bg-orange-900/30" :title="t('usage.accountBilled')">
+          A ${{ formatOverdraftCost }}
+        </span>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -67,6 +106,13 @@ const props = withDefaults(
     resetsAt?: string | null
     color: 'indigo' | 'emerald' | 'purple' | 'amber'
     windowStats?: WindowStats | null
+    overdraftActive?: boolean
+    overdraftStats?: WindowStats | null
+    overdraftStatus?: string
+    overdraftStatusClass?: string
+    estimatedCost?: number | null
+    estimatedUsedCost?: number | null
+    estimateLabel?: string
     showNowWhenIdle?: boolean
     remainingCapacity?: boolean
     /** fixed: 定宽居中徽章（账号页纵向对齐）；auto: 限宽截断左对齐（监控页组合标签） */
@@ -90,14 +136,14 @@ const { pause: pauseClock, resume: resumeClock } = useIntervalFn(
 if (props.resetsAt) resumeClock()
 watch(
   () => props.resetsAt,
-  (val) => {
-    if (val) {
+  (resetsAt) => {
+    if (resetsAt) {
       now.value = new Date()
       resumeClock()
     } else {
       pauseClock()
     }
-  },
+  }
 )
 
 // Label background colors
@@ -208,7 +254,22 @@ const formatResetTime = computed(() => {
   }
 })
 
-// Window stats formatters
+const formatEstimatedCost = computed(() => (props.estimatedCost ?? 0).toFixed(2))
+
+const formatEstimatedUsedCost = computed(() => (props.estimatedUsedCost ?? 0).toFixed(2))
+
+const formatOverdraftRequests = computed(() => {
+  return formatCompactNumber(props.overdraftStats?.requests ?? 0, { allowBillions: false })
+})
+
+const formatOverdraftTokens = computed(() => {
+  return formatCompactNumber(props.overdraftStats?.tokens ?? 0)
+})
+
+const formatOverdraftCost = computed(() => {
+  return (props.overdraftStats?.cost ?? 0).toFixed(2)
+})
+
 const formatRequests = computed(() => {
   if (!props.windowStats) return ''
   return formatCompactNumber(props.windowStats.requests, { allowBillions: false })

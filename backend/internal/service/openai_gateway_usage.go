@@ -36,7 +36,8 @@ type OpenAIRecordUsageInput struct {
 	// PricingAt 是请求级定价时刻（请求开始捕获，与利润门的 D 同源）：高峰因子
 	// 按该时刻计算，保证同一请求从准入到扣费不中途变价。零值回退记录时刻
 	//（既有行为），供未装配的路径（图片/异步/cyber 等）沿用。
-	PricingAt time.Time
+	PricingAt      time.Time
+	RateResolution *RateResolution
 	// CyberBlocked 为 true 时把该用量行标记为 cyber（request_type=cyber），计费逻辑不变。
 	CyberBlocked bool
 	// NativeCompactionV2 is an orthogonal semantic flag captured by the
@@ -44,6 +45,30 @@ type OpenAIRecordUsageInput struct {
 	// the request payload and does not replace the transport request type.
 	NativeCompactionV2 bool
 	ChannelUsageFields
+}
+
+// ResolveRateResolution freezes the complete downstream multiplier for an
+// OpenAI request before its asynchronous usage task is submitted.
+func (s *OpenAIGatewayService) ResolveRateResolution(ctx context.Context, userID int64, group *Group, requestedModel string) *RateResolution {
+	resolution := &RateResolution{RequestedModel: strings.TrimSpace(requestedModel), Multiplier: 1, Source: "system_default"}
+	if s != nil && s.cfg != nil {
+		resolution.Multiplier = s.cfg.Default.RateMultiplier
+	}
+	if group == nil {
+		return resolution
+	}
+	resolution.Multiplier = group.RateMultiplier
+	resolution.Source = "group_default"
+	if group.ID > 0 {
+		resolution.Multiplier = s.ResolveUserGroupRateMultiplier(ctx, userID, group.ID, group.RateMultiplier)
+		resolution.Source = "user_group"
+	}
+	if multiplier, model, ok := ResolveModelRateMultiplier(resolution.RequestedModel, group.ModelRateMultipliers); ok {
+		resolution.Multiplier = multiplier
+		resolution.MatchedModel = model
+		resolution.Source = "model_exact"
+	}
+	return resolution
 }
 
 // CyberPolicyUsageInput 是 cyber 拒绝、未走正常 RecordUsage 的请求记录用量的入参。
@@ -193,13 +218,22 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageOutputTokens:   result.Usage.ImageOutputTokens,
 	}
 
-	// Get rate multiplier
+	// Get rate multiplier (Orange priority: exact model > user group > group > system).
 	multiplier := 1.0
 	if s.cfg != nil {
 		multiplier = s.cfg.Default.RateMultiplier
 	}
-	if apiKey.GroupID != nil && apiKey.Group != nil {
+	requestedModelForRate := strings.TrimSpace(input.OriginalModel)
+	if requestedModelForRate == "" {
+		requestedModelForRate = strings.TrimSpace(result.Model)
+	}
+	if input.RateResolution != nil {
+		multiplier = input.RateResolution.Multiplier
+	} else if apiKey.GroupID != nil && apiKey.Group != nil {
 		multiplier = s.ResolveUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
+		if modelMultiplier, _, matched := ResolveModelRateMultiplier(requestedModelForRate, apiKey.Group.ModelRateMultipliers); matched {
+			multiplier = modelMultiplier
+		}
 	}
 	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。
 	// 高峰因子按请求级 PricingAt 现算（与利润门 D 同源同刻，跨峰谷请求不中途
@@ -1121,6 +1155,10 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 	now := time.Now()
 	updates := buildCodexUsageExtraUpdates(snapshot, now)
 	if len(updates) == 0 {
+		return
+	}
+	if s.codexQuotaOverdraft != nil {
+		s.processCodexQuotaOverdraftUsageSnapshot(ctx, accountID, now, updates)
 		return
 	}
 	if !s.getCodexSnapshotThrottle().Allow(accountID, now) {

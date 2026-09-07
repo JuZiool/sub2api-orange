@@ -802,6 +802,12 @@ func (_c *GroupCreate) SetNillableModelsListConfig(v *domain.GroupModelsListConf
 	return _c
 }
 
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (_c *GroupCreate) SetModelRateMultipliers(v []domain.ModelRateMultiplierRule) *GroupCreate {
+	_c.mutation.SetModelRateMultipliers(v)
+	return _c
+}
+
 // SetCodexModelsManifestConfig sets the "codex_models_manifest_config" field.
 func (_c *GroupCreate) SetCodexModelsManifestConfig(v domain.GroupCodexModelsManifestConfig) *GroupCreate {
 	_c.mutation.SetCodexModelsManifestConfig(v)
@@ -1179,6 +1185,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultModelsListConfig
 		_c.mutation.SetModelsListConfig(v)
 	}
+	if _, ok := _c.mutation.ModelRateMultipliers(); !ok {
+		v := group.DefaultModelRateMultipliers
+		_c.mutation.SetModelRateMultipliers(v)
+	}
 	if _, ok := _c.mutation.CodexModelsManifestConfig(); !ok {
 		v := group.DefaultCodexModelsManifestConfig
 		_c.mutation.SetCodexModelsManifestConfig(v)
@@ -1383,6 +1393,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ModelsListConfig(); !ok {
 		return &ValidationError{Name: "models_list_config", err: errors.New(`ent: missing required field "Group.models_list_config"`)}
+	}
+	if _, ok := _c.mutation.ModelRateMultipliers(); !ok {
+		return &ValidationError{Name: "model_rate_multipliers", err: errors.New(`ent: missing required field "Group.model_rate_multipliers"`)}
 	}
 	if _, ok := _c.mutation.CodexModelsManifestConfig(); !ok {
 		return &ValidationError{Name: "codex_models_manifest_config", err: errors.New(`ent: missing required field "Group.codex_models_manifest_config"`)}
@@ -1676,6 +1689,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ModelsListConfig(); ok {
 		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
 		_node.ModelsListConfig = value
+	}
+	if value, ok := _c.mutation.ModelRateMultipliers(); ok {
+		_spec.SetField(group.FieldModelRateMultipliers, field.TypeJSON, value)
+		_node.ModelRateMultipliers = value
 	}
 	if value, ok := _c.mutation.CodexModelsManifestConfig(); ok {
 		_spec.SetField(group.FieldCodexModelsManifestConfig, field.TypeJSON, value)
@@ -2804,6 +2821,18 @@ func (u *GroupUpsert) SetModelsListConfig(v domain.GroupModelsListConfig) *Group
 // UpdateModelsListConfig sets the "models_list_config" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateModelsListConfig() *GroupUpsert {
 	u.SetExcluded(group.FieldModelsListConfig)
+	return u
+}
+
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (u *GroupUpsert) SetModelRateMultipliers(v []domain.ModelRateMultiplierRule) *GroupUpsert {
+	u.Set(group.FieldModelRateMultipliers, v)
+	return u
+}
+
+// UpdateModelRateMultipliers sets the "model_rate_multipliers" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateModelRateMultipliers() *GroupUpsert {
+	u.SetExcluded(group.FieldModelRateMultipliers)
 	return u
 }
 
@@ -4065,6 +4094,20 @@ func (u *GroupUpsertOne) SetModelsListConfig(v domain.GroupModelsListConfig) *Gr
 func (u *GroupUpsertOne) UpdateModelsListConfig() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateModelsListConfig()
+	})
+}
+
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (u *GroupUpsertOne) SetModelRateMultipliers(v []domain.ModelRateMultiplierRule) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetModelRateMultipliers(v)
+	})
+}
+
+// UpdateModelRateMultipliers sets the "model_rate_multipliers" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateModelRateMultipliers() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateModelRateMultipliers()
 	})
 }
 
@@ -5511,6 +5554,20 @@ func (u *GroupUpsertBulk) SetModelsListConfig(v domain.GroupModelsListConfig) *G
 func (u *GroupUpsertBulk) UpdateModelsListConfig() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateModelsListConfig()
+	})
+}
+
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (u *GroupUpsertBulk) SetModelRateMultipliers(v []domain.ModelRateMultiplierRule) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetModelRateMultipliers(v)
+	})
+}
+
+// UpdateModelRateMultipliers sets the "model_rate_multipliers" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateModelRateMultipliers() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateModelRateMultipliers()
 	})
 }
 

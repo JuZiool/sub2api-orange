@@ -233,7 +233,7 @@ One-click installation script that downloads pre-built binaries from GitHub Rele
 #### Installation Steps
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/install.sh | sudo bash
 ```
 
 The script will:
@@ -283,7 +283,7 @@ sudo journalctl -u sub2api -f
 sudo systemctl restart sub2api
 
 # Uninstall
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash -s -- uninstall -y
+curl -sSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/install.sh | sudo bash -s -- uninstall -y
 ```
 
 ---
@@ -305,22 +305,40 @@ Use the automated deployment script for easy setup:
 # Create deployment directory
 mkdir -p sub2api-deploy && cd sub2api-deploy
 
-# Download and run deployment preparation script
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
+# Download and run the Docker deployment entrypoint
+curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/to-install.sh | bash -s -- --mode 1
 
 # Start services
-docker compose up -d
+to-install.sh --mode 2
+
+# Check status and health
+to-install.sh health
 
 # View logs
-docker compose logs -f sub2api
+docker compose --env-file .env -f docker-compose.local.yml -f docker-compose.ghcr.yml logs -f sub2api
 ```
 
 **What the script does:**
-- Downloads `docker-compose.local.yml` (saved as `docker-compose.yml`) and `.env.example`
-- Generates secure credentials (JWT_SECRET, TOTP_ENCRYPTION_KEY, POSTGRES_PASSWORD)
-- Creates `.env` file with auto-generated secrets
-- Creates data directories (uses local directories for easy backup/migration)
-- Displays generated credentials for your reference
+- Downloads the local Compose configuration and GHCR image overlay
+- Generates secure secrets without printing their full values
+- Refuses a fresh install when `.env` or persistent data already exists
+- Starts PostgreSQL, Redis, and Sub2API
+- Waits for container health and the `/health` endpoint
+
+For existing deployments:
+
+```bash
+# Migration install
+to-install.sh --mode 2
+
+# Update the image (creates a backup by default)
+to-install.sh update
+
+# Backup, health check, or rollback
+to-install.sh backup
+to-install.sh health
+to-install.sh rollback
+```
 
 #### Manual Deployment
 
@@ -328,8 +346,8 @@ If you prefer manual setup:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Wei-Shaw/sub2api.git
-cd sub2api/deploy
+git clone https://github.com/JuZiool/sub2api-orange.git
+cd sub2api-orange/deploy
 
 # 2. Copy environment configuration
 cp .env.example .env
@@ -410,9 +428,8 @@ docker compose -f docker-compose.local.yml logs sub2api | grep "admin password"
 #### Upgrade
 
 ```bash
-# Pull latest image and recreate container
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
+# Pull the latest image and update safely (backup, health check, rollback)
+to-install.sh update
 ```
 
 #### Easy Migration (Local Directory Version)
@@ -458,8 +475,8 @@ rm -rf data/ postgres_data/ redis_data/
 Apple-silicon Macs running macOS 26 can run the full Sub2API, PostgreSQL, and Redis stack with Apple `container` 1.1.0 or newer:
 
 ```bash
-git clone https://github.com/Wei-Shaw/sub2api.git
-cd sub2api/deploy
+git clone https://github.com/JuZiool/sub2api-orange.git
+cd sub2api-orange/deploy
 ./apple-container.sh init
 ./apple-container.sh up
 ./apple-container.sh status
@@ -484,9 +501,8 @@ Build and run from source code for development or customization.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Wei-Shaw/sub2api.git
-cd sub2api
-
+git clone https://github.com/JuZiool/sub2api-orange.git
+cd sub2api-orange
 # 2. Install pnpm (if not already installed)
 npm install -g pnpm
 

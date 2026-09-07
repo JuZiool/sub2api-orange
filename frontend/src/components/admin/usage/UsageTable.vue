@@ -178,6 +178,12 @@
                   <span v-if="row.cache_creation_1h_tokens > 0" class="inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-orange-100 text-orange-600 ring-1 ring-inset ring-orange-200 dark:bg-orange-500/20 dark:text-orange-400 dark:ring-orange-500/30">1h</span>
                   <span v-if="row.cache_ttl_overridden" :title="t('usage.cacheTtlOverriddenHint')" class="inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:ring-rose-500/30 cursor-help">R</span>
                 </div>
+                <span
+                  v-if="cacheHitRate(row) !== null"
+                  data-testid="cache-hit-rate"
+                  class="font-medium text-violet-600 dark:text-violet-400"
+                  :title="t('usage.cacheHitRate')"
+                >{{ formatCacheHitRate(row) }}</span>
               </div>
               <div v-if="hasImageInputTokens(row)" class="flex items-center gap-2">
                 <div class="inline-flex items-center gap-1">
@@ -722,6 +728,21 @@ const getRequestTypeBadgeClass = (row: AdminUsageLog): string => {
 
 const formatUserAgent = (ua: string): string => {
   return ua
+}
+
+const cacheHitRate = (row: Pick<AdminUsageLog, 'input_tokens' | 'cache_creation_tokens' | 'cache_read_tokens'>): number | null => {
+  const promptTokens =
+    (row.input_tokens || 0) +
+    (row.cache_creation_tokens || 0) +
+    (row.cache_read_tokens || 0)
+
+  if (promptTokens <= 0) return null
+  return ((row.cache_read_tokens || 0) / promptTokens) * 100
+}
+
+const formatCacheHitRate = (row: Pick<AdminUsageLog, 'input_tokens' | 'cache_creation_tokens' | 'cache_read_tokens'>): string => {
+  const rate = cacheHitRate(row)
+  return rate === null ? '-' : `${rate.toFixed(1)}%`
 }
 
 // 超过 1 分钟简化为 "Xm Ys"，免去人工换算（超过 1 小时再进位为 "Xh Ym"）

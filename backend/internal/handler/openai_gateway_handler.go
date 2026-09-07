@@ -637,6 +637,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 生图意图只影响能力路由与图片计费，不关门：混合 /v1/responses 请求的
 	// token 计费部分仍受利润门保护，独立图片/视频端点才在门外。
 	pricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	pricingCtx = service.WithCodexQuotaOverdraftScheduling(pricingCtx)
 	c.Request = c.Request.WithContext(pricingCtx)
 
 	for {
@@ -819,6 +820,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					SessionID:          sessionID,
 					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, res.UpstreamModel),
 					PricingAt:          pricingAt,
+					RateResolution:     openAIRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, reqModel),
 					CyberBlocked:       cyberBlocked,
 					NativeCompactionV2: nativeV2,
 				}); err != nil {
@@ -1242,6 +1244,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	// 分组利润控制：Messages 文本入口同样请求级装门并固定 pricingAt。
 	msgPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	msgPricingCtx = service.WithCodexQuotaOverdraftScheduling(msgPricingCtx)
 	c.Request = c.Request.WithContext(msgPricingCtx)
 
 	for {
@@ -1385,6 +1388,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					SessionID:          sessionID,
 					ChannelUsageFields: clientRequestedUsageFields(c, channelMappingMsg, reqModel, res.UpstreamModel),
 					PricingAt:          pricingAt,
+					RateResolution:     openAIRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, reqModel),
 					CyberBlocked:       cyberBlocked,
 				}); err != nil {
 					logger.L().With(
@@ -2348,6 +2352,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model is required in first response.create payload")
 		return
 	}
+	if apiKey.Group != nil && service.IsGroupModelHidden(apiKey.Group.ModelsListConfig, reqModel) {
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "the requested model is not available for this group")
+		return
+	}
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	ctx = c.Request.Context()
 	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
@@ -2564,7 +2572,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// 继续按建连时刻的谷价计费。生图意图只影响能力路由与图片计费，不关门。
 	// 建连时刻只用于选号/准入，不作为任何 turn 的计费定价时刻。
 	wsPricingCtx, _ := h.gatewayService.WithOpenAIRequestPricingContext(ctx, apiKey.GroupID)
-	ctx = wsPricingCtx
+	ctx = service.WithCodexQuotaOverdraftScheduling(wsPricingCtx)
 
 	for {
 		if ctx.Err() != nil {
@@ -2763,6 +2771,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if model == "" {
 					model = reqModel
 				}
+				if apiKey.Group != nil && service.IsGroupModelHidden(apiKey.Group.ModelsListConfig, model) {
+					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "the requested model is not available for this group", nil)
+				}
 				if decision := h.checkSecurityAuditStage(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload, "subsequent_turn"); decision != nil && !decision.AllowNextStage {
 					writeSecurityAuditWSError(ctx, wsConn, decision)
 					return service.NewOpenAIWSClientCloseError(securityAuditWSCloseStatus(decision), securityAuditWSCloseReason(decision), nil)
@@ -2773,6 +2784,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				model := strings.TrimSpace(originalModel)
 				if model == "" {
 					model = reqModel
+				}
+				if apiKey.Group != nil && service.IsGroupModelHidden(apiKey.Group.ModelsListConfig, model) {
+					return "", service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "the requested model is not available for this group", nil)
 				}
 				setOpsRequestContext(c, model, true)
 				mapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, model)
@@ -2928,6 +2942,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						SessionID:          sessionID,
 						ChannelUsageFields: turnUsageFields,
 						PricingAt:          turnRecordPricingAt,
+						RateResolution:     openAIRateSnapshot(ctx, h.gatewayService, apiKey, turnRequestedModel),
 						CyberBlocked:       cyberBlocked,
 					}); err != nil {
 						reqLog.Error("openai.websocket_record_usage_failed",

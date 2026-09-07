@@ -379,6 +379,80 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('7d|77|300')
   })
 
+  it('OpenAI OAuth 分别传递 5h 与 7d 的透支统计', async () => {
+    getUsage.mockResolvedValue({
+      five_hour: {
+        utilization: 100,
+        resets_at: '2099-03-07T12:00:00Z',
+        remaining_seconds: 3600,
+        overdraft_active: true,
+        overdraft_stats: { requests: 5, tokens: 500, cost: 0.5 },
+        overdraft_recover_at: '2099-03-07T14:00:00Z'
+      },
+      seven_day: {
+        utilization: 100,
+        resets_at: '2099-03-13T12:00:00Z',
+        remaining_seconds: 3600,
+        overdraft_active: true,
+        overdraft_stats: { requests: 50, tokens: 5000, cost: 5 },
+        overdraft_recover_at: '2099-03-14T12:00:00Z'
+      },
+      codex_quota_overdraft: { status: 'passed' }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 2020, platform: 'openai', type: 'oauth' })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'windowStats', 'color', 'overdraftActive', 'overdraftStats', 'overdraftStatus', 'overdraftStatusClass'],
+            template: '<div class="usage-bar">{{ label }}|{{ overdraftStats?.requests }}|{{ overdraftStats?.tokens }}|{{ overdraftStatus }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('5h|5|500|admin.accounts.openai.codexQuotaOverdraftPassed')
+    expect(wrapper.text()).toContain('7d|50|5000|admin.accounts.openai.codexQuotaOverdraftPassed')
+  })
+
+  it('OpenAI OAuth 有 codex 快照时仍然使用 /usage API 数据渲染', async () => {
+    getUsage.mockResolvedValue({
+      five_hour: null,
+      seven_day: {
+        utilization: 50,
+        resets_at: '2099-03-13T12:00:00Z',
+        remaining_seconds: 3600,
+        window_stats: { requests: 20, tokens: 2000, cost: 10 },
+        overdraft_active: true,
+        overdraft_stats: { requests: 5, tokens: 500, cost: 2 },
+        overdraft_recover_at: '2099-03-14T12:00:00Z'
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 2021, platform: 'openai', type: 'oauth' }) },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'estimatedCost', 'estimatedUsedCost'],
+            template: '<div data-testid="cost-estimate">{{ label }}|{{ estimatedCost }}|{{ estimatedUsedCost }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="cost-estimate"]').text()).toContain('7d|16|8')
+  })
+
   it('OpenAI OAuth 有 codex 快照时仍然使用 /usage API 数据渲染', async () => {
     getUsage.mockResolvedValue({
       five_hour: {

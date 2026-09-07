@@ -717,6 +717,48 @@ describe('admin UsageTable IP geolocation batch toolbar', () => {
     expect(wrapper.text()).toContain('121.35.47.43')
     expect(wrapper.text()).toContain('CN · Guangdong · Shenzhen')
   })
+
+  it.each([
+    { name: 'read and creation tokens', input: 100, creation: 100, read: 800, expected: '80.0%' },
+    { name: 'read tokens only', input: 100, creation: 0, read: 900, expected: '90.0%' },
+    { name: 'creation tokens only', input: 100, creation: 100, read: 0, expected: '0.0%' },
+  ])('calculates cache hit rate for $name', ({ input, creation, read, expected }) => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          request_id: `cache-rate-${expected}`,
+          input_tokens: input,
+          output_tokens: 50,
+          cache_creation_tokens: creation,
+          cache_read_tokens: read,
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+
+    expect(wrapper.get('[data-testid="cache-hit-rate"]').text()).toBe(expected)
+  })
+
+  it('does not render cache hit rate when prompt token count is zero', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{
+          request_id: 'cache-rate-empty',
+          input_tokens: 0,
+          output_tokens: 50,
+          cache_creation_tokens: 0,
+          cache_read_tokens: 0,
+        }],
+        loading: false,
+        columns: [],
+      },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+
+    expect(wrapper.find('[data-testid="cache-hit-rate"]').exists()).toBe(false)
+  })
 })
 
 // A DataTable stub that also renders cell-user, so the deleted badge can be asserted.

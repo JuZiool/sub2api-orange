@@ -571,6 +571,13 @@ export default {
       openai: {
         baseUrlHint: 'Leave default for official OpenAI API',
         apiKeyHint: 'Your OpenAI API Key',
+        codexQuotaOverdraftDisabled: 'Disable Codex quota overdraft',
+        codexQuotaOverdraftDisabledDesc: 'Docker enables this globally by default. Check this to disable overdraft for this OpenAI OAuth account only.',
+        codexQuotaOverdraftPending: 'Overdraft probe in progress',
+        codexQuotaOverdraftPassed: 'Overdraft active',
+        codexQuotaOverdraftFailed: 'Quota exhaustion confirmed',
+        codexQuotaOverdraftInconclusive: 'Probe inconclusive',
+        codexQuotaOverdraftRecovered: 'Quota recovered',
         oauthPassthrough: 'Auto passthrough (auth only)',
         oauthPassthroughDesc:
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',

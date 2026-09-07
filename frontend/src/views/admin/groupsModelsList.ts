@@ -1,6 +1,7 @@
 export interface ModelsListConfig {
   enabled: boolean
   models: string[]
+  hidden_models?: string[]
 }
 
 export interface ModelsListItem {
@@ -11,6 +12,7 @@ export interface ModelsListItem {
 export interface ModelsListState {
   enabled: boolean
   savedModels: string[]
+  hiddenModelsText: string
   items: ModelsListItem[]
 }
 
@@ -19,6 +21,7 @@ export const createModelsListState = (
 ): ModelsListState => ({
   enabled: config?.enabled ?? false,
   savedModels: normalizeModels(config?.models ?? []),
+  hiddenModelsText: normalizeModels(config?.hidden_models ?? []).join("\n"),
   items: [],
 })
 
@@ -99,12 +102,16 @@ export const moveModelsListItem = (
   state.items.splice(toIndex, 0, item)
 }
 
-export const buildModelsListConfig = (state: ModelsListState): ModelsListConfig => ({
-  enabled: state.enabled,
-  models: state.items.length > 0
-    ? state.items.filter(item => item.selected).map(item => item.id)
-    : [...state.savedModels],
-})
+export const buildModelsListConfig = (state: ModelsListState): ModelsListConfig => {
+  const hiddenModels = normalizeModels(state.hiddenModelsText.split(/[\n,]/))
+  return {
+    enabled: state.enabled,
+    models: state.items.length > 0
+      ? state.items.filter(item => item.selected).map(item => item.id)
+      : [...state.savedModels],
+    ...(hiddenModels.length > 0 ? { hidden_models: hiddenModels } : {}),
+  }
+}
 
 const normalizeModels = (models: string[]): string[] => {
   const seen = new Set<string>()

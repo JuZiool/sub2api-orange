@@ -324,7 +324,7 @@ func (c *schedulerCache) CaptureBucketWriteToken(ctx context.Context, bucket ser
 }
 
 func (c *schedulerCache) RetireBucket(ctx context.Context, bucket service.SchedulerBucket) error {
-	snapshotKeyPrefix := fmt.Sprintf("%s%d:%s:%s:v", schedulerSnapshotPrefix, bucket.GroupID, bucket.Platform, bucket.Mode)
+	snapshotKeyPrefix := schedulerSnapshotKeyPrefix(bucket)
 	result, err := retireBucketScript.Run(ctx, c.rdb, []string{
 		schedulerBucketKey(schedulerEpochPrefix, bucket),
 		schedulerBucketKey(schedulerRetiredPrefix, bucket),
@@ -342,7 +342,7 @@ func (c *schedulerCache) RetireBucket(ctx context.Context, bucket service.Schedu
 }
 
 func (c *schedulerCache) ReopenBucket(ctx context.Context, bucket service.SchedulerBucket) (service.SchedulerBucketWriteToken, error) {
-	snapshotKeyPrefix := fmt.Sprintf("%s%d:%s:%s:v", schedulerSnapshotPrefix, bucket.GroupID, bucket.Platform, bucket.Mode)
+	snapshotKeyPrefix := schedulerSnapshotKeyPrefix(bucket)
 	result, err := reopenBucketScript.Run(ctx, c.rdb, []string{
 		schedulerBucketKey(schedulerEpochPrefix, bucket),
 		schedulerBucketKey(schedulerRetiredPrefix, bucket),
@@ -536,7 +536,7 @@ func (c *schedulerCache) activateSnapshotVersion(ctx context.Context, bucket ser
 	// 旧快照使用 EXPIRE 宽限期而非立即 DEL，避免 reader 竞态。
 	activeKey := schedulerBucketKey(schedulerActivePrefix, bucket)
 	readyKey := schedulerBucketKey(schedulerReadyPrefix, bucket)
-	snapshotKeyPrefix := fmt.Sprintf("%s%d:%s:%s:v", schedulerSnapshotPrefix, bucket.GroupID, bucket.Platform, bucket.Mode)
+	snapshotKeyPrefix := schedulerSnapshotKeyPrefix(bucket)
 
 	keys := []string{
 		activeKey,
@@ -701,7 +701,7 @@ func (c *schedulerCache) SetOutboxWatermark(ctx context.Context, id int64) error
 }
 
 func schedulerBucketKey(prefix string, bucket service.SchedulerBucket) string {
-	return fmt.Sprintf("%s%d:%s:%s", prefix, bucket.GroupID, bucket.Platform, bucket.Mode)
+	return prefix + bucket.String()
 }
 
 func schedulerGroupLifecycleLockKey(groupID int64) string {
@@ -709,7 +709,11 @@ func schedulerGroupLifecycleLockKey(groupID int64) string {
 }
 
 func schedulerSnapshotKey(bucket service.SchedulerBucket, version string) string {
-	return fmt.Sprintf("%s%d:%s:%s:v%s", schedulerSnapshotPrefix, bucket.GroupID, bucket.Platform, bucket.Mode, version)
+	return schedulerSnapshotKeyPrefix(bucket) + version
+}
+
+func schedulerSnapshotKeyPrefix(bucket service.SchedulerBucket) string {
+	return schedulerSnapshotPrefix + bucket.String() + ":v"
 }
 
 func schedulerAccountKey(id string) string {
