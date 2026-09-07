@@ -527,7 +527,7 @@ const isHomeContentUrl = computed(() => {
 const isDark = ref(document.documentElement.classList.contains('dark'))
 
 // GitHub URL
-const githubUrl = 'https://github.com/Wei-Shaw/sub2api'
+const githubUrl = 'https://github.com/JuZiool/sub2api-orange'
 
 // Auth state
 const isAuthenticated = computed(() => authStore.isAuthenticated)
