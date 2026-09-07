@@ -96,7 +96,7 @@ bash to-install.sh update
 
 ```bash
 bash to-install.sh update \
-  --image ghcr.io/juziool/sub2api-orange:0.2.1-2
+  --image ghcr.io/juziool/sub2api-orange:0.2.1-3
 ```
 
 本地已有镜像时可跳过拉取：
@@ -189,7 +189,7 @@ Orange 版本基于官方上游版本增加修订号：
 
 ```text
 上游 0.2.1
-Orange 0.2.1-1、0.2.1-2、...
+Orange 0.2.1-1、0.2.1-2、0.2.1-3、...
 ```
 
 当上游升级到 `0.2.2` 后，Orange 再从 `0.2.2-1` 开始编号。
