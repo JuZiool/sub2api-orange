@@ -59,6 +59,24 @@ export default {
     addBalanceWithCode: '使用兑换码充值'
   },
 
+  tokenRanking: {
+    title: 'Token 排行榜',
+    description: '查看本周和今日全站用户的 Token 使用排行。',
+    weeklyTitle: '本周排行',
+    dailyTitle: '今日排行',
+    topThree: 'Top 3',
+    topTen: 'Top 10',
+    user: '用户',
+    requests: '请求数',
+    input: '输入 Token',
+    output: '输出 Token',
+    cache: '缓存 Token',
+    totalTokens: '总 Token',
+    dateRange: '{start} 至 {end}',
+    noData: '暂无排行数据',
+    failedToLoad: '加载 Token 排行榜失败'
+  },
+
   // Groups (shared)
   groups: {
     subscription: '订阅'

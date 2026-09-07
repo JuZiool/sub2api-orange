@@ -59,6 +59,24 @@ export default {
     addBalanceWithCode: 'Add balance with a code'
   },
 
+  tokenRanking: {
+    title: 'Token Ranking',
+    description: 'View the weekly and daily token usage rankings across all users.',
+    weeklyTitle: 'Weekly Ranking',
+    dailyTitle: 'Daily Ranking',
+    topThree: 'Top 3',
+    topTen: 'Top 10',
+    user: 'User',
+    requests: 'Requests',
+    input: 'Input Tokens',
+    output: 'Output Tokens',
+    cache: 'Cache Tokens',
+    totalTokens: 'Total Tokens',
+    dateRange: '{start} to {end}',
+    noData: 'No ranking data',
+    failedToLoad: 'Failed to load token ranking'
+  },
+
   // Groups (shared)
   groups: {
     subscription: 'Sub'

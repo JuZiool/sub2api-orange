@@ -44,6 +44,17 @@ type userGroupStat struct {
 	ActualCost  float64 `json:"actual_cost"`
 }
 
+type tokenRankingItem struct {
+	Rank         int64  `json:"rank"`
+	UserID       int64  `json:"user_id"`
+	Email        string `json:"email"`
+	Requests     int64  `json:"requests"`
+	InputTokens  int64  `json:"input_tokens"`
+	OutputTokens int64  `json:"output_tokens"`
+	CacheTokens  int64  `json:"cache_tokens"`
+	TotalTokens  int64  `json:"total_tokens"`
+}
+
 // UsageHandler handles usage-related requests
 type UsageHandler struct {
 	usageService   *service.UsageService
@@ -401,6 +412,83 @@ func (h *UsageHandler) GetByID(c *gin.Context) {
 	}
 
 	response.Success(c, dto.UsageLogFromService(record))
+}
+
+// TokenRanking handles the public token leaderboard for all active users.
+// GET /api/v1/usage/ranking
+func (h *UsageHandler) TokenRanking(c *gin.Context) {
+	if _, ok := middleware2.GetAuthSubjectFromContext(c); !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	userTZ := strings.TrimSpace(c.Query("timezone"))
+	now := timezone.NowInUserLocation(userTZ)
+	dayStart := timezone.StartOfDayInUserLocation(now, userTZ)
+	dayEnd := dayStart.AddDate(0, 0, 1)
+	weekday := int(dayStart.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+	weekStart := dayStart.AddDate(0, 0, -(weekday - 1))
+
+	rows, err := h.usageService.GetGlobalTokenRanking(c.Request.Context(), weekStart, dayStart, dayEnd)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	weekly := make([]tokenRankingItem, 0, 3)
+	daily := make([]tokenRankingItem, 0, 10)
+	for _, row := range rows {
+		item := tokenRankingItem{
+			Rank:         row.Rank,
+			UserID:       row.UserID,
+			Email:        maskRankingEmail(row.Email),
+			Requests:     row.Requests,
+			InputTokens:  row.InputTokens,
+			OutputTokens: row.OutputTokens,
+			CacheTokens:  row.CacheTokens,
+			TotalTokens:  row.TotalTokens,
+		}
+		switch row.Period {
+		case "weekly":
+			weekly = append(weekly, item)
+		case "daily":
+			daily = append(daily, item)
+		}
+	}
+
+	response.Success(c, gin.H{
+		"weekly": gin.H{
+			"start_date": weekStart.Format("2006-01-02"),
+			"end_date":   dayStart.Format("2006-01-02"),
+			"items":      weekly,
+		},
+		"daily": gin.H{
+			"date":       dayStart.Format("2006-01-02"),
+			"start_date": dayStart.Format("2006-01-02"),
+			"end_date":   dayStart.Format("2006-01-02"),
+			"items":      daily,
+		},
+	})
+}
+
+func maskRankingEmail(email string) string {
+	email = strings.TrimSpace(email)
+	local, domain, ok := strings.Cut(email, "@")
+	if !ok || local == "" || domain == "" {
+		return "***"
+	}
+	runes := []rune(local)
+	switch {
+	case len(runes) <= 1:
+		return string(runes) + "***@" + domain
+	case len(runes) <= 5:
+		return string(runes[0]) + "***" + string(runes[len(runes)-1]) + "@" + domain
+	default:
+		return string(runes[:3]) + "***" + string(runes[len(runes)-2:]) + "@" + domain
+	}
 }
 
 // Stats handles getting usage statistics

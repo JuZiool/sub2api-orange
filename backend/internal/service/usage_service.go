@@ -453,6 +453,15 @@ func (s *UsageService) GetGlobalStats(ctx context.Context, startTime, endTime ti
 	return stats, nil
 }
 
+// GetGlobalTokenRanking returns the public token leaderboard rows.
+func (s *UsageService) GetGlobalTokenRanking(ctx context.Context, weekStart, dayStart, dayEnd time.Time) ([]usagestats.TokenRankingRow, error) {
+	rows, err := s.usageRepo.GetGlobalTokenRanking(ctx, weekStart, dayStart, dayEnd)
+	if err != nil {
+		return nil, fmt.Errorf("get global token ranking: %w", err)
+	}
+	return rows, nil
+}
+
 // GetStatsWithFilters returns usage stats with optional filters.
 func (s *UsageService) GetStatsWithFilters(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error) {
 	stats, err := s.usageRepo.GetStatsWithFilters(ctx, filters)

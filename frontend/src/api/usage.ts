@@ -117,6 +117,30 @@ export interface UsageDashboardSnapshotV2Response {
   models?: ModelStat[]
   groups?: GroupStat[]
 }
+export interface TokenRankingItem {
+  rank: number
+  user_id: number
+  email: string
+  requests: number
+  input_tokens: number
+  output_tokens: number
+  cache_tokens: number
+  total_tokens: number
+}
+
+export interface TokenRankingResponse {
+  weekly: {
+    start_date: string
+    end_date: string
+    items: TokenRankingItem[]
+  }
+  daily: {
+    date: string
+    start_date: string
+    end_date: string
+    items: TokenRankingItem[]
+  }
+}
 
 /**
  * List usage logs with optional filters
@@ -253,6 +277,13 @@ export async function getById(id: number): Promise<UsageLog> {
 
 // ==================== Dashboard API ====================
 
+export async function getTokenRanking(params?: {
+  timezone?: string
+}): Promise<TokenRankingResponse> {
+  const { data } = await apiClient.get<TokenRankingResponse>('/usage/ranking', { params })
+  return data
+}
+
 /**
  * Get user dashboard statistics
  * @returns Dashboard statistics for current user
@@ -379,6 +410,7 @@ export const usageAPI = {
   getById,
   // Dashboard
   getDashboardStats,
+  getTokenRanking,
   getDashboardTrend,
   getDashboardModels,
   getMyApiKeyDailyUsage,

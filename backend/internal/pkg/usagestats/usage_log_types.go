@@ -164,6 +164,20 @@ type UserSpendingRankingResponse struct {
 	TotalTokens     int64                     `json:"total_tokens"`
 }
 
+// TokenRankingRow represents a server-side row for the public token leaderboard.
+// Email is masked by the handler before it is returned to users.
+type TokenRankingRow struct {
+	Period       string `json:"-"`
+	Rank         int64  `json:"-"`
+	UserID       int64  `json:"user_id"`
+	Email        string `json:"email"`
+	Requests     int64  `json:"requests"`
+	InputTokens  int64  `json:"input_tokens"`
+	OutputTokens int64  `json:"output_tokens"`
+	CacheTokens  int64  `json:"cache_tokens"`
+	TotalTokens  int64  `json:"total_tokens"`
+}
+
 // UserBreakdownItem represents per-user usage breakdown within a dimension (group, model, endpoint).
 type UserBreakdownItem struct {
 	UserID       int64   `json:"user_id"`

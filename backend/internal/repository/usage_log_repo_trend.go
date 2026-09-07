@@ -222,6 +222,86 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 	}, nil
 }
 
+// GetGlobalTokenRanking returns the active users with the highest token usage for the current week and day.
+func (r *usageLogRepository) GetGlobalTokenRanking(ctx context.Context, weekStart, dayStart, dayEnd time.Time) (results []usagestats.TokenRankingRow, err error) {
+	query := `
+		WITH user_usage AS (
+			SELECT
+				u.id AS user_id,
+				u.email,
+				COUNT(*) AS weekly_requests,
+				COALESCE(SUM(ul.input_tokens), 0) AS weekly_input_tokens,
+				COALESCE(SUM(ul.output_tokens), 0) AS weekly_output_tokens,
+				COALESCE(SUM(ul.cache_creation_tokens + ul.cache_read_tokens), 0) AS weekly_cache_tokens,
+				COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) AS weekly_total_tokens,
+				COUNT(*) FILTER (WHERE ul.created_at >= $2 AND ul.created_at < $3) AS daily_requests,
+				COALESCE(SUM(ul.input_tokens) FILTER (WHERE ul.created_at >= $2 AND ul.created_at < $3), 0) AS daily_input_tokens,
+				COALESCE(SUM(ul.output_tokens) FILTER (WHERE ul.created_at >= $2 AND ul.created_at < $3), 0) AS daily_output_tokens,
+				COALESCE(SUM(ul.cache_creation_tokens + ul.cache_read_tokens) FILTER (WHERE ul.created_at >= $2 AND ul.created_at < $3), 0) AS daily_cache_tokens,
+				COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens) FILTER (WHERE ul.created_at >= $2 AND ul.created_at < $3), 0) AS daily_total_tokens
+			FROM usage_logs ul
+			JOIN users u ON u.id = ul.user_id AND u.deleted_at IS NULL
+			WHERE ul.created_at >= $1 AND ul.created_at < $3
+			GROUP BY u.id, u.email
+		), ranked AS (
+			SELECT
+				'weekly' AS period,
+				ROW_NUMBER() OVER (ORDER BY weekly_total_tokens DESC, user_id ASC) AS rank,
+				user_id, email, weekly_requests AS requests, weekly_input_tokens AS input_tokens,
+				weekly_output_tokens AS output_tokens, weekly_cache_tokens AS cache_tokens,
+				weekly_total_tokens AS total_tokens
+			FROM user_usage
+			UNION ALL
+			SELECT
+				'daily' AS period,
+				ROW_NUMBER() OVER (ORDER BY daily_total_tokens DESC, user_id ASC) AS rank,
+				user_id, email, daily_requests AS requests, daily_input_tokens AS input_tokens,
+				daily_output_tokens AS output_tokens, daily_cache_tokens AS cache_tokens,
+				daily_total_tokens AS total_tokens
+			FROM user_usage
+			WHERE daily_requests > 0
+		)
+		SELECT period, rank, user_id, email, requests, input_tokens, output_tokens, cache_tokens, total_tokens
+		FROM ranked
+		WHERE (period = 'weekly' AND rank <= 3) OR (period = 'daily' AND rank <= 10)
+		ORDER BY CASE WHEN period = 'weekly' THEN 0 ELSE 1 END, rank ASC
+	`
+
+	rows, err := r.sql.QueryContext(ctx, query, weekStart, dayStart, dayEnd)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			results = nil
+		}
+	}()
+
+	results = make([]usagestats.TokenRankingRow, 0, 13)
+	for rows.Next() {
+		var row usagestats.TokenRankingRow
+		if err = rows.Scan(
+			&row.Period,
+			&row.Rank,
+			&row.UserID,
+			&row.Email,
+			&row.Requests,
+			&row.InputTokens,
+			&row.OutputTokens,
+			&row.CacheTokens,
+			&row.TotalTokens,
+		); err != nil {
+			return nil, err
+		}
+		results = append(results, row)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
 // GetUserUsageTrendByUserID 获取指定用户的使用趋势
 func (r *usageLogRepository) GetUserUsageTrendByUserID(ctx context.Context, userID int64, startTime, endTime time.Time, granularity string) (results []TrendDataPoint, err error) {
 	dateFormat := safeDateFormat(granularity)
