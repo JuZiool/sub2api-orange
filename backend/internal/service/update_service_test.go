@@ -69,6 +69,32 @@ func TestUpdateServicePerformUpdateNoUpdateReturnsSentinel(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoUpdateAvailable)
 }
 
+func TestUpdateServiceDetectsOrangeRevisionRelease(t *testing.T) {
+	svc := NewUpdateService(
+		&updateServiceCacheStub{},
+		&updateServiceGitHubClientStub{
+			release: &GitHubRelease{TagName: "v0.2.1"},
+			recentReleases: []*GitHubRelease{
+				{TagName: "v0.2.1-1", Prerelease: true},
+				{TagName: "v0.2.1-rc1", Prerelease: true},
+			},
+		},
+		"0.2.1",
+		"release",
+	)
+
+	info, err := svc.CheckUpdate(context.Background(), true)
+
+	require.NoError(t, err)
+	require.Equal(t, "0.2.1-1", info.LatestVersion)
+	require.True(t, info.HasUpdate)
+}
+
+func TestCompareVersionsIncludesOrangeRevision(t *testing.T) {
+	require.Less(t, compareVersions("0.2.1", "0.2.1-1"), 0)
+	require.Equal(t, 0, compareVersions("0.2.1-1", "0.2.1-1"))
+	require.Greater(t, compareVersions("0.2.1-2", "0.2.1-1"), 0)
+}
 func newRollbackTestService(current string, releases []*GitHubRelease) *UpdateService {
 	return NewUpdateService(
 		&updateServiceCacheStub{},

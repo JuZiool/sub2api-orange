@@ -400,9 +400,35 @@ func (s *UpdateService) fetchRollbackCandidates(ctx context.Context) ([]*GitHubR
 }
 
 func (s *UpdateService) fetchLatestRelease(ctx context.Context) (*UpdateInfo, error) {
-	release, err := s.githubClient.FetchLatestRelease(ctx, githubRepo)
-	if err != nil {
-		return nil, err
+	latest, latestErr := s.githubClient.FetchLatestRelease(ctx, githubRepo)
+	recent, recentErr := s.githubClient.FetchRecentReleases(ctx, githubRepo, rollbackFetchPageSize)
+
+	candidates := make([]*GitHubRelease, 0, 1+len(recent))
+	if latestErr == nil && isEligibleUpdateRelease(latest) {
+		candidates = append(candidates, latest)
+	}
+	if recentErr == nil {
+		for _, release := range recent {
+			if isEligibleUpdateRelease(release) {
+				candidates = append(candidates, release)
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		if latestErr != nil {
+			return nil, latestErr
+		}
+		if recentErr != nil {
+			return nil, recentErr
+		}
+		return nil, fmt.Errorf("no eligible GitHub release found")
+	}
+
+	release := candidates[0]
+	for _, candidate := range candidates[1:] {
+		if compareVersions(strings.TrimPrefix(candidate.TagName, "v"), strings.TrimPrefix(release.TagName, "v")) > 0 {
+			release = candidate
+		}
 	}
 
 	latestVersion := strings.TrimPrefix(release.TagName, "v")
@@ -430,6 +456,40 @@ func (s *UpdateService) fetchLatestRelease(ctx context.Context) (*UpdateInfo, er
 		Cached:    false,
 		BuildType: s.buildType,
 	}, nil
+}
+
+func isEligibleUpdateRelease(release *GitHubRelease) bool {
+	if release == nil || release.Draft {
+		return false
+	}
+	if !release.Prerelease {
+		return true
+	}
+	return isOrangeRevisionTag(release.TagName)
+}
+
+func isOrangeRevisionTag(tag string) bool {
+	version := strings.TrimPrefix(strings.TrimSpace(tag), "v")
+	parts := strings.SplitN(version, "-", 2)
+	if len(parts) != 2 || parts[1] == "" {
+		return false
+	}
+	if _, err := strconv.Atoi(parts[1]); err != nil {
+		return false
+	}
+	base := strings.Split(parts[0], ".")
+	if len(base) != 3 {
+		return false
+	}
+	for _, part := range base {
+		if part == "" {
+			return false
+		}
+		if _, err := strconv.Atoi(part); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *UpdateService) downloadFile(ctx context.Context, downloadURL, dest string) error {
@@ -637,25 +697,35 @@ func (s *UpdateService) saveToCache(ctx context.Context, info *UpdateInfo) {
 	_ = s.cache.SetUpdateInfo(ctx, string(data), time.Duration(updateCacheTTL)*time.Second)
 }
 
-// compareVersions compares two semantic versions
+// compareVersions compares base semantic versions and Orange numeric revisions.
 func compareVersions(current, latest string) int {
-	currentParts := parseVersion(current)
-	latestParts := parseVersion(latest)
+	currentBase, currentRevision := parseVersion(current)
+	latestBase, latestRevision := parseVersion(latest)
 
 	for i := 0; i < 3; i++ {
-		if currentParts[i] < latestParts[i] {
+		if currentBase[i] < latestBase[i] {
 			return -1
 		}
-		if currentParts[i] > latestParts[i] {
+		if currentBase[i] > latestBase[i] {
 			return 1
 		}
+	}
+	if currentRevision < latestRevision {
+		return -1
+	}
+	if currentRevision > latestRevision {
+		return 1
 	}
 	return 0
 }
 
-func parseVersion(v string) [3]int {
-	v = strings.TrimPrefix(v, "v")
+func parseVersion(v string) ([3]int, int) {
+	v = strings.TrimPrefix(strings.TrimSpace(v), "v")
+	revision := 0
 	if idx := strings.IndexByte(v, '-'); idx != -1 {
+		if parsed, err := strconv.Atoi(v[idx+1:]); err == nil {
+			revision = parsed
+		}
 		v = v[:idx]
 	}
 	parts := strings.Split(v, ".")
@@ -665,5 +735,5 @@ func parseVersion(v string) [3]int {
 			result[i] = parsed
 		}
 	}
-	return result
+	return result, revision
 }
