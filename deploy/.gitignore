@@ -11,6 +11,9 @@ redis_data/
 .env
 
 # Backup files
+backups/
+.deploy-state.json
+.sub2api-docker.lock
 *.backup
 *.bak
 

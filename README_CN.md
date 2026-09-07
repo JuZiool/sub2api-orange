@@ -307,22 +307,40 @@ curl -sSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/i
 # 创建部署目录
 mkdir -p sub2api-deploy && cd sub2api-deploy
 
-# 下载并运行部署准备脚本
-curl -sSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/docker-deploy.sh | bash
+# 下载并运行 Docker 部署入口
+curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/to-install.sh | bash -s -- --mode 1
 
-# 启动服务
-docker compose up -d
+# 启动或迁移已有部署
+to-install.sh --mode 2
+
+# 查看状态和健康检查
+to-install.sh health
 
 # 查看日志
-docker compose logs -f sub2api
+docker compose --env-file .env -f docker-compose.local.yml -f docker-compose.ghcr.yml logs -f sub2api
 ```
 
 **脚本功能：**
-- 下载 `docker-compose.local.yml`（本地保存为 `docker-compose.yml`）和 `.env.example`
-- 自动生成安全凭证（JWT_SECRET、TOTP_ENCRYPTION_KEY、POSTGRES_PASSWORD）
-- 创建 `.env` 文件并填充自动生成的密钥
-- 创建数据目录（使用本地目录，便于备份和迁移）
-- 显示生成的凭证供你记录
+- 下载本地 Compose 配置和 GHCR 镜像 overlay
+- 生成安全密钥，但不打印完整密钥
+- 已有 `.env` 或持久化数据时拒绝全新安装
+- 启动 PostgreSQL、Redis 和 Sub2API
+- 等待容器健康检查和 `/health` 接口通过
+
+已有部署使用：
+
+```bash
+# 迁移安装
+to-install.sh --mode 2
+
+# 更新镜像（默认先备份）
+to-install.sh update
+
+# 创建备份 / 检查健康 / 回滚
+to-install.sh backup
+to-install.sh health
+to-install.sh rollback
+```
 
 #### 手动部署
 
@@ -424,9 +442,8 @@ docker compose -f docker-compose.local.yml logs sub2api | grep "admin password"
 #### 升级
 
 ```bash
-# 拉取最新镜像并重建容器
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
+# 拉取最新镜像并安全更新（含备份、健康检查和失败回滚）
+to-install.sh update
 ```
 
 #### 轻松迁移（本地目录版）

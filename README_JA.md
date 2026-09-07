@@ -306,22 +306,40 @@ PostgreSQL と Redis のコンテナを含む Docker Compose でデプロイし�
 # デプロイ用ディレクトリを作成
 mkdir -p sub2api-deploy && cd sub2api-deploy
 
-# デプロイ準備スクリプトをダウンロードして実行
-curl -sSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/docker-deploy.sh | bash
+# Docker デプロイエントリポイントをダウンロードして実行
+curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/to-install.sh | bash -s -- --mode 1
 
-# サービスを起動
-docker compose up -d
+# 起動または既存デプロイの移行
+to-install.sh --mode 2
+
+# ステータスと health を確認
+to-install.sh health
 
 # ログを表示
-docker compose logs -f sub2api
+docker compose --env-file .env -f docker-compose.local.yml -f docker-compose.ghcr.yml logs -f sub2api
 ```
 
 **スクリプトの動作内容:**
-- `docker-compose.local.yml`（`docker-compose.yml` として保存）と `.env.example` をダウンロード
-- セキュアな認証情報（JWT_SECRET、TOTP_ENCRYPTION_KEY、POSTGRES_PASSWORD）を自動生成
-- 自動生成されたシークレットで `.env` ファイルを作成
-- データディレクトリを作成（バックアップ・移行が容易なローカルディレクトリを使用）
-- 生成された認証情報を参照用に表示
+- ローカル Compose 設定と GHCR イメージ overlay をダウンロード
+- 完全なシークレット値を表示せず安全な値を生成
+- `.env` または永続データがある場合は新規インストールを拒否
+- PostgreSQL、Redis、Sub2API を起動
+- コンテナの health と `/health` を確認
+
+既存デプロイでは次を使用します:
+
+```bash
+# 移行インストール
+to-install.sh --mode 2
+
+# イメージ更新（既定でバックアップを作成）
+to-install.sh update
+
+# バックアップ、health 確認、ロールバック
+to-install.sh backup
+to-install.sh health
+to-install.sh rollback
+```
 
 #### 手動デプロイ
 
@@ -397,7 +415,7 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 | **docker-compose.local.yml** | ローカルディレクトリ | ✅ 容易（ディレクトリ全体を tar） | 本番環境、頻繁なバックアップ |
 | **docker-compose.yml** | 名前付きボリューム | ⚠️ docker コマンドが必要 | シンプルなセットアップ |
 
-**推奨:** データ管理が容易な `docker-compose.local.yml`（スクリプトによるデプロイ）を使用してください。
+**推奨:** 安全な更新、バックアップ、移行、ロールバックのため、`to-install.sh` で `docker-compose.local.yml` と `docker-compose.ghcr.yml` を管理してください。
 
 #### アクセス
 
@@ -411,9 +429,8 @@ docker compose -f docker-compose.local.yml logs sub2api | grep "admin password"
 #### アップグレード
 
 ```bash
-# 最新イメージをプルしてコンテナを再作成
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
+# バックアップ、health、失敗時のロールバック付きで更新
+to-install.sh update
 ```
 
 #### 簡単な移行（ローカルディレクトリバージョン）

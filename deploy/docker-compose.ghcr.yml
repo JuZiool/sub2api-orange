@@ -1,0 +1,8 @@
+# Orange Docker GHCR image overlay.
+# Use together with docker-compose.local.yml.
+
+services:
+  sub2api:
+    image: ${SUB2API_IMAGE:-ghcr.io/juziool/sub2api:latest}
+    environment:
+      - GATEWAY_CODEX_QUOTA_OVERDRAFT_ENABLED=${GATEWAY_CODEX_QUOTA_OVERDRAFT_ENABLED:-true}
