@@ -16,7 +16,8 @@ import (
 // Codex CLI and the Codex desktop app refresh their model picker from
 // GET {base_url}/models?client_version=... (custom provider mode) or
 // GET /backend-api/codex/models (chatgpt_base_url mode). Both routes land
-// here. Groups with explicit account model mappings are generated locally;
+// here. Pinned discovery takes precedence over local account model mappings;
+// when disabled, groups with explicit mappings are generated locally;
 // otherwise ChatGPT manifests are proxied verbatim and custom API key manifests
 // receive provider-compatibility normalization plus short-lived caching.
 func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
@@ -34,30 +35,10 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 	}
 
 	ifNoneMatch := c.GetHeader("If-None-Match")
-	configuredManifest, configured, err := h.gatewayService.BuildGroupConfiguredCodexModelsManifest(
-		c.Request.Context(),
-		apiKey.Group,
-		ifNoneMatch,
-	)
-	if err != nil {
-		if c.Request.Context().Err() != nil {
-			return
-		}
-		h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
-		return
-	}
-	if configured {
-		configuredManifest.Body = service.FilterCodexModelsManifestBody(apiKey.Group, configuredManifest.Body)
-		configuredManifest.ETag = service.CodexModelsManifestETag(configuredManifest.Body)
-		writeCodexModelsManifestResponse(c, configuredManifest)
-		return
-	}
-
 	// 固定账号分支：开启后只用选定账号拉取 manifest，不经过调度器；
 	// 全部不可用/全部失败时按 FallbackToScheduler 决定回退调度器或返回错误。
 	if apiKey.Group.Platform == service.PlatformOpenAI &&
-		apiKey.Group.CodexModelsManifestConfig.Enabled &&
-		len(apiKey.Group.CodexModelsManifestConfig.AccountIDs) > 0 {
+		apiKey.Group.CodexModelsManifestConfig.Enabled {
 		pinnedManifest, pinnedAccount, pinnedErr := h.gatewayService.FetchPinnedCodexModelsManifest(
 			c.Request.Context(),
 			apiKey.Group,
@@ -79,20 +60,33 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		} else {
 			// 让 ops 错误日志携带实际拉取成功的首个固定账号。
 			setOpsSelectedAccount(c, pinnedAccount.ID, pinnedAccount.Platform)
-			if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, pinnedManifest, ""); err != nil {
+			if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, pinnedManifest, ifNoneMatch); err != nil {
 				h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
 				return
-			}
-			pinnedManifest.Body = service.FilterCodexModelsManifestBody(apiKey.Group, pinnedManifest.Body)
-			pinnedManifest.ETag = service.CodexModelsManifestETag(pinnedManifest.Body)
-			if service.CodexModelsManifestETagMatches(ifNoneMatch, pinnedManifest.ETag) {
-				pinnedManifest.NotModified = true
-				pinnedManifest.Body = nil
 			}
 			if c.Request.Context().Err() != nil {
 				return
 			}
-			writeCodexModelsManifestResponse(c, pinnedManifest)
+			writeOpenAIModelsResponse(c, pinnedManifest)
+			return
+		}
+	}
+
+	if !apiKey.Group.CodexModelsManifestConfig.Enabled {
+		configuredManifest, configured, err := h.gatewayService.BuildGroupConfiguredCodexModelsManifest(
+			c.Request.Context(),
+			apiKey.Group,
+			ifNoneMatch,
+		)
+		if err != nil {
+			if c.Request.Context().Err() != nil {
+				return
+			}
+			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
+			return
+		}
+		if configured {
+			writeOpenAIModelsResponse(c, configuredManifest)
 			return
 		}
 	}
@@ -141,33 +135,19 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to complete Codex models manifest")
 			return
 		}
-		if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, manifest, ""); err != nil {
-			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
+		if err := service.ApplyPinnedCodexModelsMapping(manifest, account, apiKey.Group); err != nil {
+			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to apply model mappings")
 			return
 		}
-		manifest.Body = service.FilterCodexModelsManifestBody(apiKey.Group, manifest.Body)
-		manifest.ETag = service.CodexModelsManifestETag(manifest.Body)
-		if service.CodexModelsManifestETagMatches(ifNoneMatch, manifest.ETag) {
-			manifest.NotModified = true
-			manifest.Body = nil
+		if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, manifest, ifNoneMatch); err != nil {
+			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
+			return
 		}
 		if c.Request.Context().Err() != nil {
 			return
 		}
 
-		writeCodexModelsManifestResponse(c, manifest)
+		writeOpenAIModelsResponse(c, manifest)
 		return
 	}
-}
-
-func writeCodexModelsManifestResponse(c *gin.Context, manifest *service.CodexModelsManifest) {
-	if manifest.ETag != "" {
-		c.Header("ETag", manifest.ETag)
-	}
-	if manifest.NotModified {
-		c.Status(http.StatusNotModified)
-		c.Writer.WriteHeaderNow()
-		return
-	}
-	c.Data(http.StatusOK, "application/json", manifest.Body)
 }
