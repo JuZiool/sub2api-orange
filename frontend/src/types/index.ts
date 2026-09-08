@@ -609,6 +609,7 @@ export interface Group {
   allow_live: boolean
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
+  model_rate_multipliers?: ModelRateMultiplierRule[]
   require_oauth_only: boolean
   require_privacy_set: boolean
   created_at: string
@@ -644,6 +645,7 @@ export interface AdminGroup extends Group {
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   model_allowlist?: ModelAllowlist
+  model_rate_multipliers?: ModelRateMultiplierRule[]
   codex_models_manifest_config?: CodexModelsManifestConfig
 
   // 分组排序
@@ -653,6 +655,11 @@ export interface AdminGroup extends Group {
 export interface ModelAllowlist {
   enabled: boolean
   models: string[]
+}
+
+export interface ModelRateMultiplierRule {
+  model: string
+  multiplier: number
 }
 
 // 固定账号获取 Codex Model Manifest 配置（仅 openai 分组）
@@ -827,6 +834,7 @@ export interface CreateGroupRequest {
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
   model_allowlist?: ModelAllowlist
+  model_rate_multipliers?: ModelRateMultiplierRule[]
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
@@ -893,6 +901,7 @@ export interface UpdateGroupRequest {
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
   model_allowlist?: ModelAllowlist
+  model_rate_multipliers?: ModelRateMultiplierRule[]
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
@@ -1315,6 +1324,10 @@ export interface UsageProgress {
   resets_at: string | null
   remaining_seconds: number
   window_stats?: WindowStats | null // 窗口期统计（从窗口开始到当前的使用量）
+  overdraft_active?: boolean
+  overdraft_stats?: WindowStats | null
+  overdraft_started_at?: string | null
+  overdraft_recover_at?: string | null
   used_requests?: number
   limit_requests?: number
 }
@@ -1368,9 +1381,24 @@ export interface GrokBillingSummary {
   failed_windows?: string[]
 }
 
+export interface CodexQuotaOverdraftProbeState {
+  status: 'pending' | 'passed' | 'failed' | 'inconclusive' | 'recovered' | string
+  quota_window?: string
+  cycle_key?: string
+  attempts?: number
+  limit?: number
+  model?: string
+  reason_code?: string
+  started_at?: string
+  retry_at?: string | null
+  recover_at?: string | null
+  overdraft_started_at?: string | null
+}
+
 export interface AccountUsageInfo {
   source?: 'passive' | 'active'
   updated_at: string | null
+  codex_quota_overdraft?: CodexQuotaOverdraftProbeState | null
   five_hour: UsageProgress | null
   seven_day: UsageProgress | null
   seven_day_sonnet: UsageProgress | null

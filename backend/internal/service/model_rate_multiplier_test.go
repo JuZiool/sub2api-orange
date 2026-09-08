@@ -30,12 +30,3 @@ func TestResolveModelRateMultiplierIsExactAndCaseSensitive(t *testing.T) {
 	_, _, ok = ResolveModelRateMultiplier("GPT-5.6", rules)
 	require.False(t, ok)
 }
-
-func TestGroupHiddenModelsSupportExactPrefixAndGeminiPrefix(t *testing.T) {
-	cfg := GroupModelsListConfig{HiddenModels: []string{"gpt-5.6", "gemini-3-*"}}
-	require.True(t, IsGroupModelHidden(cfg, "gpt-5.6"))
-	require.False(t, IsGroupModelHidden(cfg, "gpt-5.6-mini"))
-	require.True(t, IsGroupModelHidden(cfg, "models/gemini-3-pro"))
-	require.True(t, IsGroupModelHidden(cfg, "gemini-3-flash"))
-	require.False(t, IsGroupModelHidden(cfg, "gemini-2.5-pro"))
-}

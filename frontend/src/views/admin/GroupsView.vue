@@ -622,6 +622,20 @@
           />
           <p class="input-hint">{{ t("admin.groups.rateMultiplierHint") }}</p>
         </div>
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-400">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelRateMultipliers.title") }}</h4>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.modelRateMultipliers.description") }}</p>
+            </div>
+            <button type="button" class="btn btn-secondary shrink-0" @click="createForm.model_rate_multipliers.push({ model: '', multiplier: 1 })"><Icon name="plus" size="sm" class="mr-1" />{{ t("admin.groups.modelRateMultipliers.add") }}</button>
+          </div>
+          <div v-for="(rule, index) in createForm.model_rate_multipliers" :key="index" class="mt-3 grid grid-cols-[minmax(0,1fr)_8rem_auto] items-end gap-2">
+            <div><label class="input-label text-xs">{{ t("admin.groups.modelRateMultipliers.model") }}</label><input v-model="rule.model" class="input" :placeholder="t('admin.groups.modelRateMultipliers.modelPlaceholder')" /></div>
+            <div><label class="input-label text-xs">{{ t("admin.groups.modelRateMultipliers.multiplier") }}</label><input v-model.number="rule.multiplier" type="number" min="0.0001" step="0.0001" class="input" /></div>
+            <button type="button" class="p-2 text-gray-400 hover:text-red-500" :title="t('admin.groups.modelRateMultipliers.remove')" @click="createForm.model_rate_multipliers.splice(index, 1)"><Icon name="trash" size="sm" /></button>
+          </div>
+        </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
           <input
@@ -2259,6 +2273,20 @@
             class="input"
             data-tour="group-form-multiplier"
           />
+        </div>
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-400">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelRateMultipliers.title") }}</h4>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.modelRateMultipliers.description") }}</p>
+            </div>
+            <button type="button" class="btn btn-secondary shrink-0" @click="editForm.model_rate_multipliers.push({ model: '', multiplier: 1 })"><Icon name="plus" size="sm" class="mr-1" />{{ t("admin.groups.modelRateMultipliers.add") }}</button>
+          </div>
+          <div v-for="(rule, index) in editForm.model_rate_multipliers" :key="index" class="mt-3 grid grid-cols-[minmax(0,1fr)_8rem_auto] items-end gap-2">
+            <div><label class="input-label text-xs">{{ t("admin.groups.modelRateMultipliers.model") }}</label><input v-model="rule.model" class="input" :placeholder="t('admin.groups.modelRateMultipliers.modelPlaceholder')" /></div>
+            <div><label class="input-label text-xs">{{ t("admin.groups.modelRateMultipliers.multiplier") }}</label><input v-model.number="rule.multiplier" type="number" min="0.0001" step="0.0001" class="input" /></div>
+            <button type="button" class="p-2 text-gray-400 hover:text-red-500" :title="t('admin.groups.modelRateMultipliers.remove')" @click="editForm.model_rate_multipliers.splice(index, 1)"><Icon name="trash" size="sm" /></button>
+          </div>
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
@@ -4934,6 +4962,7 @@ const createForm = reactive({
   force_openai_fast: false,
   free_openai_fast: false,
   model_pricing: [] as PricingFormEntry[],
+  model_rate_multipliers: [] as Array<{ model: string; multiplier: number }>,
   // 图片生成计费配置
   allow_image_generation: false,
   allow_batch_image_generation: false,
@@ -5299,6 +5328,7 @@ const editForm = reactive({
   force_openai_fast: false,
   free_openai_fast: false,
   model_pricing: [] as PricingFormEntry[],
+  model_rate_multipliers: [] as Array<{ model: string; multiplier: number }>,
   // 图片生成计费配置
   allow_image_generation: false,
   allow_batch_image_generation: false,
@@ -5776,6 +5806,7 @@ const closeCreateModal = () => {
   createForm.force_openai_fast = false;
   createForm.free_openai_fast = false;
   createForm.model_pricing = [];
+  createForm.model_rate_multipliers = [];
   createForm.web_search_price_per_call = null;
   createForm.search_price_per_1k = null;
   createForm.audio_realtime_price_per_min = null;
@@ -5849,6 +5880,31 @@ const validateProfitControlForm = (form: ProfitControlFormState): boolean => {
   return true;
 };
 
+const normalizeModelRateMultipliers = (
+  rules: Array<{ model: string; multiplier: number }>,
+): Array<{ model: string; multiplier: number }> | null => {
+  const seen = new Set<string>();
+  const normalized: Array<{ model: string; multiplier: number }> = [];
+  for (const rule of rules) {
+    const model = String(rule.model ?? "").trim();
+    const multiplier = Number(rule.multiplier);
+    if (
+      !model ||
+      model.includes("*") ||
+      !Number.isFinite(multiplier) ||
+      multiplier <= 0 ||
+      multiplier > 1000 ||
+      seen.has(model)
+    ) {
+      appStore.showError(t("admin.groups.modelRateMultipliers.validation"));
+      return null;
+    }
+    seen.add(model);
+    normalized.push({ model, multiplier });
+  }
+  return normalized;
+};
+
 const handleCreateGroup = async () => {
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
@@ -5862,6 +5918,10 @@ const handleCreateGroup = async () => {
     return;
   }
   if (!validateProfitControlForm(createForm)) {
+    return;
+  }
+  const modelRateMultipliers = normalizeModelRateMultipliers(createForm.model_rate_multipliers);
+  if (modelRateMultipliers === null) {
     return;
   }
   // 模型白名单：开启且没有任何条目时阻止提交，与后端 400 对齐。
@@ -5912,6 +5972,7 @@ const handleCreateGroup = async () => {
         createModelRoutingRules.value,
       ),
       model_allowlist: buildModelAllowlistConfig(createModelAllowlistState),
+      model_rate_multipliers: modelRateMultipliers,
       // 创建时固定账号 manifest 固定发送关闭状态（后端创建路径禁止开启）
       codex_models_manifest_config: createCodexManifestDefaults(),
       supported_model_scopes: normalizeSupportedModelScopesForPlatform(
@@ -6032,6 +6093,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.force_openai_fast = group.force_openai_fast ?? false;
   editForm.free_openai_fast = group.free_openai_fast ?? false;
   editForm.model_pricing = groupPricingFromAPI(group.model_pricing);
+  editForm.model_rate_multipliers = (group.model_rate_multipliers ?? []).map((rule) => ({ ...rule }));
   editForm.allow_image_generation = group.allow_image_generation ?? false;
   editForm.allow_batch_image_generation =
     group.allow_batch_image_generation ?? false;
@@ -6166,6 +6228,7 @@ const closeEditModal = () => {
   editForm.force_openai_fast = false;
   editForm.free_openai_fast = false;
   editForm.model_pricing = [];
+  editForm.model_rate_multipliers = [];
   editForm.web_search_price_per_call = null;
   editForm.search_price_per_1k = null;
   editForm.audio_realtime_price_per_min = null;
@@ -6193,6 +6256,10 @@ const handleUpdateGroup = async () => {
     return;
   }
   if (!validateProfitControlForm(editForm)) {
+    return;
+  }
+  const modelRateMultipliers = normalizeModelRateMultipliers(editForm.model_rate_multipliers);
+  if (modelRateMultipliers === null) {
     return;
   }
   // 模型白名单：开启且没有任何条目时阻止提交，与后端 400 对齐。
@@ -6253,6 +6320,7 @@ const handleUpdateGroup = async () => {
         editModelRoutingRules.value,
       ),
       model_allowlist: buildModelAllowlistConfig(editModelAllowlistState),
+      model_rate_multipliers: modelRateMultipliers,
       // 非 openai 平台提交关闭状态，与后端归一化一致
       codex_models_manifest_config:
         editForm.platform === "openai"

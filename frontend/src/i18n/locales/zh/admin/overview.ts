@@ -897,6 +897,17 @@ export default {
           '公开分组费率 0.8，您可以创建一个费率 0.7 的专属分组，手动分配给 VIP 用户，让他们享受更优惠的价格。'
       },
       rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
+      modelRateMultipliers: {
+        title: '模型专属倍率',
+        description: '可为指定模型覆盖当前分组倍率，仅支持精确模型名。',
+        add: '添加规则',
+        model: '模型',
+        modelPlaceholder: '请输入精确模型名',
+        multiplier: '倍率',
+        remove: '删除规则',
+        displayLabel: '模型倍率',
+        validation: '模型名必须唯一且不得包含通配符，倍率必须大于 0 且不超过 1000。',
+      },
       platforms: {
         all: '全部平台',
         anthropic: 'Anthropic',

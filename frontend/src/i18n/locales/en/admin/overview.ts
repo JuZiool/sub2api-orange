@@ -915,6 +915,17 @@ export default {
       groupUpdatedSuccess: 'Group updated successfully',
       groupDeletedSuccess: 'Group deleted successfully',
       rateMultiplierHint: 'Cost multiplier for this group (e.g., 1.5 = 150% of base cost)',
+      modelRateMultipliers: {
+        title: 'Model-specific rate multipliers',
+        description: 'Override the group rate for exact model names.',
+        add: 'Add rule',
+        model: 'Model',
+        modelPlaceholder: 'Exact model name',
+        multiplier: 'Multiplier',
+        remove: 'Remove rule',
+        displayLabel: 'Model rates',
+        validation: 'Each model must be unique, exact (no wildcards), and have a multiplier greater than 0 and at most 1000.',
+      },
       exclusiveHint: 'Exclusive group, manually assign to specific users',
       exclusiveTooltip: {
         title: 'What is an exclusive group?',
