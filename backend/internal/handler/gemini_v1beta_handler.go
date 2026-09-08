@@ -294,6 +294,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, modelName)
 	reqModel := modelName // 保存映射前的原始模型名
+	rateResolution := gatewayRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, reqModel)
 	if channelMapping.Mapped {
 		modelName = channelMapping.MappedModel
 	}
@@ -664,6 +665,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				IPAddress:          clientIP,
 				RequestPayloadHash: requestPayloadHash,
 				ForceCacheBilling:  forceCacheBilling,
+				RateResolution:     rateResolution,
 				APIKeyService:      h.apiKeyService,
 				SessionID:          sessionID,
 				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),

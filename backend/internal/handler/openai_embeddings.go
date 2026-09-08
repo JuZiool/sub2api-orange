@@ -120,6 +120,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 
 	// 分组利润控制：embeddings 文本入口请求级装门并固定 pricingAt。
 	embPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	rateResolution := openAIRateSnapshot(embPricingCtx, h.gatewayService, apiKey, reqModel)
 	c.Request = c.Request.WithContext(embPricingCtx)
 
 	for {
@@ -275,7 +276,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 				SessionID:          sessionID,
 				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 				PricingAt:          pricingAt,
-				RateResolution:     openAIRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, reqModel),
+				RateResolution:     rateResolution,
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.embeddings"),

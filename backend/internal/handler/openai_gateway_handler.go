@@ -638,6 +638,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 生图意图只影响能力路由与图片计费，不关门：混合 /v1/responses 请求的
 	// token 计费部分仍受利润门保护，独立图片/视频端点才在门外。
 	pricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	pricingCtx = service.WithCodexQuotaOverdraftScheduling(pricingCtx)
+	rateResolution := openAIRateSnapshot(pricingCtx, h.gatewayService, apiKey, reqModel)
 	c.Request = c.Request.WithContext(pricingCtx)
 
 	for {
@@ -820,6 +822,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					SessionID:          sessionID,
 					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, res.UpstreamModel),
 					PricingAt:          pricingAt,
+					RateResolution:     rateResolution,
 					CyberBlocked:       cyberBlocked,
 					NativeCompactionV2: nativeV2,
 				}); err != nil {
@@ -1243,6 +1246,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	// 分组利润控制：Messages 文本入口同样请求级装门并固定 pricingAt。
 	msgPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	msgPricingCtx = service.WithCodexQuotaOverdraftScheduling(msgPricingCtx)
+	rateResolution := openAIRateSnapshot(msgPricingCtx, h.gatewayService, apiKey, reqModel)
 	c.Request = c.Request.WithContext(msgPricingCtx)
 
 	for {
@@ -1386,6 +1391,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					SessionID:          sessionID,
 					ChannelUsageFields: clientRequestedUsageFields(c, channelMappingMsg, reqModel, res.UpstreamModel),
 					PricingAt:          pricingAt,
+					RateResolution:     rateResolution,
 					CyberBlocked:       cyberBlocked,
 				}); err != nil {
 					logger.L().With(
@@ -2050,6 +2056,43 @@ func (p *openAIWSTurnPricing) currentOr(fallback time.Time) time.Time {
 	return fallback
 }
 
+// openAIWSTurnRateSnapshots freezes one model-rate resolution per logical turn.
+// A retry of the same turn must reuse the value captured before forwarding;
+// otherwise an asynchronous usage worker could observe a later group edit.
+type openAIWSTurnRateSnapshots struct {
+	mu    sync.Mutex
+	items map[int]*service.RateResolution
+}
+
+func newOpenAIWSTurnRateSnapshots(first *service.RateResolution) *openAIWSTurnRateSnapshots {
+	return &openAIWSTurnRateSnapshots{
+		items: map[int]*service.RateResolution{1: first},
+	}
+}
+
+func (s *openAIWSTurnRateSnapshots) capture(turn int, resolve func() *service.RateResolution) {
+	if s == nil || turn <= 0 || resolve == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.items[turn]; ok {
+		return
+	}
+	s.items[turn] = resolve()
+}
+
+func (s *openAIWSTurnRateSnapshots) take(turn int) *service.RateResolution {
+	if s == nil || turn <= 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	resolution := s.items[turn]
+	delete(s.items, turn)
+	return resolution
+}
+
 // recordOpenAIProfitVeto 记录 OpenAI 侧选号循环的一次利润门终检否决：把账号
 // 加入本请求排除集并递增否决计数。返回 false 表示否决次数已达
 // maxProfitVetoAttempts，调用方必须停止重选并按「无可用账号」终止。
@@ -2361,6 +2404,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	}
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
 	ctx = c.Request.Context()
+	initialRateResolution := openAIRateSnapshot(ctx, h.gatewayService, apiKey, reqModel)
 	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
 		platform, ok := service.ResolvedTargetPlatformFromContext(ctx)
 		if !ok || !isResponsesWebSocketCompositePlatform(platform) {
@@ -2575,7 +2619,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// 继续按建连时刻的谷价计费。生图意图只影响能力路由与图片计费，不关门。
 	// 建连时刻只用于选号/准入，不作为任何 turn 的计费定价时刻。
 	wsPricingCtx, _ := h.gatewayService.WithOpenAIRequestPricingContext(ctx, apiKey.GroupID)
-	ctx = wsPricingCtx
+	ctx = service.WithCodexQuotaOverdraftScheduling(wsPricingCtx)
 
 	for {
 		if ctx.Err() != nil {
@@ -2735,6 +2779,15 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			turnStartsMu.Unlock()
 			return startedAt
 		}
+		turnRateSnapshots := newOpenAIWSTurnRateSnapshots(initialRateResolution)
+		captureTurnRateResolution := func(turn int, model string) {
+			if turn <= 0 {
+				return
+			}
+			turnRateSnapshots.capture(turn, func() *service.RateResolution {
+				return openAIRateSnapshot(ctx, h.gatewayService, apiKey, model)
+			})
+		}
 		// Passthrough rejects overlapping response.create frames, so one immutable
 		// turn-tagged slot preserves the exact mapping used for the in-flight request.
 		var turnChannelMapping atomic.Pointer[openAIWSTurnChannelMappingSnapshot]
@@ -2773,6 +2826,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if model == "" {
 					model = reqModel
 				}
+				captureTurnRateResolution(turn, model)
 				// 分组级模型白名单：后续 turn 同样校验客户端模型（省略 model 时
 				// 沿用会话实际生效模型，含 session.update 轮换后的模型），不通过
 				// 则关闭整条连接，与推理强度 deny 一致。实际生效模型始终参与校验；
@@ -2931,6 +2985,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 				sessionID := service.ExtractClientSessionID(c)
 				turnRecordPricingAt := turnPricing.currentOr(turnStart)
+				turnRateResolution := turnRateSnapshots.take(turn)
 				cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 				h.submitOpenAIUsageRecordTask(ctx, result, func(taskCtx context.Context) {
 					if err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
@@ -2949,6 +3004,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						SessionID:          sessionID,
 						ChannelUsageFields: turnUsageFields,
 						PricingAt:          turnRecordPricingAt,
+						RateResolution:     turnRateResolution,
 						CyberBlocked:       cyberBlocked,
 					}); err != nil {
 						reqLog.Error("openai.websocket_record_usage_failed",

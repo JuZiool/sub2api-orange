@@ -76,6 +76,8 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 		}})
 		return
 	}
+	searchBillingModel := "grok-" + strings.ReplaceAll(searchLabel, "_", "-")
+	rateResolution := gatewayRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, searchBillingModel)
 
 	// Billing eligibility (same as other requests)
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
@@ -232,7 +234,7 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 			Result: &service.ForwardResult{
 				RequestID:   searchRequestID,
-				Model:       "grok-" + strings.ReplaceAll(searchLabel, "_", "-"),
+				Model:       searchBillingModel,
 				SearchCount: 1,
 				Duration:    0,
 			},
@@ -247,7 +249,7 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 			RequestPayloadHash: requestPayloadHash,
 			APIKeyService:      h.apiKeyService,
 			QuotaPlatform:      quotaPlatform,
-			RateResolution:     gatewayRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, "grok-"+strings.ReplaceAll(searchLabel, "_", "-")),
+			RateResolution:     rateResolution,
 		}); err != nil {
 			logger.L().With(
 				zap.String("component", "handler.gateway.web_search"),

@@ -256,6 +256,47 @@ func newOpenAIRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo U
 	return svc
 }
 
+func TestOpenAIGatewayServiceRecordUsage_UsesRequestRateResolutionAfterGroupMutation(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
+	svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+	groupID := int64(9201)
+	group := &Group{
+		ID:             groupID,
+		Platform:       PlatformOpenAI,
+		RateMultiplier: 1.5,
+		ModelRateMultipliers: []ModelRateMultiplierRule{
+			{Model: "gpt-5.4", Multiplier: 2.5},
+		},
+	}
+	apiKey := &APIKey{ID: 9202, GroupID: &groupID, Group: group}
+	user := &User{ID: 9203}
+	resolution := svc.ResolveRateResolution(context.Background(), user.ID, group, "gpt-5.4")
+	require.Equal(t, 2.5, resolution.Multiplier)
+
+	// 修改发生在请求开始之后，异步 RecordUsage 仍必须使用原快照。
+	group.RateMultiplier = 9
+	group.ModelRateMultipliers[0].Multiplier = 9
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "openai_rate_resolution_snapshot",
+			Model:     "gpt-5.4",
+			Usage:     OpenAIUsage{InputTokens: 100, OutputTokens: 50},
+		},
+		APIKey:         apiKey,
+		User:           user,
+		Account:        &Account{ID: 9204, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+		RateResolution: resolution,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 2.5, usageRepo.lastLog.RateMultiplier)
+	require.Equal(t, 1, userRepo.deductCalls)
+}
+
 func openAIRecordUsageAPIKeyWithGroup(svc *OpenAIGatewayService, id int64, groupLongContext bool) *APIKey {
 	svc.resolver = NewModelPricingResolver(nil, svc.billingService)
 	return &APIKey{

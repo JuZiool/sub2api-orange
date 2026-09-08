@@ -113,6 +113,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 
 	setOpsRequestContext(c, clientRequestModel, parsed.Stream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(parsed.Stream, false)))
+	rateResolution := openAIRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, requestModel)
 
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, routingModel)
 
@@ -407,7 +408,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				APIKeyService:      h.apiKeyService,
 				QuotaPlatform:      quotaPlatform,
 				SessionID:          sessionID,
-				RateResolution:     openAIRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, requestModel),
+				RateResolution:     rateResolution,
 				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, requestModel, upstreamModel),
 			}); err != nil {
 				logger.L().With(

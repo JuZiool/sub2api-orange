@@ -49,6 +49,46 @@ func newGatewayRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo 
 	)
 }
 
+func TestGatewayServiceRecordUsage_UsesRequestRateResolutionAfterGroupMutation(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
+	groupID := int64(9101)
+	group := &Group{
+		ID:             groupID,
+		Platform:       PlatformAnthropic,
+		RateMultiplier: 1.5,
+		ModelRateMultipliers: []ModelRateMultiplierRule{
+			{Model: "claude-sonnet-4", Multiplier: 2.5},
+		},
+	}
+	apiKey := &APIKey{ID: 9102, GroupID: &groupID, Group: group}
+	user := &User{ID: 9103}
+	resolution := svc.ResolveRateResolution(context.Background(), user.ID, group, "claude-sonnet-4")
+	require.Equal(t, 2.5, resolution.Multiplier)
+
+	// 模拟请求开始后修改分组默认倍率和精确模型倍率。
+	group.RateMultiplier = 9
+	group.ModelRateMultipliers[0].Multiplier = 9
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_rate_resolution_snapshot",
+			Model:     "claude-sonnet-4",
+			Usage:     ClaudeUsage{InputTokens: 100, OutputTokens: 50},
+		},
+		APIKey:         apiKey,
+		User:           user,
+		Account:        &Account{ID: 9104, Platform: PlatformAnthropic},
+		RateResolution: resolution,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 2.5, usageRepo.lastLog.RateMultiplier)
+	require.Equal(t, 1, userRepo.deductCalls)
+}
+
 func newGatewayRecordUsageServiceWithBillingRepoForTest(usageRepo UsageLogRepository, billingRepo UsageBillingRepository, userRepo UserRepository, subRepo UserSubscriptionRepository) *GatewayService {
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, subRepo)
 	svc.usageBillingRepo = billingRepo

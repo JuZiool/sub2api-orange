@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
 
@@ -35,4 +36,39 @@ func TestOpenAIWSTurnPricingFreezePerTurn(t *testing.T) {
 
 	p.freeze(turn2)
 	require.Equal(t, turn2, p.currentOr(time.Time{}), "后续 turn 必须使用自己的定价时刻")
+}
+
+func TestOpenAIWSTurnRateSnapshotsCaptureBeforeAsyncBilling(t *testing.T) {
+	group := &service.Group{
+		ModelRateMultipliers: []service.ModelRateMultiplierRule{{Model: "gpt-5.6-sol", Multiplier: 2}},
+	}
+	resolution := &service.RateResolution{
+		RequestedModel: "gpt-5.6-sol",
+		MatchedModel:   "gpt-5.6-sol",
+		Multiplier:     group.ModelRateMultipliers[0].Multiplier,
+		Source:         "model_exact",
+	}
+	snapshots := newOpenAIWSTurnRateSnapshots(resolution)
+
+	var resolveCalls int
+	snapshots.capture(2, func() *service.RateResolution {
+		resolveCalls++
+		return &service.RateResolution{
+			RequestedModel: "gpt-5.6-sol",
+			MatchedModel:   "gpt-5.6-sol",
+			Multiplier:     group.ModelRateMultipliers[0].Multiplier,
+			Source:         "model_exact",
+		}
+	})
+	// 模拟请求已经开始后管理员修改分组倍率；worker 只能拿到 turn 开始时的快照。
+	group.ModelRateMultipliers[0].Multiplier = 9
+	snapshots.capture(2, func() *service.RateResolution {
+		resolveCalls++
+		return &service.RateResolution{Multiplier: 99}
+	})
+
+	require.Equal(t, 1, resolveCalls)
+	require.Equal(t, 2.0, snapshots.take(1).Multiplier)
+	require.Equal(t, 2.0, snapshots.take(2).Multiplier)
+	require.Nil(t, snapshots.take(2))
 }

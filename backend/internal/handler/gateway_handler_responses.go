@@ -98,6 +98,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	// 仅用于能力路由与图片计费；独立图片/视频端点才在利润门范围之外。
 	requestCtx, pricingAt := service.WithGatewayTokenRequestPricing(requestCtx)
 	requestCtx = service.WithCodexQuotaOverdraftScheduling(requestCtx)
+	rateResolution := gatewayRateSnapshot(requestCtx, h.gatewayService, apiKey, reqModel)
 	if service.IsImageGenerationIntentForPlatform("/v1/responses", reqModel, body, openAICompatibleRequestPlatform(c.Request.Context(), apiKey)) {
 		requestCtx = service.WithOpenAIImageGenerationIntent(requestCtx)
 	}
@@ -342,7 +343,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				RequestPayloadHash: requestPayloadHash,
 				APIKeyService:      h.apiKeyService,
 				SessionID:          sessionID,
-				RateResolution:     gatewayRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, reqModel),
+				RateResolution:     rateResolution,
 				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 			}); err != nil {
 				reqLog.Error("gateway.responses.record_usage_failed",

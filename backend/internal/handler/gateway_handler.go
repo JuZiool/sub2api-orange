@@ -222,6 +222,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by composite groups")
 		return
 	}
+	rateResolution := gatewayRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, reqModel)
 
 	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && !decision.AllowNextStage {
 		h.anthropicSecurityAuditError(c, decision)
@@ -591,6 +592,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					SessionID:          sessionID,
 					RequestPayloadHash: requestPayloadHash,
 					ForceCacheBilling:  forceCacheBilling,
+					RateResolution:     rateResolution,
 					APIKeyService:      h.apiKeyService,
 					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 				}); err != nil {
@@ -610,6 +612,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	currentAPIKey := apiKey
 	currentSubscription := subscription
+	currentRateResolution := rateResolution
 	var fallbackGroupID *int64
 	if apiKey.Group != nil {
 		fallbackGroupID = apiKey.Group.FallbackGroupIDOnInvalidRequest
@@ -935,6 +938,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 				// ForceCacheBilling 提前拍成标量，避免 worker 闭包保活 failover 状态里的响应体。
 				forceCacheBilling := fs.ForceCacheBilling
+				rateResolutionForAttempt := currentRateResolution
 				quotaPlatform := service.QuotaPlatform(c.Request.Context(), currentAPIKey)
 				sessionID := service.ExtractClientSessionID(c)
 				h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
@@ -953,6 +957,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						SessionID:          sessionID,
 						RequestPayloadHash: requestPayloadHash,
 						ForceCacheBilling:  forceCacheBilling,
+						RateResolution:     rateResolutionForAttempt,
 						APIKeyService:      h.apiKeyService,
 						ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, result.UpstreamModel),
 					}); err != nil {
@@ -1016,6 +1021,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						c.Request = c.Request.WithContext(ctx)
 						currentAPIKey = fallbackAPIKey
 						currentSubscription = nil
+						currentRateResolution = gatewayRateSnapshot(c.Request.Context(), h.gatewayService, currentAPIKey, reqModel)
 						fallbackUsed = true
 						retryWithFallback = true
 						// 原分组账号已确定性失败（prompt too long），先释放其会话注册再走兜底分组

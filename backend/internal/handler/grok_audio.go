@@ -49,6 +49,7 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 	if strings.TrimSpace(model) == "" {
 		model = "grok-voice-latest"
 	}
+	rateResolution := openAIRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, model)
 	// Keep the HTTP response uncommitted while selecting and probing an account.
 	// Realtime is not an HTTP streaming response; using reqStream=true here would
 	// let the wait queue flush an SSE ping before the WebSocket handshake succeeds.
@@ -140,7 +141,7 @@ func (h *OpenAIGatewayHandler) GrokRealtime(c *gin.Context) {
 		}
 	}
 	if result := grokRealtimeBillingResult(model, elapsed, audioObserved); result != nil {
-		h.recordGrokVoiceUsage(c, apiKey, selection.Account, subscription, "realtime", nil, result)
+		h.recordGrokVoiceUsage(c, apiKey, selection.Account, subscription, "realtime", nil, result, rateResolution)
 	}
 }
 
@@ -221,6 +222,7 @@ func (h *OpenAIGatewayHandler) GrokVoice(c *gin.Context, endpoint string) {
 	var last *service.UpstreamFailoverError
 	reqLog := requestLogger(c, "handler.openai_gateway.grok_voice", zap.String("endpoint", endpoint))
 	selectionModel := "grok-4.5"
+	rateResolution := openAIRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, selectionModel)
 
 	for attempts := 0; attempts < 4; attempts++ {
 		selection, _, selectErr := h.gatewayService.SelectAccountWithSchedulerForCapability(
@@ -266,7 +268,7 @@ func (h *OpenAIGatewayHandler) GrokVoice(c *gin.Context, endpoint string) {
 			return h.gatewayService.ForwardGrokVoice(c.Request.Context(), c, account, endpoint, body, contentType)
 		}()
 		if forwardErr == nil {
-			h.recordGrokVoiceUsage(c, apiKey, account, subscription, endpoint, body, result)
+			h.recordGrokVoiceUsage(c, apiKey, account, subscription, endpoint, body, result, rateResolution)
 			return
 		}
 		var failoverErr *service.UpstreamFailoverError
@@ -292,6 +294,7 @@ func (h *OpenAIGatewayHandler) recordGrokVoiceUsage(
 	endpoint string,
 	body []byte,
 	result *service.OpenAIForwardResult,
+	rateResolution *service.RateResolution,
 ) {
 	if h == nil || c == nil || apiKey == nil || account == nil || result == nil {
 		return
@@ -335,7 +338,7 @@ func (h *OpenAIGatewayHandler) recordGrokVoiceUsage(
 			APIKeyService:      h.apiKeyService,
 			QuotaPlatform:      quotaPlatform,
 			SessionID:          sessionID,
-			RateResolution:     openAIRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, model),
+			RateResolution:     rateResolution,
 			ChannelUsageFields: clientRequestedUsageFields(c, service.ChannelMappingResult{}, model, result.UpstreamModel),
 		}); err != nil {
 			logger.L().With(
