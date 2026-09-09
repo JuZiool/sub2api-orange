@@ -99,10 +99,10 @@ func (v *ClaudeCodeValidator) Validate(r *http.Request, body map[string]any) boo
 		return true
 	}
 
-	// Step 3: 检查 max_tokens=1 + haiku 探测请求绕过
-	// 这类请求用于 Claude Code 验证 API 连通性，不携带 system prompt
-	if isMaxTokensOneHaiku, ok := IsMaxTokensOneHaikuRequestFromContext(r.Context()); ok && isMaxTokensOneHaiku {
-		return true // 绕过 system prompt 检查，UA 已在 Step 1 验证
+	// Step 3: 检查 max_tokens=1 探测请求绕过（UA 已验证）
+	// Claude Code 在切换模型或刷新上下文用量时会向当前模型发轻量探测请求。
+	if isMaxTokensOneBody(body) {
+		return true
 	}
 
 	// Step 4: messages 路径，进行严格验证
@@ -148,6 +148,22 @@ func (v *ClaudeCodeValidator) Validate(r *http.Request, body map[string]any) boo
 	}
 
 	return true
+}
+
+func isMaxTokensOneBody(body map[string]any) bool {
+	if body == nil {
+		return false
+	}
+	switch v := body["max_tokens"].(type) {
+	case float64:
+		return v == 1
+	case int:
+		return v == 1
+	case int64:
+		return v == 1
+	default:
+		return false
+	}
 }
 
 func isMessagesCountTokensPath(path string) bool {

@@ -763,11 +763,14 @@ func grokSupportsReasoningEffort(model string) bool {
 	}
 }
 
-var grokResponsesUnsupportedRecursiveFields = map[string]struct{}{
+// grokUnsupportedRecursiveFields defines fields unsupported by the Grok platform
+// across Responses and Chat Completions requests.
+var grokUnsupportedRecursiveFields = map[string]struct{}{
 	"external_web_access": {},
 }
 
-func sanitizeGrokResponsesUnsupportedFields(body []byte) ([]byte, error) {
+// sanitizeGrokUnsupportedFields recursively removes fields unsupported by Grok.
+func sanitizeGrokUnsupportedFields(body []byte) ([]byte, error) {
 	if !bytes.Contains(body, []byte(`"external_web_access"`)) {
 		return body, nil
 	}
@@ -776,11 +779,14 @@ func sanitizeGrokResponsesUnsupportedFields(body []byte) ([]byte, error) {
 	if err := decodeOpenAIJSONUseNumber(body, &payload); err != nil {
 		return nil, err
 	}
-	if !deleteJSONFields(payload, grokResponsesUnsupportedRecursiveFields) {
+	if !deleteJSONFields(payload, grokUnsupportedRecursiveFields) {
 		return body, nil
 	}
 	return marshalOpenAIUpstreamJSON(payload)
 }
+
+// sanitizeGrokResponsesUnsupportedFields keeps the old name for compatibility.
+var sanitizeGrokResponsesUnsupportedFields = sanitizeGrokUnsupportedFields
 
 func deleteJSONFields(value any, fields map[string]struct{}) bool {
 	switch typed := value.(type) {

@@ -27,6 +27,16 @@ func TestClaudeCodeValidator_ProbeBypass(t *testing.T) {
 	require.True(t, ok)
 }
 
+func TestClaudeCodeValidator_AnyModelProbeBypass(t *testing.T) {
+	validator := NewClaudeCodeValidator()
+	for _, model := range []string{"claude-sonnet-4-5", "claude-opus-4-8"} {
+		req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
+		req.Header.Set("User-Agent", "claude-cli/2.1.156 (Claude Code)")
+		ok := validator.Validate(req, map[string]any{"model": model, "max_tokens": 1})
+		require.True(t, ok, model)
+	}
+}
+
 func TestClaudeCodeValidator_ProbeBypassRequiresUA(t *testing.T) {
 	validator := NewClaudeCodeValidator()
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/v1/messages", nil)
@@ -47,7 +57,7 @@ func TestClaudeCodeValidator_MessagesWithoutProbeStillNeedStrictValidation(t *te
 
 	ok := validator.Validate(req, map[string]any{
 		"model":      "claude-haiku-4-5",
-		"max_tokens": 1,
+		"max_tokens": 2,
 	})
 	require.False(t, ok)
 }
