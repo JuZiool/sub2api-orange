@@ -21,6 +21,15 @@ type runtimeSettingRepoStub struct {
 	deleteFn         func(key string) error
 }
 
+type runtimeCleanupReloader struct {
+	calls int
+}
+
+func (r *runtimeCleanupReloader) Reload(context.Context) error {
+	r.calls++
+	return nil
+}
+
 func newRuntimeSettingRepoStub() *runtimeSettingRepoStub {
 	return &runtimeSettingRepoStub{
 		values:  map[string]string{},
@@ -102,7 +111,8 @@ func (s *runtimeSettingRepoStub) Delete(_ context.Context, key string) error {
 func TestUpdateRuntimeLogConfig_InvalidConfigShouldNotApply(t *testing.T) {
 	repo := newRuntimeSettingRepoStub()
 	svc := &OpsService{
-		settingRepo: repo,
+		settingRepo:   repo,
+		systemLogSink: &OpsSystemLogSink{},
 		cfg: &config.Config{
 			Log: config.LogConfig{
 				Level:           "info",
@@ -181,7 +191,8 @@ func TestResetRuntimeLogConfig_ShouldFallbackToBaseline(t *testing.T) {
 			},
 			Ops: config.OpsConfig{
 				Cleanup: config.OpsCleanupConfig{
-					ErrorLogRetentionDays: 45,
+					ErrorLogRetentionDays:  7,
+					SystemLogRetentionDays: 45,
 				},
 			},
 		},
@@ -282,7 +293,8 @@ func TestUpdateRuntimeLogConfig_PersistFailureRollback(t *testing.T) {
 	}
 
 	svc := &OpsService{
-		settingRepo: repo,
+		settingRepo:   repo,
+		systemLogSink: &OpsSystemLogSink{},
 		cfg: &config.Config{
 			Log: config.LogConfig{
 				Level:           "info",
@@ -311,13 +323,14 @@ func TestUpdateRuntimeLogConfig_PersistFailureRollback(t *testing.T) {
 	}
 
 	_, err := svc.UpdateRuntimeLogConfig(context.Background(), &OpsRuntimeLogConfig{
-		Level:           "debug",
-		EnableSampling:  false,
-		SamplingInitial: 100,
-		SamplingNext:    100,
-		Caller:          true,
-		StacktraceLevel: "error",
-		RetentionDays:   30,
+		Level:             "debug",
+		PersistAccessLogs: true,
+		EnableSampling:    false,
+		SamplingInitial:   100,
+		SamplingNext:      100,
+		Caller:            true,
+		StacktraceLevel:   "error",
+		RetentionDays:     30,
 	}, 5)
 	if err == nil {
 		t.Fatalf("expected persist error")
@@ -326,11 +339,14 @@ func TestUpdateRuntimeLogConfig_PersistFailureRollback(t *testing.T) {
 	if logger.CurrentLevel() != "info" {
 		t.Fatalf("logger level should rollback to info, got %s", logger.CurrentLevel())
 	}
+	if svc.systemLogSink.persistAccessLogs.Load() {
+		t.Fatal("access-log persistence should rollback after setting write failure")
+	}
 }
 
 func TestApplyRuntimeLogConfigOnStartup(t *testing.T) {
 	repo := newRuntimeSettingRepoStub()
-	cfgRaw := `{"level":"debug","enable_sampling":false,"sampling_initial":100,"sampling_thereafter":100,"caller":true,"stacktrace_level":"error","retention_days":30}`
+	cfgRaw := `{"level":"debug","persist_access_logs":true,"enable_sampling":false,"sampling_initial":100,"sampling_thereafter":100,"caller":true,"stacktrace_level":"error","retention_days":30}`
 	repo.values[SettingKeyOpsRuntimeLogConfig] = cfgRaw
 
 	svc := &OpsService{
@@ -382,12 +398,16 @@ func TestDefaultNormalizeAndValidateRuntimeLogConfig(t *testing.T) {
 		},
 		Ops: config.OpsConfig{
 			Cleanup: config.OpsCleanupConfig{
-				ErrorLogRetentionDays: 7,
+				ErrorLogRetentionDays:  7,
+				SystemLogRetentionDays: 14,
 			},
 		},
 	})
-	if defaults.Level != "debug" || defaults.StacktraceLevel != "fatal" || defaults.RetentionDays != 7 {
+	if defaults.Level != "debug" || defaults.StacktraceLevel != "fatal" || defaults.RetentionDays != 14 {
 		t.Fatalf("unexpected defaults: %+v", defaults)
+	}
+	if defaults.PersistAccessLogs {
+		t.Fatal("access-log persistence should be disabled by default")
 	}
 
 	cfg := &OpsRuntimeLogConfig{
@@ -403,7 +423,7 @@ func TestDefaultNormalizeAndValidateRuntimeLogConfig(t *testing.T) {
 	if cfg.Level != "debug" || cfg.StacktraceLevel != "fatal" {
 		t.Fatalf("normalize level/stacktrace failed: %+v", cfg)
 	}
-	if cfg.SamplingInitial != 50 || cfg.SamplingNext != 20 || cfg.RetentionDays != 7 {
+	if cfg.SamplingInitial != 50 || cfg.SamplingNext != 20 || cfg.RetentionDays != 14 {
 		t.Fatalf("normalize numeric defaults failed: %+v", cfg)
 	}
 	if err := validateOpsRuntimeLogConfig(cfg); err != nil {
@@ -489,8 +509,11 @@ func TestUpdateRuntimeLogConfig_PreconditionErrors(t *testing.T) {
 
 func TestUpdateRuntimeLogConfig_Success(t *testing.T) {
 	repo := newRuntimeSettingRepoStub()
+	reloader := &runtimeCleanupReloader{}
 	svc := &OpsService{
-		settingRepo: repo,
+		settingRepo:     repo,
+		systemLogSink:   &OpsSystemLogSink{},
+		cleanupReloader: reloader,
 		cfg: &config.Config{
 			Log: config.LogConfig{
 				Level:           "info",
@@ -519,13 +542,14 @@ func TestUpdateRuntimeLogConfig_Success(t *testing.T) {
 	}
 
 	next, err := svc.UpdateRuntimeLogConfig(context.Background(), &OpsRuntimeLogConfig{
-		Level:           "debug",
-		EnableSampling:  false,
-		SamplingInitial: 100,
-		SamplingNext:    100,
-		Caller:          true,
-		StacktraceLevel: "error",
-		RetentionDays:   30,
+		Level:             "debug",
+		PersistAccessLogs: true,
+		EnableSampling:    false,
+		SamplingInitial:   100,
+		SamplingNext:      100,
+		Caller:            true,
+		StacktraceLevel:   "error",
+		RetentionDays:     30,
 	}, 2)
 	if err != nil {
 		t.Fatalf("UpdateRuntimeLogConfig() error: %v", err)
@@ -535,6 +559,12 @@ func TestUpdateRuntimeLogConfig_Success(t *testing.T) {
 	}
 	if logger.CurrentLevel() != "debug" {
 		t.Fatalf("expected applied level debug, got %s", logger.CurrentLevel())
+	}
+	if !svc.systemLogSink.persistAccessLogs.Load() {
+		t.Fatal("runtime update did not enable access-log persistence")
+	}
+	if reloader.calls != 1 {
+		t.Fatalf("cleanup reload calls = %d, want 1", reloader.calls)
 	}
 }
 
