@@ -218,22 +218,20 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageOutputTokens:   result.Usage.ImageOutputTokens,
 	}
 
-	// Get rate multiplier (Orange priority: exact model > user group > group > system).
+	// Get rate multiplier
 	multiplier := 1.0
 	if s.cfg != nil {
 		multiplier = s.cfg.Default.RateMultiplier
 	}
-	requestedModelForRate := strings.TrimSpace(input.OriginalModel)
-	if requestedModelForRate == "" {
-		requestedModelForRate = strings.TrimSpace(result.Model)
-	}
-	if input.RateResolution != nil {
-		multiplier = input.RateResolution.Multiplier
-	} else if apiKey.GroupID != nil && apiKey.Group != nil {
+	if apiKey.GroupID != nil && apiKey.Group != nil {
 		multiplier = s.ResolveUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
-		if modelMultiplier, _, matched := ResolveModelRateMultiplier(requestedModelForRate, apiKey.Group.ModelRateMultipliers); matched {
-			multiplier = modelMultiplier
-		}
+	}
+	// Orange 定制：可选扩展点，用于叠加请求开始时刻冻结的倍率快照与模型专属倍率。
+	// 未注入时保持官方行为。
+	if s.rateMultiplierOverride != nil {
+		multiplier = s.rateMultiplierOverride(ctx, rateMultiplierInput{
+			Input: input, APIKey: apiKey, User: user, Result: result, Current: multiplier,
+		})
 	}
 	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。
 	// 高峰因子按请求级 PricingAt 现算（与利润门 D 同源同刻，跨峰谷请求不中途
