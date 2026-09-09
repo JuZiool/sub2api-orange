@@ -307,7 +307,7 @@ func TestOpenAIHTTP429StillUsesQuotaResetHeaders(t *testing.T) {
 	account := &Account{ID: 422, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	svc.openaiOAuth429RetryStartedAt.Store(account.ID, time.Now().Add(-openAIOAuth429RetryWindow-time.Second))
 	headers := http.Header{}
-	headers.Set("x-codex-primary-used-percent", "37")
+	headers.Set("x-codex-primary-used-percent", "100")
 	headers.Set("x-codex-primary-reset-after-seconds", "604800")
 	headers.Set("x-codex-primary-window-minutes", "10080")
 
