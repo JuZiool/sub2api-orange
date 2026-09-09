@@ -142,9 +142,8 @@
           :overdraft-stats="usageInfo.seven_day.overdraft_stats"
           :overdraft-status="codexOverdraftStatusLabel"
           :overdraft-status-class="codexOverdraftStatusClass"
-          :estimated-cost="sevenDayEstimatedCost"
+          :estimated-total-cost="sevenDayEstimatedCost"
           :estimated-used-cost="sevenDayUsedCost"
-          estimate-label="约"
           :show-now-when-idle="true"
           color="emerald"
         />

@@ -440,8 +440,8 @@ describe('AccountUsageCell', () => {
       global: {
         stubs: {
           UsageProgressBar: {
-            props: ['label', 'estimatedCost', 'estimatedUsedCost'],
-            template: '<div data-testid="cost-estimate">{{ label }}|{{ estimatedCost }}|{{ estimatedUsedCost }}</div>'
+            props: ['label', 'estimatedTotalCost', 'estimatedUsedCost'],
+            template: '<div data-testid="cost-estimate">{{ label }}|{{ estimatedTotalCost }}|{{ estimatedUsedCost }}</div>'
           },
           AccountQuotaInfo: true
         }

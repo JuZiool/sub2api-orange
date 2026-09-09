@@ -22,6 +22,14 @@
         >
           U ${{ formatUserCost }}
         </span>
+        <span
+          v-if="estimatedTotalCost != null"
+          data-test="estimated-total-cost"
+          class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800"
+          :title="t('admin.accounts.usageWindow.estimatedTotalCostTooltip')"
+        >
+          {{ t('admin.accounts.usageWindow.estimatedTotalCost', { cost: estimatedTotalCost.toFixed(2) }) }}
+        </span>
       </div>
     </div>
 
@@ -52,13 +60,10 @@
     </div>
 
     <div
-      v-if="estimatedCost != null || estimatedUsedCost != null"
+      v-if="estimatedUsedCost != null"
       data-testid="usage-cost-estimate"
       class="mb-0.5 inline-flex w-fit items-center gap-1.5 rounded-md border border-amber-100/80 bg-amber-50/70 px-1.5 py-1 text-[9px] text-stone-600 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100"
     >
-      <span :title="t('usage.costEstimateHint')">
-        {{ estimateLabel || t('usage.estimatedCost') }}: ${{ formatEstimatedCost }}
-      </span>
       <span>
         {{ t('usage.usedCost') }}: ${{ formatEstimatedUsedCost }}
       </span>
@@ -110,9 +115,8 @@ const props = withDefaults(
     overdraftStats?: WindowStats | null
     overdraftStatus?: string
     overdraftStatusClass?: string
-    estimatedCost?: number | null
+    estimatedTotalCost?: number | null
     estimatedUsedCost?: number | null
-    estimateLabel?: string
     showNowWhenIdle?: boolean
     remainingCapacity?: boolean
     /** fixed: 定宽居中徽章（账号页纵向对齐）；auto: 限宽截断左对齐（监控页组合标签） */
@@ -253,8 +257,6 @@ const formatResetTime = computed(() => {
     return `${diffMins}m`
   }
 })
-
-const formatEstimatedCost = computed(() => (props.estimatedCost ?? 0).toFixed(2))
 
 const formatEstimatedUsedCost = computed(() => (props.estimatedUsedCost ?? 0).toFixed(2))
 
