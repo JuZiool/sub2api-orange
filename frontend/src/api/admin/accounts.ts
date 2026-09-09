@@ -26,7 +26,9 @@ import type {
   UpstreamBillingProbeSettings,
   UpstreamBillingRatesResponse,
   OllamaCloudUsageSettings,
-  OllamaCloudUsageState
+  OllamaCloudUsageState,
+  GrokMediaEligibilityMode,
+  GrokMediaEligibilityState
 } from '@/types'
 
 /**
@@ -241,6 +243,24 @@ export async function update(id: number, updates: UpdateAccountRequest): Promise
 /**
  * Check mixed-channel risk for account-group binding.
  */
+export async function getGrokMediaEligibility(id: number): Promise<GrokMediaEligibilityState> {
+  const { data } = await apiClient.get<GrokMediaEligibilityState>(
+    `/admin/accounts/${id}/grok-media-eligibility`
+  )
+  return data
+}
+
+export async function updateGrokMediaEligibility(
+  id: number,
+  mode: GrokMediaEligibilityMode
+): Promise<GrokMediaEligibilityState> {
+  const { data } = await apiClient.put<GrokMediaEligibilityState>(
+    `/admin/accounts/${id}/grok-media-eligibility`,
+    { mode }
+  )
+  return data
+}
+
 export async function checkMixedChannelRisk(
   payload: CheckMixedChannelRequest
 ): Promise<CheckMixedChannelResponse> {
@@ -1054,6 +1074,8 @@ export const accountsAPI = {
   create,
   duplicate,
   update,
+  getGrokMediaEligibility,
+  updateGrokMediaEligibility,
   checkMixedChannelRisk,
   delete: deleteAccount,
   toggleStatus,
