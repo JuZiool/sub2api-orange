@@ -37,17 +37,24 @@ func requireHTTP2Configured(t *testing.T, tr *http.Transport, msg string) {
 // http2.Transport 默认 ReadIdleTimeout=0（不发健康 PING），无法检测这种死连接。
 // 必须显式启用主动 PING 探测，让死连接被提前剔除，而不是只靠 ResponseHeaderTimeout
 // 事后兜底。
-func TestEnableOpenAIHTTP2KeepAlive_EnablesPingHealthCheck(t *testing.T) {
+func TestEnableHTTP2KeepAlive_EnablesPingHealthCheck(t *testing.T) {
 	tr := &http.Transport{}
 
-	h2, err := enableOpenAIHTTP2KeepAlive(tr)
+	h2, err := enableHTTP2KeepAlive(tr)
 	require.NoError(t, err)
 	require.NotNil(t, h2, "必须返回已配置的 *http2.Transport")
 
 	require.Positive(t, h2.ReadIdleTimeout, "必须启用空闲 PING 探测以剔除死连接")
-	require.Equal(t, openAIHTTP2ReadIdleTimeout, h2.ReadIdleTimeout)
-	require.Equal(t, openAIHTTP2PingTimeout, h2.PingTimeout, "PING 无响应必须有超时判定")
+	require.Equal(t, longStreamHTTP2ReadIdleTimeout, h2.ReadIdleTimeout)
+	require.Equal(t, longStreamHTTP2PingTimeout, h2.PingTimeout, "PING 无响应必须有超时判定")
 	requireHTTP2Configured(t, tr, "http2 必须已挂到底层 http.Transport 上")
+}
+
+func TestBuildUpstreamTransport_LongStreamH2_EnablesPingHealthCheck(t *testing.T) {
+	tr, err := buildUpstreamTransport(http2KeepAliveTestPoolSettings(), nil, upstreamProtocolModeLongStreamH2)
+	require.NoError(t, err)
+	require.True(t, tr.ForceAttemptHTTP2, "long_stream_h2 必须启用 HTTP/2")
+	requireHTTP2Configured(t, tr, "long_stream_h2 必须显式配置 http2 以启用 ReadIdleTimeout")
 }
 
 // openai_h2 模式构建的 Transport 必须带上 H2 PING 健康探测，从源头剔除死连接。
@@ -68,7 +75,7 @@ func TestBuildUpstreamTransport_NonOpenAIH2_NotEagerlyConfigured(t *testing.T) {
 }
 
 // openai_h2 模式构建的 Transport 必须真正以 HTTP/2 与上游通信，PING 健康探测才有载体：
-// 自定义 DialContext 下 Go 不会自动启用 H2，全靠 enableOpenAIHTTP2KeepAlive 的显式配置。
+// 自定义 DialContext 下 Go 不会自动启用 H2，全靠 enableHTTP2KeepAlive 的显式配置。
 func TestBuildUpstreamTransport_OpenAIH2_NegotiatesHTTP2(t *testing.T) {
 	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
