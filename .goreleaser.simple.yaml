@@ -64,7 +64,8 @@ release:
     owner: "{{ .Env.GITHUB_REPO_OWNER }}"
     name: "{{ .Env.GITHUB_REPO_NAME }}"
   draft: false
-  prerelease: auto
+  # 与 .goreleaser.yaml 保持一致：Orange 修订版同样作为正式版本发布。
+  prerelease: false
   name_template: "Sub2API Orange {{.Version}} (Simple)"
   # 跳过上传二进制包
   skip_upload: true
