@@ -192,11 +192,11 @@ func (m *mockChannelAuthCacheInvalidator) InvalidateAuthCacheByGroupID(_ context
 // ---------------------------------------------------------------------------
 
 func newTestChannelService(repo *mockChannelRepository) *ChannelService {
-	return NewChannelService(repo, nil, nil, nil)
+	return NewChannelService(repo, nil, nil, nil, nil)
 }
 
 func newTestChannelServiceWithAuth(repo *mockChannelRepository, auth *mockChannelAuthCacheInvalidator) *ChannelService {
-	return NewChannelService(repo, nil, auth, nil)
+	return NewChannelService(repo, nil, auth, nil, nil)
 }
 
 // makeStandardRepo returns a repo that serves one active channel with anthropic pricing
