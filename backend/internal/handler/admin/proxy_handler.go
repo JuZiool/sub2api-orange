@@ -41,17 +41,17 @@ type CreateProxyRequest struct {
 
 // UpdateProxyRequest represents update proxy request
 type UpdateProxyRequest struct {
-	Name           string `json:"name"`
-	Protocol       string `json:"protocol" binding:"omitempty,oneof=http https socks5 socks5h"`
-	Host           string `json:"host"`
-	Port           int    `json:"port" binding:"omitempty,min=1,max=65535"`
-	Username       string `json:"username"`
-	Password       string `json:"password"`
-	Status         string `json:"status" binding:"omitempty,oneof=active inactive"`
-	ExpiresAt      *int64 `json:"expires_at"`
-	FallbackMode   string `json:"fallback_mode" binding:"omitempty,oneof=none proxy direct"`
-	BackupProxyID  *int64 `json:"backup_proxy_id"`
-	ExpiryWarnDays int    `json:"expiry_warn_days" binding:"omitempty,min=0"`
+	Name           string                 `json:"name"`
+	Protocol       string                 `json:"protocol" binding:"omitempty,oneof=http https socks5 socks5h"`
+	Host           string                 `json:"host"`
+	Port           int                    `json:"port" binding:"omitempty,min=1,max=65535"`
+	Username       string                 `json:"username"`
+	Password       string                 `json:"password"`
+	Status         string                 `json:"status" binding:"omitempty,oneof=active inactive"`
+	ExpiresAt      dto.NullableInt64Field `json:"expires_at"`
+	FallbackMode   string                 `json:"fallback_mode" binding:"omitempty,oneof=none proxy direct"`
+	BackupProxyID  dto.NullableInt64Field `json:"backup_proxy_id"`
+	ExpiryWarnDays *int                   `json:"expiry_warn_days" binding:"omitempty,min=0"`
 }
 
 // List handles listing all proxies with pagination
@@ -183,22 +183,25 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 	}
 
 	var expiresAt *time.Time
-	if req.ExpiresAt != nil && *req.ExpiresAt > 0 {
-		t := time.Unix(*req.ExpiresAt, 0).UTC()
+	if req.ExpiresAt.Value != nil && *req.ExpiresAt.Value > 0 {
+		t := time.Unix(*req.ExpiresAt.Value, 0).UTC()
 		expiresAt = &t
 	}
 	proxy, err := h.adminService.UpdateProxy(c.Request.Context(), proxyID, &service.UpdateProxyInput{
-		Name:           strings.TrimSpace(req.Name),
-		Protocol:       strings.TrimSpace(req.Protocol),
-		Host:           strings.TrimSpace(req.Host),
-		Port:           req.Port,
-		Username:       strings.TrimSpace(req.Username),
-		Password:       strings.TrimSpace(req.Password),
-		Status:         strings.TrimSpace(req.Status),
-		ExpiresAt:      expiresAt,
-		FallbackMode:   strings.TrimSpace(req.FallbackMode),
-		BackupProxyID:  req.BackupProxyID,
-		ExpiryWarnDays: req.ExpiryWarnDays,
+		Name:              strings.TrimSpace(req.Name),
+		Protocol:          strings.TrimSpace(req.Protocol),
+		Host:              strings.TrimSpace(req.Host),
+		Port:              req.Port,
+		Username:          strings.TrimSpace(req.Username),
+		Password:          strings.TrimSpace(req.Password),
+		Status:            strings.TrimSpace(req.Status),
+		ExpiresAt:         expiresAt,
+		ClearExpiresAt:    req.ExpiresAt.Set && expiresAt == nil,
+		FallbackMode:      strings.TrimSpace(req.FallbackMode),
+		BackupProxyID:     req.BackupProxyID.Value,
+		ClearBackupID:     req.BackupProxyID.Set && req.BackupProxyID.Value == nil,
+		ExpiryWarnDays:    valueOrZero(req.ExpiryWarnDays),
+		ExpiryWarnDaysSet: req.ExpiryWarnDays != nil,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -206,6 +209,14 @@ func (h *ProxyHandler) Update(c *gin.Context) {
 	}
 
 	response.Success(c, dto.ProxyFromServiceAdmin(proxy))
+}
+
+// valueOrZero preserves the distinction between an omitted pointer field and zero.
+func valueOrZero(value *int) int {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 // Delete handles deleting a proxy

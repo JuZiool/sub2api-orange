@@ -29,10 +29,15 @@ func TestProxyUpdateInvalidatesBoundProbeSnapshotsAndEnqueuesOutboxAtomically(t 
 		WillReturnRows(sqlmock.NewRows([]string{"protocol", "host", "port", "username", "password", "status"}).
 			AddRow("http", "old.example", 8080, "user", "pass", service.StatusActive))
 	mock.ExpectExec(`(?s)UPDATE "proxies" SET`).WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`UPDATE "proxies" SET "backup_proxy_id" = NULL WHERE "backup_proxy_id" = \$1`).
+	mock.ExpectQuery(`(?s)SELECT .* FROM "proxies" WHERE "id" = \$1`).
 		WithArgs(int64(9)).
-		WillReturnResult(sqlmock.NewResult(0, 0))
-	expectProxyUpdateReload(mock, 9, "new.example", "user", "pass")
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "created_at", "updated_at", "deleted_at", "name", "protocol", "host", "port",
+			"username", "password", "status", "expires_at", "fallback_mode", "backup_proxy_id", "expiry_warn_days",
+		}).AddRow(
+			int64(9), time.Now(), time.Now(), nil, "proxy", "http", "new.example", 8080,
+			"user", "pass", service.StatusActive, nil, service.FallbackModeNone, nil, 0,
+		))
 	mock.ExpectQuery(`(?s)UPDATE accounts.*- 'upstream_billing_probe'.*- 'ollama_cloud_usage_snapshot'.*type = 'apikey'.*extra \? 'upstream_billing_probe'.*platform IN \('openai', 'anthropic', 'kimi', 'zhipu', 'deepseek'\).*extra \? 'ollama_cloud_usage_snapshot'.*RETURNING id`).
 		WithArgs(int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(17)).AddRow(int64(18)))
@@ -72,10 +77,15 @@ func TestProxyUpdateRollsBackWhenProbeInvalidationOutboxFails(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"protocol", "host", "port", "username", "password", "status"}).
 			AddRow("http", "old.example", 8080, "", "", service.StatusActive))
 	mock.ExpectExec(`(?s)UPDATE "proxies" SET`).WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`UPDATE "proxies" SET "backup_proxy_id" = NULL WHERE "backup_proxy_id" = \$1`).
+	mock.ExpectQuery(`(?s)SELECT .* FROM "proxies" WHERE "id" = \$1`).
 		WithArgs(int64(9)).
-		WillReturnResult(sqlmock.NewResult(0, 0))
-	expectProxyUpdateReload(mock, 9, "new.example", "", "")
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "created_at", "updated_at", "deleted_at", "name", "protocol", "host", "port",
+			"username", "password", "status", "expires_at", "fallback_mode", "backup_proxy_id", "expiry_warn_days",
+		}).AddRow(
+			int64(9), time.Now(), time.Now(), nil, "proxy", "http", "new.example", 8080,
+			nil, nil, service.StatusActive, nil, service.FallbackModeNone, nil, 0,
+		))
 	mock.ExpectQuery(`(?s)UPDATE accounts.*- 'upstream_billing_probe'.*- 'ollama_cloud_usage_snapshot'.*type = 'apikey'.*extra \? 'upstream_billing_probe'.*platform IN \('openai', 'anthropic', 'kimi', 'zhipu', 'deepseek'\).*extra \? 'ollama_cloud_usage_snapshot'.*RETURNING id`).
 		WithArgs(int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(17)))
@@ -105,10 +115,15 @@ func TestProxyUpdateSkipsProbeInvalidationForNonIdentityChange(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"protocol", "host", "port", "username", "password", "status"}).
 			AddRow("http", "same.example", 8080, "", "", service.StatusActive))
 	mock.ExpectExec(`(?s)UPDATE "proxies" SET`).WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec(`UPDATE "proxies" SET "backup_proxy_id" = NULL WHERE "backup_proxy_id" = \$1`).
+	mock.ExpectQuery(`(?s)SELECT .* FROM "proxies" WHERE "id" = \$1`).
 		WithArgs(int64(9)).
-		WillReturnResult(sqlmock.NewResult(0, 0))
-	expectProxyUpdateReload(mock, 9, "same.example", "", "")
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "created_at", "updated_at", "deleted_at", "name", "protocol", "host", "port",
+			"username", "password", "status", "expires_at", "fallback_mode", "backup_proxy_id", "expiry_warn_days",
+		}).AddRow(
+			int64(9), time.Now(), time.Now(), nil, "proxy", "http", "same.example", 8080,
+			nil, nil, service.StatusActive, nil, service.FallbackModeNone, nil, 0,
+		))
 	mock.ExpectCommit()
 
 	repo := newProxyRepositoryWithSQL(client, db)

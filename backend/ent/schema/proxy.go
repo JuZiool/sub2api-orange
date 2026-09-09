@@ -73,6 +73,9 @@ func (Proxy) Edges() []ent.Edge {
 		// accounts: 使用此代理的账户（反向边）
 		edge.From("accounts", Account.Type).
 			Ref("proxy"),
+		// A backup proxy may be shared by multiple primary proxies.
+		edge.From("primary_proxies", Proxy.Type).
+			Ref("backup_proxy"),
 		edge.To("backup_proxy", Proxy.Type).
 			Field("backup_proxy_id").
 			Unique(),

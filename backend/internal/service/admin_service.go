@@ -537,17 +537,20 @@ type CreateProxyInput struct {
 }
 
 type UpdateProxyInput struct {
-	Name           string
-	Protocol       string
-	Host           string
-	Port           int
-	Username       string
-	Password       string
-	Status         string
-	ExpiresAt      *time.Time
-	FallbackMode   string
-	BackupProxyID  *int64
-	ExpiryWarnDays int
+	Name              string
+	Protocol          string
+	Host              string
+	Port              int
+	Username          string
+	Password          string
+	Status            string
+	ExpiresAt         *time.Time
+	ClearExpiresAt    bool
+	FallbackMode      string
+	BackupProxyID     *int64
+	ClearBackupID     bool
+	ExpiryWarnDays    int
+	ExpiryWarnDaysSet bool
 }
 
 type GenerateRedeemCodesInput struct {
