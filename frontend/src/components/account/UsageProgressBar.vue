@@ -69,31 +69,12 @@
       </span>
     </div>
 
-    <div
-      v-if="overdraftActive && overdraftStats"
-      data-testid="overdraft-stats"
-      class="mb-0.5 flex items-center"
-    >
-      <div class="flex items-center gap-1.5 text-[9px] text-orange-600 dark:text-orange-400">
-        <span
-          :class="[
-            'rounded bg-orange-50 px-1.5 py-0.5 dark:bg-orange-900/30',
-            overdraftStatusClass || 'text-orange-600 dark:text-orange-400',
-          ]"
-        >
-          {{ overdraftStatus || t('usage.overdraft') }}
-        </span>
-        <span class="rounded bg-orange-50 px-1.5 py-0.5 dark:bg-orange-900/30">
-          {{ formatOverdraftRequests }} req
-        </span>
-        <span class="rounded bg-orange-50 px-1.5 py-0.5 dark:bg-orange-900/30">
-          {{ formatOverdraftTokens }}
-        </span>
-        <span class="rounded bg-orange-50 px-1.5 py-0.5 dark:bg-orange-900/30" :title="t('usage.accountBilled')">
-          A ${{ formatOverdraftCost }}
-        </span>
-      </div>
-    </div>
+    <CodexOverdraftPanel
+      :active="overdraftActive"
+      :stats="overdraftStats"
+      :status="overdraftStatus"
+      :status-class="overdraftStatusClass"
+    />
   </div>
 </template>
 
@@ -103,6 +84,7 @@ import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import type { WindowStats } from '@/types'
 import { formatCompactNumber } from '@/utils/format'
+import CodexOverdraftPanel from '@/components/account/CodexOverdraftPanel.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -259,18 +241,6 @@ const formatResetTime = computed(() => {
 })
 
 const formatEstimatedUsedCost = computed(() => (props.estimatedUsedCost ?? 0).toFixed(2))
-
-const formatOverdraftRequests = computed(() => {
-  return formatCompactNumber(props.overdraftStats?.requests ?? 0, { allowBillions: false })
-})
-
-const formatOverdraftTokens = computed(() => {
-  return formatCompactNumber(props.overdraftStats?.tokens ?? 0)
-})
-
-const formatOverdraftCost = computed(() => {
-  return (props.overdraftStats?.cost ?? 0).toFixed(2)
-})
 
 const formatRequests = computed(() => {
   if (!props.windowStats) return ''

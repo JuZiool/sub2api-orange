@@ -624,20 +624,7 @@
           />
           <p class="input-hint">{{ t("admin.groups.rateMultiplierHint") }}</p>
         </div>
-        <div class="border-t border-gray-200 pt-4 dark:border-dark-400">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelRateMultipliers.title") }}</h4>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.modelRateMultipliers.description") }}</p>
-            </div>
-            <button type="button" class="btn btn-secondary shrink-0" @click="createForm.model_rate_multipliers.push({ model: '', multiplier: 1 })"><Icon name="plus" size="sm" class="mr-1" />{{ t("admin.groups.modelRateMultipliers.add") }}</button>
-          </div>
-          <div v-for="(rule, index) in createForm.model_rate_multipliers" :key="index" class="mt-3 grid grid-cols-[minmax(0,1fr)_8rem_auto] items-end gap-2">
-            <div><label class="input-label text-xs">{{ t("admin.groups.modelRateMultipliers.model") }}</label><input v-model="rule.model" class="input" :placeholder="t('admin.groups.modelRateMultipliers.modelPlaceholder')" /></div>
-            <div><label class="input-label text-xs">{{ t("admin.groups.modelRateMultipliers.multiplier") }}</label><input v-model.number="rule.multiplier" type="number" min="0.0001" step="0.0001" class="input" /></div>
-            <button type="button" class="p-2 text-gray-400 hover:text-red-500" :title="t('admin.groups.modelRateMultipliers.remove')" @click="createForm.model_rate_multipliers.splice(index, 1)"><Icon name="trash" size="sm" /></button>
-          </div>
-        </div>
+        <ModelRateMultiplierEditor v-model="createForm.model_rate_multipliers" />
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
           <input
@@ -2276,20 +2263,7 @@
             data-tour="group-form-multiplier"
           />
         </div>
-        <div class="border-t border-gray-200 pt-4 dark:border-dark-400">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelRateMultipliers.title") }}</h4>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.modelRateMultipliers.description") }}</p>
-            </div>
-            <button type="button" class="btn btn-secondary shrink-0" @click="editForm.model_rate_multipliers.push({ model: '', multiplier: 1 })"><Icon name="plus" size="sm" class="mr-1" />{{ t("admin.groups.modelRateMultipliers.add") }}</button>
-          </div>
-          <div v-for="(rule, index) in editForm.model_rate_multipliers" :key="index" class="mt-3 grid grid-cols-[minmax(0,1fr)_8rem_auto] items-end gap-2">
-            <div><label class="input-label text-xs">{{ t("admin.groups.modelRateMultipliers.model") }}</label><input v-model="rule.model" class="input" :placeholder="t('admin.groups.modelRateMultipliers.modelPlaceholder')" /></div>
-            <div><label class="input-label text-xs">{{ t("admin.groups.modelRateMultipliers.multiplier") }}</label><input v-model.number="rule.multiplier" type="number" min="0.0001" step="0.0001" class="input" /></div>
-            <button type="button" class="p-2 text-gray-400 hover:text-red-500" :title="t('admin.groups.modelRateMultipliers.remove')" @click="editForm.model_rate_multipliers.splice(index, 1)"><Icon name="trash" size="sm" /></button>
-          </div>
-        </div>
+        <ModelRateMultiplierEditor v-model="editForm.model_rate_multipliers" />
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
           <input
@@ -4318,6 +4292,7 @@ import BaseDialog from "@/components/common/BaseDialog.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
 import Select from "@/components/common/Select.vue";
+import ModelRateMultiplierEditor from "@/components/admin/group/ModelRateMultiplierEditor.vue";
 import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
