@@ -211,7 +211,7 @@
           :value="formatMs(snapshot.metrics.ttft.p50_ms)"
           :detail="latencyKpiSecondary(snapshot.metrics.ttft)"
           :title="latencyDetail(snapshot.metrics.ttft)"
-          :state="snapshot.health.ttft"
+          :state="ttftCellState(snapshot.health.ttft, snapshot.metrics.ttft)"
         />
         <MetricCell
           v-if="showThroughput"
@@ -473,7 +473,7 @@ import RelayPulseMatrix from '@/features/channel-monitor-v2/RelayPulseMatrix.vue
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import { isChannelMonitorThroughputHidden } from '@/utils/featureFlags'
+import { isChannelMonitorThroughputHidden, isChannelMonitorUserRankingHidden } from '@/utils/featureFlags'
 import * as api from '@/api/channelMonitorV2'
 import type {
   HealthState,
@@ -498,6 +498,7 @@ import {
   tokensPerSecondFromTpm,
   healthScoreClass,
   monitorErrorCategoryLabel,
+  ttftDisplayState,
 } from '@/features/channel-monitor-v2/monitorFormat'
 
 type Tab = 'models' | 'errors' | 'users'
@@ -512,6 +513,8 @@ const { t, te, locale } = useI18n()
 const isAdmin = computed(() => authStore.isAdmin)
 /** Admins always see RPM/TPM; users honor the hide-throughput system setting. */
 const showThroughput = computed(() => isAdmin.value || !isChannelMonitorThroughputHidden())
+/** Admins always see ranking; users honor the hide-user-ranking system setting. */
+const showUserRanking = computed(() => isAdmin.value || !isChannelMonitorUserRankingHidden())
 
 const ranges = computed(() => [
   { value: '90m' as MonitorRange, label: t('channelMonitorV2.ranges.90m') },
@@ -519,11 +522,16 @@ const ranges = computed(() => [
   { value: '7d' as MonitorRange, label: t('channelMonitorV2.ranges.7d') },
   { value: '30d' as MonitorRange, label: t('channelMonitorV2.ranges.30d') },
 ])
-const tabs = computed(() => [
-  { value: 'models' as Tab, label: t('channelMonitorV2.tabs.models') },
-  { value: 'errors' as Tab, label: t('channelMonitorV2.tabs.errors') },
-  { value: 'users' as Tab, label: t('channelMonitorV2.tabs.users') },
-])
+const tabs = computed(() => {
+  const items: Array<{ value: Tab; label: string }> = [
+    { value: 'models', label: t('channelMonitorV2.tabs.models') },
+    { value: 'errors', label: t('channelMonitorV2.tabs.errors') },
+  ]
+  if (showUserRanking.value) {
+    items.push({ value: 'users', label: t('channelMonitorV2.tabs.users') })
+  }
+  return items
+})
 const matrixGroupOptions = computed(() => [
   { value: 'platform' as MonitorMatrixGroupBy, label: t('channelMonitorV2.groupBy.platform') },
   { value: 'platform_group' as MonitorMatrixGroupBy, label: t('channelMonitorV2.groupBy.platformGroup') },
@@ -834,6 +842,9 @@ function formatPercent(value: number) {
 }
 function formatMs(value: number | null) {
   return formatMonitorMs(value)
+}
+function ttftCellState(state: HealthState | undefined, metric: { p50_ms: number | null; sample_count?: number }) {
+  return ttftDisplayState(state, metric)
 }
 function latencyDetail(metric: {
   p50_ms: number | null

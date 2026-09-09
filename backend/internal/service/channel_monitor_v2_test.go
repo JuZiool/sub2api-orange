@@ -287,6 +287,46 @@ func TestErrorRateTTFTAndCacheScoreHelpers(t *testing.T) {
 	require.Equal(t, "healthy", cacheRateBand(0.50, 0.20, 0.05))
 }
 
+type channelMonitorV2RuntimeStub struct {
+	rt ChannelMonitorRuntime
+}
+
+func (s channelMonitorV2RuntimeStub) GetChannelMonitorRuntime(context.Context) ChannelMonitorRuntime {
+	return s.rt
+}
+
+func TestChannelMonitorV2UsersHiddenWhenSettingEnabled(t *testing.T) {
+	selfID, otherID := int64(7), int64(9)
+	repo := &channelMonitorV2RepoStub{config: ChannelMonitorV2Config{Enabled: true}, users: &ChannelMonitorV2List[ChannelMonitorV2UserRow]{Items: []ChannelMonitorV2UserRow{
+		{UserID: &otherID, Email: "other@example.com", Username: "other"},
+		{UserID: &selfID, Email: "self@example.com", Username: "self"},
+	}}}
+	svc := NewChannelMonitorV2Service(repo)
+	svc.SetRuntimeReader(channelMonitorV2RuntimeStub{rt: ChannelMonitorRuntime{HideUserRanking: true}})
+
+	hidden, err := svc.Users(context.Background(), ChannelMonitorV2Filter{}, selfID, false)
+	require.NoError(t, err)
+	require.Empty(t, hidden.Items)
+
+	admin, err := svc.Users(context.Background(), ChannelMonitorV2Filter{}, selfID, true)
+	require.NoError(t, err)
+	require.Len(t, admin.Items, 2)
+}
+
+func TestChannelMonitorV2HealthLeavesMissingTTFTUnknown(t *testing.T) {
+	health := ChannelMonitorV2HealthFor(ChannelMonitorV2Metric{
+		RequestCount:         200,
+		ErrorRate:            0,
+		CacheRate:            0,
+		CacheRateDenominator: 200,
+		TTFT:                 ChannelMonitorV2Latency{SampleCount: 0},
+	})
+	require.Equal(t, "unknown", health.TTFT)
+	require.Nil(t, health.TTFTScore)
+	require.NotEqual(t, "critical", health.Overall)
+	require.Equal(t, "healthy", health.Overall)
+}
+
 func TestChannelMonitorV2UsersRemovesOtherUserIdentity(t *testing.T) {
 	selfID, otherID := int64(7), int64(9)
 	repo := &channelMonitorV2RepoStub{config: ChannelMonitorV2Config{Enabled: true}, users: &ChannelMonitorV2List[ChannelMonitorV2UserRow]{Items: []ChannelMonitorV2UserRow{
