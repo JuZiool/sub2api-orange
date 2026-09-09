@@ -37,12 +37,12 @@ describe('UsageProgressBar', () => {
     expect(wrapper.text()).not.toContain('2h 30m')
   })
 
-  it('成本估算使用米白色信息框承载', () => {
+  it('成本估算始终在米白色信息框中展示约额度和已用', () => {
     const wrapper = mount(UsageProgressBar, {
       props: {
         label: '7d',
         utilization: 25,
-        estimatedCost: 0,
+        estimatedTotalCost: 0,
         estimatedUsedCost: 0,
         color: 'emerald'
       }
@@ -55,7 +55,8 @@ describe('UsageProgressBar', () => {
       'bg-amber-50/70',
       'text-stone-600'
     ]))
-    expect(estimate.text()).toContain('$0.00')
+    expect(estimate.text()).toContain('usage.estimatedCost: $0.00')
+    expect(estimate.text()).toContain('usage.usedCost: $0.00')
   })
 
   it('showNowWhenIdle=true 但利用率大于 0 时显示倒计时', () => {

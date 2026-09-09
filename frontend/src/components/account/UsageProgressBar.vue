@@ -22,14 +22,6 @@
         >
           U ${{ formatUserCost }}
         </span>
-        <span
-          v-if="estimatedTotalCost != null"
-          data-test="estimated-total-cost"
-          class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800"
-          :title="t('admin.accounts.usageWindow.estimatedTotalCostTooltip')"
-        >
-          {{ t('admin.accounts.usageWindow.estimatedTotalCost', { cost: estimatedTotalCost.toFixed(2) }) }}
-        </span>
       </div>
     </div>
 
@@ -60,10 +52,13 @@
     </div>
 
     <div
-      v-if="estimatedUsedCost != null"
+      v-if="estimatedTotalCost != null || estimatedUsedCost != null"
       data-testid="usage-cost-estimate"
       class="mb-0.5 inline-flex w-fit items-center gap-1.5 rounded-md border border-amber-100/80 bg-amber-50/70 px-1.5 py-1 text-[9px] text-stone-600 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100"
     >
+      <span v-if="estimatedTotalCost != null" :title="t('usage.costEstimateHint')">
+        {{ t('usage.estimatedCost') }}: ${{ formatEstimatedTotalCost }}
+      </span>
       <span>
         {{ t('usage.usedCost') }}: ${{ formatEstimatedUsedCost }}
       </span>
@@ -240,6 +235,7 @@ const formatResetTime = computed(() => {
   }
 })
 
+const formatEstimatedTotalCost = computed(() => (props.estimatedTotalCost ?? 0).toFixed(2))
 const formatEstimatedUsedCost = computed(() => (props.estimatedUsedCost ?? 0).toFixed(2))
 
 const formatRequests = computed(() => {
