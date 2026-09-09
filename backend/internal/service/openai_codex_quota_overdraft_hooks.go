@@ -11,15 +11,6 @@ func codexQuotaOverdraftBypassesSchedulingThreshold(ctx context.Context, account
 		codexQuotaOverdraftSchedulingAllowed(account, time.Now().UTC())
 }
 
-func (s *RateLimitService) notifyCodexQuotaOverdraftAwareSchedulingBlock(
-	account *Account,
-	until time.Time,
-) {
-	if !CodexQuotaOverdraftEnabled() || !isCodexQuotaOverdraftAccount(account) {
-		s.notifyAccountSchedulingBlocked(account, until, "account_scheduling_threshold")
-	}
-}
-
 func (s *OpenAIGatewayService) handleCodexQuotaOverdraftUpstream429(
 	ctx context.Context,
 	account *Account,

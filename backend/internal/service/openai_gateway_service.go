@@ -526,6 +526,9 @@ func NewOpenAIGatewayService(
 		SetCodexIdentityEnforcementEnabled(!cfg.Gateway.DisableCodexIdentityEnforcement)
 		SetCodexQuotaOverdraftEnabled(cfg.Gateway.CodexQuotaOverdraftEnabled)
 	}
+	// Orange 定制：以可选扩展点注入额度透支行为，使 ratelimit_service.go 的
+	// 上游函数体保持原样，便于后续跟随官方更新。未注入时即官方默认行为。
+	installCodexQuotaOverdraftSchedulingHooks(rateLimitService)
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
 		usageLogRepo:        usageLogRepo,

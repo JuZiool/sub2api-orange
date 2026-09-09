@@ -37,6 +37,11 @@ type RateLimitService struct {
 	// OpenAI Team 联动熔断的进程内去重：teamID → 去重窗口截止时间
 	openaiTeamLinkedMu     sync.Mutex
 	openaiTeamLinkedRecent map[string]time.Time
+
+	// 可选扩展点（默认 nil 即官方行为）。由 Orange 定制在装配阶段注入，
+	// 使上游函数体保持原样，便于跟随上游更新。
+	schedulingThresholdBypass func(ctx context.Context, account *Account) bool
+	schedulingBlockNotifier   func(account *Account, until time.Time)
 }
 
 type AccountRuntimeBlocker interface {
@@ -127,6 +132,22 @@ func (s *RateLimitService) SetTokenCacheInvalidator(invalidator TokenCacheInvali
 	s.tokenCacheInvalidator = invalidator
 }
 
+// SetSchedulingThresholdBypass 注入可选的阈值绕过判定。nil 表示不绕过。
+func (s *RateLimitService) SetSchedulingThresholdBypass(fn func(ctx context.Context, account *Account) bool) {
+	if s == nil {
+		return
+	}
+	s.schedulingThresholdBypass = fn
+}
+
+// SetSchedulingBlockNotifier 注入可选的调度阻塞通知。nil 表示使用官方默认实现。
+func (s *RateLimitService) SetSchedulingBlockNotifier(fn func(account *Account, until time.Time)) {
+	if s == nil {
+		return
+	}
+	s.schedulingBlockNotifier = fn
+}
+
 func (s *RateLimitService) SetAccountRuntimeBlocker(blocker AccountRuntimeBlocker) {
 	s.runtimeBlocker = blocker
 }
@@ -164,7 +185,7 @@ func (s *RateLimitService) ApplyAccountSchedulingThreshold(ctx context.Context, 
 	if !account.IsActive() || !account.Schedulable {
 		return false
 	}
-	if codexQuotaOverdraftBypassesSchedulingThreshold(ctx, account) {
+	if s.schedulingThresholdBypass != nil && s.schedulingThresholdBypass(ctx, account) {
 		return false
 	}
 
@@ -195,7 +216,11 @@ func (s *RateLimitService) ApplyAccountSchedulingThreshold(ctx context.Context, 
 
 	account.TempUnschedulableUntil = cloneTimePtr(decision.Until)
 	account.TempUnschedulableReason = reason
-	s.notifyCodexQuotaOverdraftAwareSchedulingBlock(account, *decision.Until)
+	if s.schedulingBlockNotifier != nil {
+		s.schedulingBlockNotifier(account, *decision.Until)
+	} else {
+		s.notifyAccountSchedulingBlocked(account, *decision.Until, "account_scheduling_threshold")
+	}
 
 	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, *decision.Until, reason); err != nil {
 		slog.Warn("account_scheduling_threshold_set_temp_unsched_failed",
