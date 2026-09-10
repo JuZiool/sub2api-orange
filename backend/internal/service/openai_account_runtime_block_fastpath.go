@@ -510,6 +510,13 @@ func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) b
 		return false
 	}
 	now := time.Now()
+	currentUntil, valid := value.(time.Time)
+	if !valid || currentUntil.IsZero() || !now.Before(currentUntil) {
+		s.openaiAccountRuntimeBlockUntil.Delete(account.ID)
+		s.openaiAccountRuntimeBlockSources.Delete(account.ID)
+		s.openaiAccountRuntimeBlockGeneration.Store(account.ID, s.openaiAccountRuntimeBlockSequence.Add(1))
+		return false
+	}
 	sources := s.openAIAccountRuntimeBlockSourcesLocked(account.ID)
 	sources.expire(now)
 	effectiveUntil, blocked := sources.effectiveUntil()
@@ -519,7 +526,7 @@ func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) b
 		s.openaiAccountRuntimeBlockGeneration.Store(account.ID, s.openaiAccountRuntimeBlockSequence.Add(1))
 		return false
 	}
-	currentUntil, valid := value.(time.Time)
+	currentUntil, valid = value.(time.Time)
 	if !valid || !currentUntil.Equal(effectiveUntil) {
 		s.openaiAccountRuntimeBlockUntil.Store(account.ID, effectiveUntil)
 		s.openaiAccountRuntimeBlockSources.Store(account.ID, sources)
@@ -693,7 +700,7 @@ func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Acc
 			s.clearOpenAIAccountRuntimeBlockIfUnchanged(account.ID, snapshot)
 		}
 	}
-	return s.isOpenAIAccountModelRuntimeBlocked(account, requestedModel)
+	return s.isOpenAIAccountRuntimeBlocked(account) || s.isOpenAIAccountModelRuntimeBlocked(account, requestedModel)
 }
 
 func (s *OpenAIGatewayService) recordOpenAIOAuth429() {
