@@ -334,7 +334,24 @@ func (s *OpenAIGatewayService) BlockAccountScheduling(account *Account, until ti
 	mu := s.openAIAccountRuntimeBlockLock(account.ID)
 	mu.Lock()
 	defer mu.Unlock()
-	_, _ = s.blockAccountSchedulingLocked(account, until, reason)
+	_, _ = s.blockAccountSchedulingLockedWithSource(account, until, reason, false)
+}
+
+// BlockAccountSchedulingFromPersistedCooldown records a database-backed cooldown
+// separately from request-owned runtime blockers. Legacy callers still use the
+// ordinary BlockAccountScheduling method.
+func (s *OpenAIGatewayService) BlockAccountSchedulingFromPersistedCooldown(account *Account, until time.Time, reason string) {
+	if until.IsZero() {
+		s.BlockAccountScheduling(account, until, reason)
+		return
+	}
+	if s == nil || !isOpenAIAccount(account) {
+		return
+	}
+	mu := s.openAIAccountRuntimeBlockLock(account.ID)
+	mu.Lock()
+	defer mu.Unlock()
+	_, _ = s.blockAccountSchedulingLockedWithSource(account, until, reason, true)
 }
 
 func (s *OpenAIGatewayService) openAIAccountRuntimeBlockLock(accountID int64) *sync.Mutex {
@@ -347,39 +364,83 @@ func (s *OpenAIGatewayService) openAIAccountRuntimeBlockLock(accountID int64) *s
 	return mu
 }
 
-func (s *OpenAIGatewayService) blockAccountSchedulingLocked(account *Account, until time.Time, _ string) (uint64, bool) {
-	generation := s.openaiAccountRuntimeBlockSequence.Add(1)
-	s.openaiAccountRuntimeBlockGeneration.Store(account.ID, generation)
+type openAIAccountRuntimeBlockSources struct {
+	hasIndependent   bool
+	independentUntil time.Time
+	independentOwner uint64
+	hasPersisted     bool
+	persistedUntil   time.Time
+}
+
+func (sources openAIAccountRuntimeBlockSources) effectiveUntil() (time.Time, bool) {
+	if sources.hasIndependent {
+		if sources.independentUntil.IsZero() || !sources.hasPersisted || !sources.persistedUntil.After(sources.independentUntil) {
+			return sources.independentUntil, true
+		}
+	}
+	return sources.persistedUntil, sources.hasPersisted
+}
+
+func (sources *openAIAccountRuntimeBlockSources) expire(now time.Time) {
+	if sources.hasIndependent && !sources.independentUntil.IsZero() && !now.Before(sources.independentUntil) {
+		sources.hasIndependent = false
+		sources.independentUntil = time.Time{}
+		sources.independentOwner = 0
+	}
+	if sources.hasPersisted && !now.Before(sources.persistedUntil) {
+		sources.hasPersisted = false
+		sources.persistedUntil = time.Time{}
+	}
+}
+
+func (s *OpenAIGatewayService) openAIAccountRuntimeBlockSourcesLocked(accountID int64) openAIAccountRuntimeBlockSources {
+	if raw, ok := s.openaiAccountRuntimeBlockSources.Load(accountID); ok {
+		if sources, valid := raw.(openAIAccountRuntimeBlockSources); valid {
+			return sources
+		}
+	}
+	if raw, ok := s.openaiAccountRuntimeBlockUntil.Load(accountID); ok {
+		if until, valid := raw.(time.Time); valid {
+			generation, _ := s.openaiAccountRuntimeBlockGeneration.Load(accountID)
+			owner, _ := generation.(uint64)
+			return openAIAccountRuntimeBlockSources{hasIndependent: true, independentUntil: until, independentOwner: owner}
+		}
+	}
+	return openAIAccountRuntimeBlockSources{}
+}
+
+func (s *OpenAIGatewayService) blockAccountSchedulingLocked(account *Account, until time.Time, reason string) (uint64, bool) {
+	return s.blockAccountSchedulingLockedWithSource(account, until, reason, false)
+}
+
+func (s *OpenAIGatewayService) blockAccountSchedulingLockedWithSource(account *Account, until time.Time, reason string, fromPersistedCooldown bool) (uint64, bool) {
 	now := time.Now()
 	blockUntil := until
 	if blockUntil.IsZero() || !blockUntil.After(now) {
 		blockUntil = now.Add(openAIStopSchedulingBridgeCooldown)
 	}
-
-	for {
-		current, loaded := s.openaiAccountRuntimeBlockUntil.Load(account.ID)
-		if !loaded {
-			actual, stored := s.openaiAccountRuntimeBlockUntil.LoadOrStore(account.ID, blockUntil)
-			if !stored {
-				return generation, true
-			}
-			current = actual
+	current, loaded := s.openaiAccountRuntimeBlockUntil.Load(account.ID)
+	currentUntil, validCurrent := current.(time.Time)
+	sources := s.openAIAccountRuntimeBlockSourcesLocked(account.ID)
+	sources.expire(now)
+	generation := s.openaiAccountRuntimeBlockSequence.Add(1)
+	if fromPersistedCooldown {
+		if !sources.hasPersisted || blockUntil.After(sources.persistedUntil) {
+			sources.persistedUntil = blockUntil
 		}
-
-		currentUntil, ok := current.(time.Time)
-		if !ok || currentUntil.IsZero() {
-			if s.openaiAccountRuntimeBlockUntil.CompareAndSwap(account.ID, current, blockUntil) {
-				return generation, true
-			}
-			continue
+		sources.hasPersisted = true
+	} else {
+		if !sources.hasIndependent || blockUntil.IsZero() || (!sources.independentUntil.IsZero() && blockUntil.After(sources.independentUntil)) {
+			sources.independentUntil = blockUntil
 		}
-		if !blockUntil.After(currentUntil) {
-			return generation, false
-		}
-		if s.openaiAccountRuntimeBlockUntil.CompareAndSwap(account.ID, current, blockUntil) {
-			return generation, true
-		}
+		sources.hasIndependent = true
+		sources.independentOwner = generation
 	}
+	effectiveUntil, _ := sources.effectiveUntil()
+	s.openaiAccountRuntimeBlockUntil.Store(account.ID, effectiveUntil)
+	s.openaiAccountRuntimeBlockSources.Store(account.ID, sources)
+	s.openaiAccountRuntimeBlockGeneration.Store(account.ID, generation)
+	return generation, !loaded || !validCurrent || !effectiveUntil.Equal(currentUntil)
 }
 
 func (s *OpenAIGatewayService) ClearAccountSchedulingBlock(accountID int64) {
@@ -390,7 +451,50 @@ func (s *OpenAIGatewayService) ClearAccountSchedulingBlock(accountID int64) {
 	mu.Lock()
 	defer mu.Unlock()
 	s.openaiAccountRuntimeBlockUntil.Delete(accountID)
+	s.openaiAccountRuntimeBlockSources.Delete(accountID)
 	s.openaiOAuth429RetryStartedAt.Delete(accountID)
+	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
+}
+
+// ClearAccountSchedulingBlockFromPersistedCooldown removes only the persisted
+// cooldown contribution owned by the caller. Independent request/credential
+// blockers remain active, and a changed deadline is treated as a newer owner.
+func (s *OpenAIGatewayService) ClearAccountSchedulingBlockFromPersistedCooldown(accountID int64, expectedUntil time.Time) {
+	if s == nil || accountID <= 0 || expectedUntil.IsZero() {
+		return
+	}
+	mu := s.openAIAccountRuntimeBlockLock(accountID)
+	mu.Lock()
+	defer mu.Unlock()
+	generation, ok := s.openaiAccountRuntimeBlockGeneration.Load(accountID)
+	if !ok {
+		return
+	}
+	currentGeneration, ok := generation.(uint64)
+	if !ok || currentGeneration == 0 {
+		return
+	}
+	current, ok := s.openaiAccountRuntimeBlockUntil.Load(accountID)
+	currentUntil, isTime := current.(time.Time)
+	if !ok || !isTime || !currentUntil.After(time.Now()) {
+		return
+	}
+	raw, ok := s.openaiAccountRuntimeBlockSources.Load(accountID)
+	sources, valid := raw.(openAIAccountRuntimeBlockSources)
+	if !ok || !valid || !sources.hasPersisted || !sources.persistedUntil.Equal(expectedUntil) {
+		return
+	}
+	sources.hasPersisted = false
+	sources.persistedUntil = time.Time{}
+	sources.expire(time.Now())
+	if until, blocked := sources.effectiveUntil(); blocked {
+		s.openaiAccountRuntimeBlockUntil.Store(accountID, until)
+		s.openaiAccountRuntimeBlockSources.Store(accountID, sources)
+	} else {
+		s.openaiAccountRuntimeBlockUntil.Delete(accountID)
+		s.openaiAccountRuntimeBlockSources.Delete(accountID)
+		s.openaiOAuth429RetryStartedAt.Delete(accountID)
+	}
 	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
 }
 
@@ -405,18 +509,25 @@ func (s *OpenAIGatewayService) isOpenAIAccountRuntimeBlocked(account *Account) b
 	if !ok {
 		return false
 	}
-	cooldownUntil, ok := value.(time.Time)
-	if !ok || cooldownUntil.IsZero() {
+	now := time.Now()
+	sources := s.openAIAccountRuntimeBlockSourcesLocked(account.ID)
+	sources.expire(now)
+	effectiveUntil, blocked := sources.effectiveUntil()
+	if !blocked || (!effectiveUntil.IsZero() && !now.Before(effectiveUntil)) {
 		s.openaiAccountRuntimeBlockUntil.Delete(account.ID)
+		s.openaiAccountRuntimeBlockSources.Delete(account.ID)
 		s.openaiAccountRuntimeBlockGeneration.Store(account.ID, s.openaiAccountRuntimeBlockSequence.Add(1))
 		return false
 	}
-	if time.Now().Before(cooldownUntil) {
-		return true
+	currentUntil, valid := value.(time.Time)
+	if !valid || !currentUntil.Equal(effectiveUntil) {
+		s.openaiAccountRuntimeBlockUntil.Store(account.ID, effectiveUntil)
+		s.openaiAccountRuntimeBlockSources.Store(account.ID, sources)
+		s.openaiAccountRuntimeBlockGeneration.Store(account.ID, s.openaiAccountRuntimeBlockSequence.Add(1))
+	} else if raw, exists := s.openaiAccountRuntimeBlockSources.Load(account.ID); !exists || raw != sources {
+		s.openaiAccountRuntimeBlockSources.Store(account.ID, sources)
 	}
-	s.openaiAccountRuntimeBlockUntil.Delete(account.ID)
-	s.openaiAccountRuntimeBlockGeneration.Store(account.ID, s.openaiAccountRuntimeBlockSequence.Add(1))
-	return false
+	return true
 }
 
 func (s *OpenAIGatewayService) getOpenAIAccountModelTransientState() *openAIAccountModelTransientState {
@@ -501,6 +612,7 @@ type openAIAccountRuntimeBlockSnapshot struct {
 	until      time.Time
 	generation uint64
 	blocked    bool
+	sources    openAIAccountRuntimeBlockSources
 }
 
 func (s *OpenAIGatewayService) peekOpenAIAccountRuntimeBlock(account *Account) openAIAccountRuntimeBlockSnapshot {
@@ -523,13 +635,18 @@ func (s *OpenAIGatewayService) peekOpenAIAccountRuntimeBlock(account *Account) o
 	}
 	generation, _ := s.openaiAccountRuntimeBlockGeneration.Load(account.ID)
 	gen, _ := generation.(uint64)
-	return openAIAccountRuntimeBlockSnapshot{until: until, generation: gen, blocked: true}
+	return openAIAccountRuntimeBlockSnapshot{
+		until:      until,
+		generation: gen,
+		blocked:    true,
+		sources:    s.openAIAccountRuntimeBlockSourcesLocked(account.ID),
+	}
 }
 
-// clearOpenAIAccountRuntimeBlockIfUnchanged deletes the local account block only
-// when its generation and deadline are unchanged since the caller inspected it.
+// clearOpenAIAccountRuntimeBlockIfUnchanged removes only an expired persisted
+// contribution when its generation and aggregate deadline are unchanged.
 func (s *OpenAIGatewayService) clearOpenAIAccountRuntimeBlockIfUnchanged(accountID int64, snapshot openAIAccountRuntimeBlockSnapshot) {
-	if s == nil || accountID <= 0 || !snapshot.blocked {
+	if s == nil || accountID <= 0 || !snapshot.blocked || snapshot.until.IsZero() || !snapshot.sources.hasPersisted {
 		return
 	}
 	mu := s.openAIAccountRuntimeBlockLock(accountID)
@@ -544,13 +661,24 @@ func (s *OpenAIGatewayService) clearOpenAIAccountRuntimeBlockIfUnchanged(account
 	if !ok || !isTime || !currentUntil.Equal(snapshot.until) {
 		return
 	}
-	s.openaiAccountRuntimeBlockUntil.Delete(accountID)
-	s.openaiOAuth429RetryStartedAt.Delete(accountID)
+	sources := snapshot.sources
+	sources.hasPersisted = false
+	sources.persistedUntil = time.Time{}
+	sources.expire(time.Now())
+	if until, blocked := sources.effectiveUntil(); blocked {
+		s.openaiAccountRuntimeBlockUntil.Store(accountID, until)
+		s.openaiAccountRuntimeBlockSources.Store(accountID, sources)
+	} else {
+		s.openaiAccountRuntimeBlockUntil.Delete(accountID)
+		s.openaiAccountRuntimeBlockSources.Delete(accountID)
+		s.openaiOAuth429RetryStartedAt.Delete(accountID)
+	}
 	s.openaiAccountRuntimeBlockGeneration.Store(accountID, s.openaiAccountRuntimeBlockSequence.Add(1))
 }
 
 // isOpenAIAccountRequestRuntimeBlocked treats persisted scheduling cooldowns as
-// the source of truth when deciding whether to drop a stale local account block.
+// the source of truth only for explicitly mirrored DB cooldown contributions.
+// Independent request/credential blockers remain active during recovery.
 // Model-scoped transient blocks remain independent.
 func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Account, requestedModel string) bool {
 	if s == nil {
@@ -558,10 +686,12 @@ func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Acc
 	}
 	snapshot := s.peekOpenAIAccountRuntimeBlock(account)
 	if snapshot.blocked {
-		if accountPersistedSchedulingCooldownActive(account) {
+		if snapshot.sources.hasPersisted && accountPersistedSchedulingCooldownActive(account) {
 			return true
 		}
-		s.clearOpenAIAccountRuntimeBlockIfUnchanged(account.ID, snapshot)
+		if snapshot.sources.hasPersisted && !accountPersistedSchedulingCooldownActive(account) {
+			s.clearOpenAIAccountRuntimeBlockIfUnchanged(account.ID, snapshot)
+		}
 	}
 	return s.isOpenAIAccountModelRuntimeBlocked(account, requestedModel)
 }

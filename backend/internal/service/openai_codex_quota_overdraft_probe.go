@@ -748,10 +748,17 @@ func (c *CodexQuotaOverdraftCoordinator) ensureFailedPause(account *Account, sta
 		})
 	}
 	if c.runtimeBlocker != nil {
-		c.runtimeBlocker.BlockAccountScheduling(account, *state.RecoverAt, codexQuotaOverdraftPauseSource)
+		notifyPersistedAccountSchedulingCooldown(c.runtimeBlocker, account, *state.RecoverAt, codexQuotaOverdraftPauseSource)
 	}
 	slog.Info("codex_quota_overdraft_pause_applied", "account_id", account.ID, "until", state.RecoverAt, "cycle_key", state.CycleKey)
 	return true
+}
+
+func stateRecoverAt(state *CodexQuotaOverdraftProbeState) time.Time {
+	if state == nil || state.RecoverAt == nil {
+		return time.Time{}
+	}
+	return state.RecoverAt.UTC()
 }
 
 func (c *CodexQuotaOverdraftCoordinator) clearQuotaPause(accountID int64, state *CodexQuotaOverdraftProbeState) {
@@ -781,7 +788,7 @@ func (c *CodexQuotaOverdraftCoordinator) clearQuotaPause(accountID int64, state 
 		}
 	}
 	if clearedSchedulingState && c.runtimeBlocker != nil {
-		c.runtimeBlocker.ClearAccountSchedulingBlock(accountID)
+		clearPersistedAccountSchedulingCooldown(c.runtimeBlocker, accountID, stateRecoverAt(state))
 	}
 }
 

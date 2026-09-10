@@ -49,6 +49,39 @@ type AccountRuntimeBlocker interface {
 	ClearAccountSchedulingBlock(accountID int64)
 }
 
+type accountPersistedSchedulingCooldownBlocker interface {
+	BlockAccountSchedulingFromPersistedCooldown(account *Account, until time.Time, reason string)
+}
+
+type accountPersistedSchedulingCooldownClearer interface {
+	ClearAccountSchedulingBlockFromPersistedCooldown(accountID int64, expectedUntil time.Time)
+}
+
+// notifyPersistedAccountSchedulingCooldown distinguishes database cooldown
+// mirrors from independent request-owned blockers without changing legacy
+// implementations.
+func notifyPersistedAccountSchedulingCooldown(blocker AccountRuntimeBlocker, account *Account, until time.Time, reason string) {
+	if blocker == nil || account == nil {
+		return
+	}
+	if persisted, ok := blocker.(accountPersistedSchedulingCooldownBlocker); ok {
+		persisted.BlockAccountSchedulingFromPersistedCooldown(account, until, reason)
+		return
+	}
+	blocker.BlockAccountScheduling(account, until, reason)
+}
+
+func clearPersistedAccountSchedulingCooldown(blocker AccountRuntimeBlocker, accountID int64, expectedUntil time.Time) {
+	if blocker == nil || accountID <= 0 {
+		return
+	}
+	if persisted, ok := blocker.(accountPersistedSchedulingCooldownClearer); ok {
+		persisted.ClearAccountSchedulingBlockFromPersistedCooldown(accountID, expectedUntil)
+		return
+	}
+	blocker.ClearAccountSchedulingBlock(accountID)
+}
+
 // SuccessfulTestRecoveryResult 表示测试成功后恢复了哪些运行时状态。
 type SuccessfulTestRecoveryResult struct {
 	ClearedError     bool
