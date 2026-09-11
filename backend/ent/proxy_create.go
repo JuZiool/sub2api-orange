@@ -202,6 +202,21 @@ func (_c *ProxyCreate) AddAccounts(v ...*Account) *ProxyCreate {
 	return _c.AddAccountIDs(ids...)
 }
 
+// AddPoolAccountIDs adds the "pool_accounts" edge to the Account entity by IDs.
+func (_c *ProxyCreate) AddPoolAccountIDs(ids ...int64) *ProxyCreate {
+	_c.mutation.AddPoolAccountIDs(ids...)
+	return _c
+}
+
+// AddPoolAccounts adds the "pool_accounts" edges to the Account entity.
+func (_c *ProxyCreate) AddPoolAccounts(v ...*Account) *ProxyCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddPoolAccountIDs(ids...)
+}
+
 // AddPrimaryProxyIDs adds the "primary_proxies" edge to the Proxy entity by IDs.
 func (_c *ProxyCreate) AddPrimaryProxyIDs(ids ...int64) *ProxyCreate {
 	_c.mutation.AddPrimaryProxyIDs(ids...)
@@ -437,6 +452,22 @@ func (_c *ProxyCreate) createSpec() (*Proxy, *sqlgraph.CreateSpec) {
 			Inverse: true,
 			Table:   proxy.AccountsTable,
 			Columns: []string{proxy.AccountsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.PoolAccountsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   proxy.PoolAccountsTable,
+			Columns: proxy.PoolAccountsPrimaryKey,
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),

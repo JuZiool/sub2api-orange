@@ -262,6 +262,21 @@ func (_u *ProxyUpdate) AddAccounts(v ...*Account) *ProxyUpdate {
 	return _u.AddAccountIDs(ids...)
 }
 
+// AddPoolAccountIDs adds the "pool_accounts" edge to the Account entity by IDs.
+func (_u *ProxyUpdate) AddPoolAccountIDs(ids ...int64) *ProxyUpdate {
+	_u.mutation.AddPoolAccountIDs(ids...)
+	return _u
+}
+
+// AddPoolAccounts adds the "pool_accounts" edges to the Account entity.
+func (_u *ProxyUpdate) AddPoolAccounts(v ...*Account) *ProxyUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddPoolAccountIDs(ids...)
+}
+
 // AddPrimaryProxyIDs adds the "primary_proxies" edge to the Proxy entity by IDs.
 func (_u *ProxyUpdate) AddPrimaryProxyIDs(ids ...int64) *ProxyUpdate {
 	_u.mutation.AddPrimaryProxyIDs(ids...)
@@ -306,6 +321,27 @@ func (_u *ProxyUpdate) RemoveAccounts(v ...*Account) *ProxyUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveAccountIDs(ids...)
+}
+
+// ClearPoolAccounts clears all "pool_accounts" edges to the Account entity.
+func (_u *ProxyUpdate) ClearPoolAccounts() *ProxyUpdate {
+	_u.mutation.ClearPoolAccounts()
+	return _u
+}
+
+// RemovePoolAccountIDs removes the "pool_accounts" edge to Account entities by IDs.
+func (_u *ProxyUpdate) RemovePoolAccountIDs(ids ...int64) *ProxyUpdate {
+	_u.mutation.RemovePoolAccountIDs(ids...)
+	return _u
+}
+
+// RemovePoolAccounts removes "pool_accounts" edges to Account entities.
+func (_u *ProxyUpdate) RemovePoolAccounts(v ...*Account) *ProxyUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemovePoolAccountIDs(ids...)
 }
 
 // ClearPrimaryProxies clears all "primary_proxies" edges to the Proxy entity.
@@ -518,6 +554,51 @@ func (_u *ProxyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Inverse: true,
 			Table:   proxy.AccountsTable,
 			Columns: []string{proxy.AccountsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.PoolAccountsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   proxy.PoolAccountsTable,
+			Columns: proxy.PoolAccountsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedPoolAccountsIDs(); len(nodes) > 0 && !_u.mutation.PoolAccountsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   proxy.PoolAccountsTable,
+			Columns: proxy.PoolAccountsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.PoolAccountsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   proxy.PoolAccountsTable,
+			Columns: proxy.PoolAccountsPrimaryKey,
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
@@ -855,6 +936,21 @@ func (_u *ProxyUpdateOne) AddAccounts(v ...*Account) *ProxyUpdateOne {
 	return _u.AddAccountIDs(ids...)
 }
 
+// AddPoolAccountIDs adds the "pool_accounts" edge to the Account entity by IDs.
+func (_u *ProxyUpdateOne) AddPoolAccountIDs(ids ...int64) *ProxyUpdateOne {
+	_u.mutation.AddPoolAccountIDs(ids...)
+	return _u
+}
+
+// AddPoolAccounts adds the "pool_accounts" edges to the Account entity.
+func (_u *ProxyUpdateOne) AddPoolAccounts(v ...*Account) *ProxyUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddPoolAccountIDs(ids...)
+}
+
 // AddPrimaryProxyIDs adds the "primary_proxies" edge to the Proxy entity by IDs.
 func (_u *ProxyUpdateOne) AddPrimaryProxyIDs(ids ...int64) *ProxyUpdateOne {
 	_u.mutation.AddPrimaryProxyIDs(ids...)
@@ -899,6 +995,27 @@ func (_u *ProxyUpdateOne) RemoveAccounts(v ...*Account) *ProxyUpdateOne {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveAccountIDs(ids...)
+}
+
+// ClearPoolAccounts clears all "pool_accounts" edges to the Account entity.
+func (_u *ProxyUpdateOne) ClearPoolAccounts() *ProxyUpdateOne {
+	_u.mutation.ClearPoolAccounts()
+	return _u
+}
+
+// RemovePoolAccountIDs removes the "pool_accounts" edge to Account entities by IDs.
+func (_u *ProxyUpdateOne) RemovePoolAccountIDs(ids ...int64) *ProxyUpdateOne {
+	_u.mutation.RemovePoolAccountIDs(ids...)
+	return _u
+}
+
+// RemovePoolAccounts removes "pool_accounts" edges to Account entities.
+func (_u *ProxyUpdateOne) RemovePoolAccounts(v ...*Account) *ProxyUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemovePoolAccountIDs(ids...)
 }
 
 // ClearPrimaryProxies clears all "primary_proxies" edges to the Proxy entity.
@@ -1141,6 +1258,51 @@ func (_u *ProxyUpdateOne) sqlSave(ctx context.Context) (_node *Proxy, err error)
 			Inverse: true,
 			Table:   proxy.AccountsTable,
 			Columns: []string{proxy.AccountsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.PoolAccountsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   proxy.PoolAccountsTable,
+			Columns: proxy.PoolAccountsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedPoolAccountsIDs(); len(nodes) > 0 && !_u.mutation.PoolAccountsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   proxy.PoolAccountsTable,
+			Columns: proxy.PoolAccountsPrimaryKey,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.PoolAccountsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2M,
+			Inverse: true,
+			Table:   proxy.PoolAccountsTable,
+			Columns: proxy.PoolAccountsPrimaryKey,
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(account.FieldID, field.TypeInt64),

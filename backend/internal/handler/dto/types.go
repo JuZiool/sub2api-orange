@@ -218,6 +218,7 @@ type Account struct {
 	Extra                   map[string]any                 `json:"extra"`
 	OllamaCloudUsage        *service.OllamaCloudUsageState `json:"ollama_cloud_usage,omitempty"`
 	ProxyID                 *int64                         `json:"proxy_id"`
+	ProxyIDs                []int64                        `json:"proxy_ids,omitempty"`
 	ProxyFallbackOriginID   *int64                         `json:"proxy_fallback_origin_id"`
 	ProxyFallbackOriginName *string                        `json:"proxy_fallback_origin_name,omitempty"`
 	Concurrency             int                            `json:"concurrency"`
@@ -343,6 +344,7 @@ type AccountListItem struct {
 	OllamaCloudUsage  *service.OllamaCloudUsageState `json:"ollama_cloud_usage,omitempty"`
 
 	ProxyID                 *int64     `json:"proxy_id"`
+	ProxyIDs                []int64    `json:"proxy_ids,omitempty"`
 	ProxyFallbackOriginID   *int64     `json:"proxy_fallback_origin_id"`
 	ProxyFallbackOriginName *string    `json:"proxy_fallback_origin_name,omitempty"`
 	Concurrency             int        `json:"concurrency"`

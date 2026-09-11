@@ -55,6 +55,13 @@ type ConcurrencyCache interface {
 	CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error
 }
 
+// accountProxyConcurrencyCache 是多代理池槽位的可选缓存扩展（Orange 特有）。
+// 独立接口以保持轻量测试替身的兼容性。
+type accountProxyConcurrencyCache interface {
+	AcquireAccountProxyPoolSlot(context.Context, int64, []int64, int, string, ...int64) (int64, error)
+	ReleaseAccountProxyPoolSlot(context.Context, int64, int64, string) error
+}
+
 type APIKeyConcurrencyCache interface {
 	TrackAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
 	ReleaseAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
@@ -308,6 +315,7 @@ func (s *ConcurrencyService) SetAccountLoadBatchCacheTTL(ttl time.Duration) {
 
 // AcquireResult represents the result of acquiring a concurrency slot
 type AcquireResult struct {
+	ProxyID     int64 // 仅多代理池请求设置：与槽位原子选出的代理 ID（Orange 特有）
 	Acquired    bool
 	ReleaseFunc func() // Must be called when done (typically via defer)
 }

@@ -1591,7 +1591,7 @@
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
           <ProxyAdBanner />
         </div>
-        <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
+        <ProxySelector v-model="form.proxy_ids" :proxies="proxies" multiple />
       </div>
 
       <UpstreamRequestIdHeaderField
@@ -3776,6 +3776,7 @@ const form = reactive({
   name: '',
   notes: '',
   proxy_id: null as number | null,
+  proxy_ids: [] as number[],
   concurrency: 1,
   load_factor: null as number | null,
   priority: 1,
@@ -3884,6 +3885,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   form.name = newAccount.name
   form.notes = newAccount.notes || ''
   form.proxy_id = newAccount.proxy_id
+  form.proxy_ids = newAccount.proxy_ids?.length ? [...newAccount.proxy_ids] : (newAccount.proxy_id ? [newAccount.proxy_id] : [])
   form.concurrency = newAccount.concurrency
   form.load_factor = newAccount.load_factor ?? null
   form.priority = newAccount.priority
@@ -4897,6 +4899,9 @@ const handleSubmit = async () => {
     if (updatePayload.proxy_id === null) {
       updatePayload.proxy_id = 0
     }
+    // Orange 特有：多代理池 —— proxy_id 取池首元素，proxy_ids 随表单全量提交
+    updatePayload.proxy_id = form.proxy_ids[0] ?? 0
+    updatePayload.proxy_ids = [...form.proxy_ids]
     if (form.expires_at === null) {
       updatePayload.expires_at = 0
     }

@@ -45,6 +45,8 @@ const (
 	FieldExpiryWarnDays = "expiry_warn_days"
 	// EdgeAccounts holds the string denoting the accounts edge name in mutations.
 	EdgeAccounts = "accounts"
+	// EdgePoolAccounts holds the string denoting the pool_accounts edge name in mutations.
+	EdgePoolAccounts = "pool_accounts"
 	// EdgePrimaryProxies holds the string denoting the primary_proxies edge name in mutations.
 	EdgePrimaryProxies = "primary_proxies"
 	// EdgeBackupProxy holds the string denoting the backup_proxy edge name in mutations.
@@ -58,6 +60,11 @@ const (
 	AccountsInverseTable = "accounts"
 	// AccountsColumn is the table column denoting the accounts relation/edge.
 	AccountsColumn = "proxy_id"
+	// PoolAccountsTable is the table that holds the pool_accounts relation/edge. The primary key declared below.
+	PoolAccountsTable = "account_proxies"
+	// PoolAccountsInverseTable is the table name for the Account entity.
+	// It exists in this package in order to avoid circular dependency with the "account" package.
+	PoolAccountsInverseTable = "accounts"
 	// PrimaryProxiesTable is the table that holds the primary_proxies relation/edge.
 	PrimaryProxiesTable = "proxies"
 	// PrimaryProxiesColumn is the table column denoting the primary_proxies relation/edge.
@@ -86,6 +93,12 @@ var Columns = []string{
 	FieldBackupProxyID,
 	FieldExpiryWarnDays,
 }
+
+var (
+	// PoolAccountsPrimaryKey and PoolAccountsColumn2 are the table columns denoting the
+	// primary key for the pool_accounts relation (M2M).
+	PoolAccountsPrimaryKey = []string{"account_id", "proxy_id"}
+)
 
 // ValidColumn reports if the column name is valid (part of the table columns).
 func ValidColumn(column string) bool {
@@ -225,6 +238,20 @@ func ByAccounts(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByPoolAccountsCount orders the results by pool_accounts count.
+func ByPoolAccountsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newPoolAccountsStep(), opts...)
+	}
+}
+
+// ByPoolAccounts orders the results by pool_accounts terms.
+func ByPoolAccounts(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newPoolAccountsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByPrimaryProxiesCount orders the results by primary_proxies count.
 func ByPrimaryProxiesCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -250,6 +277,13 @@ func newAccountsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(AccountsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, true, AccountsTable, AccountsColumn),
+	)
+}
+func newPoolAccountsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(PoolAccountsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, true, PoolAccountsTable, PoolAccountsPrimaryKey...),
 	)
 }
 func newPrimaryProxiesStep() *sqlgraph.Step {

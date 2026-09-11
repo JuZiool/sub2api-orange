@@ -2932,7 +2932,7 @@
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
           <ProxyAdBanner />
         </div>
-        <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
+        <ProxySelector v-model="form.proxy_ids" :proxies="proxies" multiple />
       </div>
 
       <UpstreamRequestIdHeaderField
@@ -3506,7 +3506,7 @@
         :loading="currentOAuthLoading"
         :error="currentOAuthError"
         :show-help="form.platform === 'anthropic'"
-        :show-proxy-warning="form.platform !== 'openai' && form.platform !== 'grok' && !!form.proxy_id"
+        :show-proxy-warning="form.platform !== 'openai' && form.platform !== 'grok' && form.proxy_ids.length > 0"
         :allow-multiple="form.platform === 'anthropic'"
         :show-cookie-option="form.platform === 'anthropic'"
         :show-refresh-token-option="form.platform === 'openai' || form.platform === 'antigravity' || form.platform === 'grok'"
@@ -4628,6 +4628,7 @@ const form = reactive({
   type: 'oauth' as AccountType, // Will be 'oauth', 'setup-token', or 'apikey'
   credentials: {} as Record<string, unknown>,
   proxy_id: null as number | null,
+  proxy_ids: [] as number[],
   concurrency: 10,
   load_factor: null as number | null,
   priority: 1,
@@ -5204,6 +5205,7 @@ const resetForm = () => {
   form.type = 'oauth'
   form.credentials = {}
   form.proxy_id = null
+  form.proxy_ids = []
   form.concurrency = 10
   form.load_factor = null
   form.priority = 1
@@ -5789,22 +5791,26 @@ const goBackToBasicInfo = () => {
   oauthFlowRef.value?.reset()
 }
 
+// OAuth 验证只能使用一个出口；多代理模式使用池中第一个代理认证，
+// 账号保存后实际请求仍按整个代理池调度（Orange 特有）。
+const authProxyID = computed(() => form.proxy_ids[0] ?? null)
+
 const handleGenerateUrl = async () => {
   if (form.platform === 'openai') {
-    await openaiOAuth.generateAuthUrl(form.proxy_id)
+    await openaiOAuth.generateAuthUrl(authProxyID.value)
   } else if (form.platform === 'gemini') {
     await geminiOAuth.generateAuthUrl(
-      form.proxy_id,
+      authProxyID.value,
       oauthFlowRef.value?.projectId,
       geminiOAuthType.value,
       geminiSelectedTier.value
     )
   } else if (form.platform === 'antigravity') {
-    await antigravityOAuth.generateAuthUrl(form.proxy_id)
+    await antigravityOAuth.generateAuthUrl(authProxyID.value)
   } else if (form.platform === 'grok') {
-    await grokOAuth.generateAuthUrl(form.proxy_id)
+    await grokOAuth.generateAuthUrl(authProxyID.value)
   } else {
-    await oauth.generateAuthUrl(addMethod.value, form.proxy_id)
+    await oauth.generateAuthUrl(addMethod.value, authProxyID.value)
   }
 }
 
@@ -5896,7 +5902,7 @@ const createAccountAndFinish = async (
     type,
     credentials,
     extra: finalExtra,
-    proxy_id: form.proxy_id,
+    proxy_id: authProxyID.value, proxy_ids: [...form.proxy_ids],
     concurrency: form.concurrency,
     load_factor: form.load_factor ?? undefined,
     priority: form.priority,
@@ -5935,7 +5941,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
   try {
     for (let i = 0; i < refreshTokens.length; i++) {
       try {
-        const tokenInfo = await grokOAuth.validateRefreshToken(refreshTokens[i], form.proxy_id)
+        const tokenInfo = await grokOAuth.validateRefreshToken(refreshTokens[i], authProxyID.value)
         if (!tokenInfo) {
           failedCount++
           errors.push(`#${i + 1}: ${grokOAuth.error.value || 'Validation failed'}`)
@@ -5963,7 +5969,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
           type: 'oauth',
           credentials,
           extra: withUpstreamRequestIdHeader(extra),
-          proxy_id: form.proxy_id,
+          proxy_id: authProxyID.value, proxy_ids: [...form.proxy_ids],
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,
@@ -6029,7 +6035,7 @@ const handleGrokImportSSO = async (ssoInput: string) => {
       sso_tokens: ssoTokens,
       name: form.name || undefined,
       notes: form.notes || undefined,
-      proxy_id: form.proxy_id,
+      proxy_id: authProxyID.value, proxy_ids: [...form.proxy_ids],
       group_ids: form.group_ids,
       credentials,
       concurrency: form.concurrency,
@@ -6105,7 +6111,7 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
   try {
     for (let i = 0; i < lines.length; i++) {
       try {
-        const tokenInfo = await grokOAuth.authorizePassword(lines[i], form.proxy_id)
+        const tokenInfo = await grokOAuth.authorizePassword(lines[i], authProxyID.value)
         if (!tokenInfo) {
           failedCount++
           errors.push(`#${i + 1}: ${grokOAuth.error.value || 'Authorization failed'}`)
@@ -6140,7 +6146,7 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
           type: 'oauth',
           credentials,
           extra: withUpstreamRequestIdHeader(extra),
-          proxy_id: form.proxy_id,
+          proxy_id: authProxyID.value, proxy_ids: [...form.proxy_ids],
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,
@@ -6203,7 +6209,7 @@ const handleOpenAIExchange = async (authCode: string) => {
       authCode.trim(),
       oauthClient.sessionId.value,
       stateToUse,
-      form.proxy_id
+      authProxyID.value
     )
     if (!tokenInfo) return
 
@@ -6239,7 +6245,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         type: 'oauth',
         credentials,
         extra: withUpstreamRequestIdHeader(extra),
-        proxy_id: form.proxy_id,
+        proxy_id: authProxyID.value, proxy_ids: [...form.proxy_ids],
         concurrency: form.concurrency,
         load_factor: form.load_factor ?? undefined,
         priority: form.priority,
@@ -6344,7 +6350,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       content: trimmed,
       name: form.name,
       notes: form.notes || null,
-      proxy_id: form.proxy_id,
+      proxy_id: authProxyID.value, proxy_ids: [...form.proxy_ids],
       concurrency: form.concurrency,
       load_factor: form.load_factor ?? undefined,
       priority: form.priority,
@@ -6422,7 +6428,7 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
       access_token: trimmed,
       name: form.name,
       notes: form.notes || null,
-      proxy_id: form.proxy_id,
+      proxy_id: authProxyID.value, proxy_ids: [...form.proxy_ids],
       concurrency: form.concurrency,
       load_factor: form.load_factor ?? undefined,
       priority: form.priority,
@@ -6477,7 +6483,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
       try {
         const tokenInfo = await oauthClient.validateRefreshToken(
           refreshTokens[i],
-          form.proxy_id,
+          authProxyID.value,
           clientId
         )
         if (!tokenInfo) {
@@ -6520,7 +6526,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             type: 'oauth',
             credentials,
             extra: withUpstreamRequestIdHeader(extra),
-            proxy_id: form.proxy_id,
+            proxy_id: authProxyID.value, proxy_ids: [...form.proxy_ids],
             concurrency: form.concurrency,
             load_factor: form.load_factor ?? undefined,
             priority: form.priority,
@@ -6596,7 +6602,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
       try {
         const tokenInfo = await antigravityOAuth.validateRefreshToken(
           refreshTokens[i],
-          form.proxy_id
+          authProxyID.value
         )
         if (!tokenInfo) {
           failedCount++
@@ -6619,7 +6625,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           type: 'oauth',
           credentials,
           extra: withUpstreamRequestIdHeader({}),
-          proxy_id: form.proxy_id,
+          proxy_id: authProxyID.value, proxy_ids: [...form.proxy_ids],
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,
@@ -6681,7 +6687,7 @@ const handleGeminiExchange = async (authCode: string) => {
       code: authCode.trim(),
       sessionId: geminiOAuth.sessionId.value,
       state: stateToUse,
-      proxyId: form.proxy_id,
+      proxyId: authProxyID.value,
       oauthType: geminiOAuthType.value,
       tierId: geminiSelectedTier.value
     })
@@ -6718,7 +6724,7 @@ const handleAntigravityExchange = async (authCode: string) => {
       code: authCode.trim(),
       sessionId: antigravityOAuth.sessionId.value,
       state: stateToUse,
-      proxyId: form.proxy_id
+      proxyId: authProxyID.value
     })
 		if (!tokenInfo) return
 
@@ -6765,7 +6771,7 @@ const handleGrokExchange = async (authCode: string) => {
       code: authCode.trim(),
       sessionId: grokOAuth.sessionId.value,
       state: stateToUse,
-      proxyId: form.proxy_id
+      proxyId: authProxyID.value
     })
     if (!tokenInfo) return
 
@@ -6789,7 +6795,7 @@ const handleAnthropicExchange = async (authCode: string) => {
   oauth.error.value = ''
 
   try {
-    const proxyConfig = form.proxy_id ? { proxy_id: form.proxy_id } : {}
+    const proxyConfig = authProxyID.value ? { proxy_id: authProxyID.value } : {}
     const endpoint =
       addMethod.value === 'oauth'
         ? '/admin/accounts/exchange-code'
@@ -6893,7 +6899,7 @@ const handleCookieAuth = async (sessionKey: string) => {
   oauth.error.value = ''
 
   try {
-    const proxyConfig = form.proxy_id ? { proxy_id: form.proxy_id } : {}
+    const proxyConfig = authProxyID.value ? { proxy_id: authProxyID.value } : {}
     const keys = oauth.parseSessionKeys(sessionKey)
 
     if (keys.length === 0) {
@@ -7000,7 +7006,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,
           extra: withUpstreamRequestIdHeader(extra),
-          proxy_id: form.proxy_id,
+          proxy_id: authProxyID.value, proxy_ids: [...form.proxy_ids],
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,

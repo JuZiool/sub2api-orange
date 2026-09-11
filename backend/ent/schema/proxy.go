@@ -73,6 +73,9 @@ func (Proxy) Edges() []ent.Edge {
 		// accounts: 使用此代理的账户（反向边）
 		edge.From("accounts", Account.Type).
 			Ref("proxy"),
+		// pool_accounts: 多代理池账号（Orange 特有，account_proxies 中间表反向边）
+		edge.From("pool_accounts", Account.Type).
+			Ref("proxies"),
 		// A backup proxy may be shared by multiple primary proxies.
 		edge.From("primary_proxies", Proxy.Type).
 			Ref("backup_proxy"),

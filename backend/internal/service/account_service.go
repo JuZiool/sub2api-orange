@@ -158,6 +158,7 @@ type AdminAccountRepository interface {
 type AccountBulkUpdate struct {
 	Name           *string
 	ProxyID        *int64
+	ProxyIDs       *[]int64 // Orange 特有：多代理池；nil=不改动，空/单元素=清除池
 	Concurrency    *int
 	Priority       *int
 	RateMultiplier *float64

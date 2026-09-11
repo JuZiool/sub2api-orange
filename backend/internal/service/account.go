@@ -29,6 +29,10 @@ type Account struct {
 	Credentials             map[string]any
 	Extra                   map[string]any
 	ProxyID                 *int64
+	ProxyIDs                []int64 // 有序多代理池；空表示沿用旧单代理 proxy_id（Orange 特有）
+	Proxies                 []*Proxy
+	ProxyPoolChanged        bool  `json:"-"` // 管理端显式编辑池；与账号同一事务落库
+	SelectedProxyID         int64 `json:"-"` // 请求级路由结果，绝不写入调度快照
 	ProxyFallbackOriginID   *int64
 	ProxyFallbackOriginName *string // 仅展示用
 	Concurrency             int

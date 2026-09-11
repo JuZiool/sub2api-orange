@@ -1053,6 +1053,7 @@ export default {
       expired: '已过期',
       proxy: '代理',
       noProxy: '无代理',
+      proxyPoolCount: '已选 {count} 个代理',
       concurrency: '并发数',
       loadFactor: '负载因子',
       loadFactorHint: '提高负载因子可以提高对账号的调度频率',

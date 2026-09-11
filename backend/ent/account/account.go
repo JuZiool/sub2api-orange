@@ -82,6 +82,8 @@ const (
 	EdgeGroups = "groups"
 	// EdgeProxy holds the string denoting the proxy edge name in mutations.
 	EdgeProxy = "proxy"
+	// EdgeProxies holds the string denoting the proxies edge name in mutations.
+	EdgeProxies = "proxies"
 	// EdgeParent holds the string denoting the parent edge name in mutations.
 	EdgeParent = "parent"
 	// EdgeChildren holds the string denoting the children edge name in mutations.
@@ -90,6 +92,8 @@ const (
 	EdgeUsageLogs = "usage_logs"
 	// EdgeAccountGroups holds the string denoting the account_groups edge name in mutations.
 	EdgeAccountGroups = "account_groups"
+	// EdgeAccountProxies holds the string denoting the account_proxies edge name in mutations.
+	EdgeAccountProxies = "account_proxies"
 	// Table holds the table name of the account in the database.
 	Table = "accounts"
 	// GroupsTable is the table that holds the groups relation/edge. The primary key declared below.
@@ -104,6 +108,11 @@ const (
 	ProxyInverseTable = "proxies"
 	// ProxyColumn is the table column denoting the proxy relation/edge.
 	ProxyColumn = "proxy_id"
+	// ProxiesTable is the table that holds the proxies relation/edge. The primary key declared below.
+	ProxiesTable = "account_proxies"
+	// ProxiesInverseTable is the table name for the Proxy entity.
+	// It exists in this package in order to avoid circular dependency with the "proxy" package.
+	ProxiesInverseTable = "proxies"
 	// ParentTable is the table that holds the parent relation/edge.
 	ParentTable = "accounts"
 	// ParentColumn is the table column denoting the parent relation/edge.
@@ -126,6 +135,13 @@ const (
 	AccountGroupsInverseTable = "account_groups"
 	// AccountGroupsColumn is the table column denoting the account_groups relation/edge.
 	AccountGroupsColumn = "account_id"
+	// AccountProxiesTable is the table that holds the account_proxies relation/edge.
+	AccountProxiesTable = "account_proxies"
+	// AccountProxiesInverseTable is the table name for the AccountProxy entity.
+	// It exists in this package in order to avoid circular dependency with the "accountproxy" package.
+	AccountProxiesInverseTable = "account_proxies"
+	// AccountProxiesColumn is the table column denoting the account_proxies relation/edge.
+	AccountProxiesColumn = "account_id"
 )
 
 // Columns holds all SQL columns for account fields.
@@ -168,6 +184,9 @@ var (
 	// GroupsPrimaryKey and GroupsColumn2 are the table columns denoting the
 	// primary key for the groups relation (M2M).
 	GroupsPrimaryKey = []string{"account_id", "group_id"}
+	// ProxiesPrimaryKey and ProxiesColumn2 are the table columns denoting the
+	// primary key for the proxies relation (M2M).
+	ProxiesPrimaryKey = []string{"account_id", "proxy_id"}
 )
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -422,6 +441,20 @@ func ByProxyField(field string, opts ...sql.OrderTermOption) OrderOption {
 	}
 }
 
+// ByProxiesCount orders the results by proxies count.
+func ByProxiesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newProxiesStep(), opts...)
+	}
+}
+
+// ByProxies orders the results by proxies terms.
+func ByProxies(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newProxiesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByParentField orders the results by parent field.
 func ByParentField(field string, opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -470,6 +503,20 @@ func ByAccountGroups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newAccountGroupsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByAccountProxiesCount orders the results by account_proxies count.
+func ByAccountProxiesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newAccountProxiesStep(), opts...)
+	}
+}
+
+// ByAccountProxies orders the results by account_proxies terms.
+func ByAccountProxies(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newAccountProxiesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newGroupsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -482,6 +529,13 @@ func newProxyStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(ProxyInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, false, ProxyTable, ProxyColumn),
+	)
+}
+func newProxiesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ProxiesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2M, false, ProxiesTable, ProxiesPrimaryKey...),
 	)
 }
 func newParentStep() *sqlgraph.Step {
@@ -510,5 +564,12 @@ func newAccountGroupsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(AccountGroupsInverseTable, AccountGroupsColumn),
 		sqlgraph.Edge(sqlgraph.O2M, true, AccountGroupsTable, AccountGroupsColumn),
+	)
+}
+func newAccountProxiesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(AccountProxiesInverseTable, AccountProxiesColumn),
+		sqlgraph.Edge(sqlgraph.O2M, true, AccountProxiesTable, AccountProxiesColumn),
 	)
 }

@@ -217,6 +217,10 @@ func (Account) Edges() []ent.Edge {
 		edge.To("proxy", Proxy.Type).
 			Field("proxy_id").
 			Unique(),
+		// proxies: 账号的有序多代理池（Orange 特有，经 account_proxies 中间表；
+		// 仅多代理账号写入，单代理账号继续走 proxy_id）
+		edge.To("proxies", Proxy.Type).
+			Through("account_proxies", AccountProxy.Type),
 		// children/parent: linked spark shadow relationship.
 		// parent_account_id is nullable, and the active one-shadow-per-parent rule
 		// is enforced by the partial unique index in migration 154a.

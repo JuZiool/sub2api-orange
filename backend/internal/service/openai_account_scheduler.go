@@ -1176,11 +1176,11 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 			continue
 		}
 		if candidate.loadKnown && candidate.account.Concurrency > 0 &&
-			candidate.loadInfo.CurrentConcurrency >= candidate.account.Concurrency {
+			candidate.loadInfo.CurrentConcurrency >= candidate.account.TotalConcurrency() {
 			continue
 		}
 
-		result, attempted, acquireErr := s.tryAcquireOpenAIAccountSlot(ctx, candidate.account.ID, candidate.account.Concurrency, budget)
+		result, attempted, acquireErr := s.tryAcquireOpenAIAccountSlot(ctx, candidate.account.ID, candidate.account.Concurrency, budget, candidate.account)
 		if !attempted {
 			break
 		}
@@ -1213,7 +1213,7 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAISelectionOrderWithBudget
 
 		if fresh.Concurrency != candidate.account.Concurrency {
 			release(result)
-			result, attempted, acquireErr = s.tryAcquireOpenAIAccountSlot(ctx, fresh.ID, fresh.Concurrency, budget)
+			result, attempted, acquireErr = s.tryAcquireOpenAIAccountSlot(ctx, fresh.ID, fresh.Concurrency, budget, fresh)
 			if !attempted {
 				continue
 			}
@@ -1241,9 +1241,17 @@ func (s *defaultOpenAIAccountScheduler) tryAcquireOpenAIAccountSlot(
 	accountID int64,
 	maxConcurrency int,
 	budget *openAISelectionProbeBudget,
+	accounts ...*Account,
 ) (*AcquireResult, bool, error) {
 	if s.service.concurrencyService != nil && maxConcurrency > 0 && !budget.recordAcquire(accountID) {
 		return nil, false, nil
+	}
+	if len(accounts) > 0 && len(accounts[0].ProxyIDs) > 1 {
+		if s.service.concurrencyService == nil {
+			return nil, true, fmt.Errorf("proxy pool concurrency unavailable")
+		}
+		result, err := s.service.concurrencyService.AcquireAccountRoute(ctx, &accounts[0], maxConcurrency)
+		return result, true, err
 	}
 	result, err := s.service.tryAcquireAccountSlot(ctx, accountID, maxConcurrency)
 	return result, true, err
@@ -1469,7 +1477,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		filtered = append(filtered, account)
 		loadReq = append(loadReq, AccountWithConcurrency{
 			ID:             account.ID,
-			MaxConcurrency: account.EffectiveLoadFactor(),
+			MaxConcurrency: account.TotalLoadFactor(),
 		})
 	}
 	if len(filtered) == 0 {
@@ -1649,7 +1657,7 @@ func buildOpenAIAccountLoadRequest(accounts []*Account) []AccountWithConcurrency
 		}
 		loadReq = append(loadReq, AccountWithConcurrency{
 			ID:             account.ID,
-			MaxConcurrency: account.EffectiveLoadFactor(),
+			MaxConcurrency: account.TotalLoadFactor(),
 		})
 	}
 	return loadReq
@@ -1692,7 +1700,7 @@ func (s *defaultOpenAIAccountScheduler) finishLoadBalanceSelectionFallback(
 			}
 			if budget != nil && budget.limited {
 				knownFull := candidate.loadKnown && candidate.account.Concurrency > 0 &&
-					candidate.loadInfo.CurrentConcurrency >= candidate.account.Concurrency
+					candidate.loadInfo.CurrentConcurrency >= candidate.account.TotalConcurrency()
 				if budget.wasAttempted(candidate.account.ID) != wantAttempted || knownFull != wantKnownFull {
 					continue
 				}

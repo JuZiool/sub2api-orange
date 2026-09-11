@@ -259,6 +259,45 @@ var (
 			},
 		},
 	}
+	// AccountProxiesColumns holds the columns for the "account_proxies" table.
+	AccountProxiesColumns = []*schema.Column{
+		{Name: "position", Type: field.TypeInt, Default: 0},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "account_id", Type: field.TypeInt64},
+		{Name: "proxy_id", Type: field.TypeInt64},
+	}
+	// AccountProxiesTable holds the schema information for the "account_proxies" table.
+	AccountProxiesTable = &schema.Table{
+		Name:       "account_proxies",
+		Columns:    AccountProxiesColumns,
+		PrimaryKey: []*schema.Column{AccountProxiesColumns[2], AccountProxiesColumns[3]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "account_proxies_accounts_account",
+				Columns:    []*schema.Column{AccountProxiesColumns[2]},
+				RefColumns: []*schema.Column{AccountsColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+			{
+				Symbol:     "account_proxies_proxies_proxy",
+				Columns:    []*schema.Column{AccountProxiesColumns[3]},
+				RefColumns: []*schema.Column{ProxiesColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "idx_account_proxies_proxy_id",
+				Unique:  false,
+				Columns: []*schema.Column{AccountProxiesColumns[3]},
+			},
+			{
+				Name:    "idx_account_proxies_account_position",
+				Unique:  false,
+				Columns: []*schema.Column{AccountProxiesColumns[2], AccountProxiesColumns[0]},
+			},
+		},
+	}
 	// AnnouncementsColumns holds the columns for the "announcements" table.
 	AnnouncementsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2092,6 +2131,7 @@ var (
 		APIKeysTable,
 		AccountsTable,
 		AccountGroupsTable,
+		AccountProxiesTable,
 		AnnouncementsTable,
 		AnnouncementReadsTable,
 		AuthIdentitiesTable,
@@ -2146,6 +2186,11 @@ func init() {
 	AccountGroupsTable.ForeignKeys[1].RefTable = GroupsTable
 	AccountGroupsTable.Annotation = &entsql.Annotation{
 		Table: "account_groups",
+	}
+	AccountProxiesTable.ForeignKeys[0].RefTable = AccountsTable
+	AccountProxiesTable.ForeignKeys[1].RefTable = ProxiesTable
+	AccountProxiesTable.Annotation = &entsql.Annotation{
+		Table: "account_proxies",
 	}
 	AnnouncementsTable.Annotation = &entsql.Annotation{
 		Table: "announcements",

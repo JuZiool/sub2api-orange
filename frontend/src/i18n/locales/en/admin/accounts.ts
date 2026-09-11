@@ -981,6 +981,7 @@ export default {
       expired: 'Expired',
       proxy: 'Proxy',
       noProxy: 'No Proxy',
+      proxyPoolCount: '{count} proxies selected',
       concurrency: 'Concurrency',
       loadFactor: 'Load Factor',
       loadFactorHint: 'Higher load factor increases scheduling frequency',

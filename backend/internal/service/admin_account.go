@@ -306,6 +306,7 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 		Credentials:           credentials,
 		Extra:                 extra,
 		ProxyID:               cloneAccountValuePointer(proxyID),
+		ProxyIDs:              append([]int64(nil), source.ProxyIDs...),
 		Concurrency:           source.Concurrency,
 		Priority:              source.Priority,
 		RateMultiplier:        cloneAccountValuePointer(source.RateMultiplier),
@@ -424,6 +425,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Credentials: input.Credentials,
 		Extra:       accountExtra,
 		ProxyID:     input.ProxyID,
+		ProxyIDs:    multiProxyIDs(input.ProxyIDs),
 		Concurrency: normalizeAccountConcurrency(input.Platform, input.Type, input.Concurrency),
 		Priority:    input.Priority,
 		Status:      StatusActive,
@@ -471,6 +473,17 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 }
 
 func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error) {
+	if input.ProxyIDs != nil {
+		ids, err := s.validateAccountProxyIDs(ctx, input.ProxyIDs)
+		if err != nil {
+			return nil, err
+		}
+		input.ProxyIDs = ids
+		input.ProxyID = nil
+		if len(ids) > 0 {
+			input.ProxyID = &ids[0]
+		}
+	}
 	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
 	if err != nil {
 		return nil, err
@@ -739,6 +752,23 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	// 影子代理恒继承母账号(由 propagateProxyToShadows 同步),不接受独立编辑——外审 B/P1;
 	// 否则要等母账号下次改 proxy 才被覆盖,期间影子会出现"有时继承、有时独立"的漂移。
+	// Orange 特有：proxy_ids 多代理池。提供时主代理写为池首元素；显式改旧 proxy_id 则清池。
+	if input.ProxyIDs != nil && !account.IsCredentialShadow() {
+		ids, err := s.validateAccountProxyIDs(ctx, *input.ProxyIDs)
+		if err != nil {
+			return nil, err
+		}
+		account.ProxyIDs = multiProxyIDs(ids)
+		account.ProxyPoolChanged = true
+		primary := int64(0)
+		if len(ids) > 0 {
+			primary = ids[0]
+		}
+		input.ProxyID = &primary
+	} else if input.ProxyID != nil && !account.IsCredentialShadow() {
+		account.ProxyIDs = nil
+		account.ProxyPoolChanged = true
+	}
 	if input.ProxyID != nil && !account.IsCredentialShadow() {
 		// 0 表示清除代理（前端发送 0 而不是 null 来表达清除意图）
 		if *input.ProxyID == 0 {
@@ -1005,6 +1035,20 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		}
 	}
 
+	// Orange 特有：批量多代理池校验；池首元素同步为 proxy_id。
+	if input.ProxyIDs != nil {
+		ids, err := s.validateAccountProxyIDs(ctx, *input.ProxyIDs)
+		if err != nil {
+			return nil, err
+		}
+		input.ProxyIDs = &ids
+		first := int64(0)
+		if len(ids) > 0 {
+			first = ids[0]
+		}
+		input.ProxyID = &first
+	}
+
 	// 影子账号 proxy 恒继承母账号(与单账号 UpdateAccount 守卫对齐——外审第4轮 P1):批量携带 proxy
 	// 时目标不得含影子,否则影子会获得独立 proxy、破坏继承不变量(网关按所选影子自身 proxy 出站,
 	// 要等母账号下次改 proxy 才覆盖→漂移)。含影子即整体拒绝,提示从选择中剔除影子。
@@ -1100,6 +1144,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	}
 	if input.ProxyID != nil {
 		repoUpdates.ProxyID = input.ProxyID
+	}
+	if input.ProxyIDs != nil {
+		repoUpdates.ProxyIDs = input.ProxyIDs
 	}
 	if input.Concurrency != nil {
 		repoUpdates.Concurrency = input.Concurrency
@@ -1406,6 +1453,7 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 		ParentAccountID: &parentID,
 		QuotaDimension:  QuotaDimensionSpark,
 		ProxyID:         parent.ProxyID,
+		ProxyIDs:        append([]int64(nil), parent.ProxyIDs...),
 		Priority:        priority,
 		Concurrency:     concurrency,
 		Schedulable:     true,
@@ -1458,7 +1506,19 @@ func propagateAccountProxyToShadows(ctx context.Context, repo AccountRepository,
 	if err != nil {
 		return fmt.Errorf("list spark shadows for proxy propagation: %w", err)
 	}
+	var pool []int64
+	if len(shadows) > 0 {
+		parent, err := repo.GetByID(ctx, parentID)
+		if err != nil {
+			return err
+		}
+		if parent != nil {
+			pool = parent.ProxyIDs
+		}
+	}
 	for _, shadow := range shadows {
+		shadow.ProxyIDs = append([]int64(nil), pool...)
+		shadow.ProxyPoolChanged = true
 		shadow.ProxyID = proxyID
 		if err := repo.Update(ctx, shadow); err != nil {
 			return fmt.Errorf("update spark shadow %d proxy: %w", shadow.ID, err)

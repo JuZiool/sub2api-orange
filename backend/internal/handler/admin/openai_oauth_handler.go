@@ -170,6 +170,7 @@ type OpenAIRefreshTokenRequest struct {
 }
 
 type OpenAICodexPATCreateRequest struct {
+	ProxyIDs                []int64        `json:"proxy_ids"`
 	AccessToken             string         `json:"access_token" binding:"required"`
 	Name                    string         `json:"name"`
 	Notes                   *string        `json:"notes"`
@@ -437,6 +438,7 @@ func (h *OpenAIOAuthHandler) CreateAccountFromCodexPAT(c *gin.Context) {
 		Credentials:           credentials,
 		Extra:                 extra,
 		ProxyID:               req.ProxyID,
+		ProxyIDs:              req.ProxyIDs,
 		Concurrency:           concurrency,
 		Priority:              priority,
 		RateMultiplier:        req.RateMultiplier,
