@@ -1382,10 +1382,22 @@ const inAutoRefreshSilentWindow = () => {
   return Date.now() < autoRefreshSilentUntil.value
 }
 
+const buildProxyPoolRefreshKey = (account: Pick<Account, 'proxy_pool'>): string => {
+  const pool = account.proxy_pool
+  if (!Array.isArray(pool)) return ''
+  return pool.map(proxy => [
+    proxy.proxy_id,
+    proxy.proxy_name,
+    proxy.current_concurrency,
+    proxy.max_concurrency
+  ].map(value => String(value ?? '')).join(':')).join('|')
+}
+
 const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
   return (
     current.updated_at !== next.updated_at ||
     current.current_concurrency !== next.current_concurrency ||
+    buildProxyPoolRefreshKey(current) !== buildProxyPoolRefreshKey(next) ||
     current.current_window_cost !== next.current_window_cost ||
     current.active_sessions !== next.active_sessions ||
     current.schedulable !== next.schedulable ||
@@ -2225,6 +2237,7 @@ const accountMatchesCurrentFilters = (account: Account) => {
 const mergeRuntimeFields = (oldAccount: Account, updatedAccount: Account): Account => ({
   ...updatedAccount,
   current_concurrency: updatedAccount.current_concurrency ?? oldAccount.current_concurrency,
+  proxy_pool: updatedAccount.proxy_pool ?? oldAccount.proxy_pool,
   current_window_cost: updatedAccount.current_window_cost ?? oldAccount.current_window_cost,
   active_sessions: updatedAccount.active_sessions ?? oldAccount.active_sessions
 })

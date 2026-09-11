@@ -3,6 +3,7 @@ package admin
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,33 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+type accountListProxyConcurrencyCache struct {
+	service.ConcurrencyCache
+	current map[int64]int
+	proxy   map[int64]map[int64]int
+}
+
+func (c *accountListProxyConcurrencyCache) GetAccountConcurrencyBatch(_ context.Context, accountIDs []int64) (map[int64]int, error) {
+	result := make(map[int64]int, len(accountIDs))
+	for _, id := range accountIDs {
+		result[id] = c.current[id]
+	}
+	return result, nil
+}
+
+func (c *accountListProxyConcurrencyCache) GetAccountProxyConcurrencyBatch(_ context.Context, pools map[int64][]int64) (map[int64]map[int64]int, error) {
+	result := make(map[int64]map[int64]int, len(pools))
+	for accountID, proxyIDs := range pools {
+		result[accountID] = make(map[int64]int, len(proxyIDs))
+		for _, proxyID := range proxyIDs {
+			result[accountID][proxyID] = c.proxy[accountID][proxyID]
+		}
+	}
+	return result, nil
+}
+
+var _ service.ConcurrencyCache = (*accountListProxyConcurrencyCache)(nil)
 
 func TestAccountHandlerListLiteUsesCompactDTOAndETag(t *testing.T) {
 	router, adminSvc := setupAccountListRouter()
@@ -118,6 +146,69 @@ func setupAccountListRouter() (*gin.Engine, *stubAdminService) {
 	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router.GET("/api/v1/admin/accounts", handler.List)
 	return router, adminSvc
+}
+
+func setupAccountListRouterWithConcurrency(cache service.ConcurrencyCache) (*gin.Engine, *stubAdminService) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	adminSvc := newStubAdminService()
+	concurrency := service.NewConcurrencyService(cache)
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, concurrency, nil, nil, nil, nil)
+	router.GET("/api/v1/admin/accounts", handler.List)
+	return router, adminSvc
+}
+
+func TestAccountHandlerListLiteIncludesProxyPoolUsage(t *testing.T) {
+	cache := &accountListProxyConcurrencyCache{
+		current: map[int64]int{501: 19},
+		proxy:   map[int64]map[int64]int{501: {11: 10, 12: 9}},
+	}
+	router, adminSvc := setupAccountListRouterWithConcurrency(cache)
+	now := time.Now().UTC()
+	adminSvc.accounts = []service.Account{{
+		ID: 501, Name: "proxy-pool-account", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Status: service.StatusActive, Schedulable: true, Concurrency: 10,
+		ProxyIDs: []int64{11, 12},
+		Proxies: []*service.Proxy{
+			{ID: 11, Name: "proxy-a", Status: service.StatusActive},
+			{ID: 12, Name: "proxy-b", Status: service.StatusActive},
+		},
+		CreatedAt: now, UpdatedAt: now,
+	}}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/accounts?page=1&page_size=20&lite=1", nil)
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var payload struct {
+		Data struct {
+			Items []struct {
+				ID                 int64 `json:"id"`
+				CurrentConcurrency int   `json:"current_concurrency"`
+				ProxyPool          []struct {
+					ProxyID            int64  `json:"proxy_id"`
+					ProxyName          string `json:"proxy_name"`
+					CurrentConcurrency int    `json:"current_concurrency"`
+					MaxConcurrency     int    `json:"max_concurrency"`
+				} `json:"proxy_pool"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+	require.Len(t, payload.Data.Items, 1)
+	item := payload.Data.Items[0]
+	require.Equal(t, int64(501), item.ID)
+	require.Equal(t, 19, item.CurrentConcurrency)
+	require.Equal(t, []struct {
+		ProxyID            int64  `json:"proxy_id"`
+		ProxyName          string `json:"proxy_name"`
+		CurrentConcurrency int    `json:"current_concurrency"`
+		MaxConcurrency     int    `json:"max_concurrency"`
+	}{
+		{ProxyID: 11, ProxyName: "proxy-a", CurrentConcurrency: 10, MaxConcurrency: 10},
+		{ProxyID: 12, ProxyName: "proxy-b", CurrentConcurrency: 9, MaxConcurrency: 10},
+	}, item.ProxyPool)
 }
 
 func TestAccountHandlerListIncludesCreatedAt(t *testing.T) {

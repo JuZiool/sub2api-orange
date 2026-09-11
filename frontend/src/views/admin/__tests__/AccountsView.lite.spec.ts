@@ -4,6 +4,8 @@ import { defineComponent } from 'vue'
 
 import AccountsView from '../AccountsView.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
+import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
+import CapacityBadge from '@/components/account/CapacityBadge.vue'
 
 const {
   listAccounts,
@@ -61,6 +63,7 @@ const DataTableStub = defineComponent({
   template: `
     <div>
       <div v-for="row in data" :key="row.id">
+        <slot name="cell-capacity" :row="row" />
         <slot name="cell-groups" :row="row" />
         <slot name="cell-actions" :row="row" />
       </div>
@@ -114,7 +117,7 @@ function mountView() {
         EditAccountModal: EditAccountModalStub,
         BulkEditAccountModal: true,
         PlatformTypeBadge: true,
-        AccountCapacityCell: true,
+        AccountCapacityCell,
         AccountStatusIndicator: true,
         AccountTodayStatsCell: true,
         AccountGroupsCell: AccountGroupsCellStub,
@@ -206,6 +209,49 @@ describe('admin AccountsView lite account list', () => {
       expect.objectContaining({ etag: null })
     )
     wrapper.unmount()
+  })
+
+  it('refreshes proxy distribution even when account total stays unchanged', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+    const poolRow = {
+      ...listRow,
+      current_concurrency: 19,
+      proxy_ids: [91, 92],
+      proxy_pool: [
+        { proxy_id: 91, proxy_name: 'proxy-a', current_concurrency: 10, max_concurrency: 10 },
+        { proxy_id: 92, proxy_name: 'proxy-b', current_concurrency: 9, max_concurrency: 10 }
+      ]
+    }
+    listAccounts.mockResolvedValueOnce({ items: [poolRow], total: 1, page: 1, page_size: 20, pages: 1 })
+    listWithEtag.mockResolvedValueOnce({
+      notModified: false,
+      etag: 'updated-proxy-pool',
+      data: {
+        items: [{
+          ...poolRow,
+          proxy_pool: [
+            { ...poolRow.proxy_pool[0], current_concurrency: 9 },
+            { ...poolRow.proxy_pool[1], current_concurrency: 10 }
+          ]
+        }],
+        total: 1, page: 1, page_size: 20, pages: 1
+      }
+    })
+
+    const wrapper = mountView()
+    try {
+      await flushPromises()
+      expect(wrapper.findAllComponents(CapacityBadge).map(badge => badge.props('current'))).toEqual([19, 10, 9])
+
+      await vi.advanceTimersByTimeAsync(6000)
+      await flushPromises()
+
+      expect(wrapper.findAllComponents(CapacityBadge).map(badge => badge.props('current'))).toEqual([19, 9, 10])
+    } finally {
+      wrapper.unmount()
+    }
   })
 
   it('loads the full account by id before opening edit, test, and stats actions', async () => {

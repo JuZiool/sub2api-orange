@@ -224,6 +224,7 @@ export default {
       subscriptionExpires: '到期',
       // 容量状态提示
       capacity: {
+        proxyPoolTotal: '代理池总并发（{count} 个代理）',
         windowCost: {
           blocked: '5h窗口费用超限，账号暂停调度',
           stickyOnly: '5h窗口费用达阈值，仅允许粘性会话',
