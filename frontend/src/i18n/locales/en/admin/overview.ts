@@ -923,7 +923,7 @@ export default {
         modelPlaceholder: 'Exact model name',
         multiplier: 'Multiplier',
         remove: 'Remove rule',
-        displayLabel: 'Model rates',
+        displayLabel: 'Model rates: {models}',
         validation: 'Each model must be unique, exact (no wildcards), and have a multiplier greater than 0 and at most 1000.',
       },
       exclusiveHint: 'Exclusive group, manually assign to specific users',

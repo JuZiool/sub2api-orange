@@ -905,7 +905,7 @@ export default {
         modelPlaceholder: '请输入精确模型名',
         multiplier: '倍率',
         remove: '删除规则',
-        displayLabel: '模型倍率',
+        displayLabel: '特殊倍率：{models}',
         validation: '模型名必须唯一且不得包含通配符，倍率必须大于 0 且不超过 1000。',
       },
       platforms: {

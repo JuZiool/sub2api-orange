@@ -1415,7 +1415,9 @@ const groupOptions = computed(() =>
     description: [
       group.description,
       (group.model_rate_multipliers ?? []).length > 0
-        ? `${t('admin.groups.modelRateMultipliers.displayLabel')}: ${(group.model_rate_multipliers ?? []).map((rule) => `${rule.model}: ${rule.multiplier}x`).join('；')}`
+        ? t('admin.groups.modelRateMultipliers.displayLabel', {
+            models: (group.model_rate_multipliers ?? []).map((rule) => `${rule.model} ${rule.multiplier}x`).join('；'),
+          })
         : '',
     ].filter(Boolean).join('\n'),
     rate: group.rate_multiplier,

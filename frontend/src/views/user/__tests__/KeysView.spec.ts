@@ -53,6 +53,7 @@ const messages: Record<string, string> = {
   'keys.status.inactive': 'Inactive',
   'keys.status.quota_exhausted': 'Quota exhausted',
   'keys.usage': 'Usage',
+  'admin.groups.modelRateMultipliers.displayLabel': '特殊倍率：{models}',
 }
 
 vi.mock('@/api', () => ({
@@ -100,7 +101,14 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => messages[key] ?? key,
+      t: (key: string, params?: Record<string, unknown>) => {
+        const template = messages[key] ?? key
+        if (!params) return template
+        return Object.entries(params).reduce(
+          (acc, [name, value]) => acc.replaceAll(`{${name}}`, String(value)),
+          template
+        )
+      },
     }),
   }
 })
@@ -283,6 +291,35 @@ describe('user KeysView column settings', () => {
     getAvailableGroups.mockResolvedValue([])
     getUserGroupRates.mockResolvedValue({})
     isCurrentStep.mockReturnValue(false)
+  })
+
+  it('formats model-specific multipliers without a colon between model and rate', async () => {
+    getAvailableGroups.mockResolvedValue([
+      {
+        id: 7,
+        name: '王者荣耀',
+        description: null,
+        rate_multiplier: 1,
+        model_rate_multipliers: [
+          { model: 'gpt-5.6-luna', multiplier: 0.4 },
+          { model: 'gpt-6-astra', multiplier: 0.2 },
+        ],
+        peak_rate_enabled: false,
+        peak_start: null,
+        peak_end: null,
+        peak_rate_multiplier: null,
+        subscription_type: 'standard',
+        platform: 'openai',
+      },
+    ])
+
+    const wrapper = await mountView()
+    const options = (wrapper.vm as unknown as {
+      groupOptions: Array<{ description: string }>
+    }).groupOptions
+
+    expect(options[0].description).toContain('特殊倍率：gpt-5.6-luna 0.4x；gpt-6-astra 0.2x')
+    expect(options[0].description).not.toContain('gpt-5.6-luna: 0.4x')
   })
 
   it('uses the default API key columns with low-frequency columns hidden', async () => {
