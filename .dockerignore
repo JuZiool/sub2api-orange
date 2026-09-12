@@ -36,6 +36,9 @@ frontend/node_modules/
 node_modules/
 # 本地 pnpm 11 的构建脚本批准文件（无 packages 字段，会让镜像内 pnpm 9 报错）
 frontend/pnpm-workspace.yaml
+# 本地残留的前端构建产物（dockerignore 的 dist/ 只匹配根目录，匹配不到这里；
+# 留着会被 COPY backend/ 带入镜像，与镜像内新构建的 dist 新旧混杂）
+backend/internal/web/dist/
 
 # Go build cache (will be built in container)
 backend/vendor/
