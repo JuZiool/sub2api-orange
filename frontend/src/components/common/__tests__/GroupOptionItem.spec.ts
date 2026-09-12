@@ -16,7 +16,7 @@ vi.mock('@/stores/app', () => ({
 }))
 
 describe('GroupOptionItem description layout', () => {
-  it('applies multiline and overflow-safe text styles', () => {
+  it('applies multiline and overflow-safe text styles without clamping', () => {
     const description = 'First section\nvery-long-unbroken-description-value-that-must-not-overflow'
     const wrapper = mount(GroupOptionItem, {
       props: {
@@ -38,7 +38,8 @@ describe('GroupOptionItem description layout', () => {
     expect(descriptionElement).toBeDefined()
     expect(descriptionElement?.classes()).toContain('whitespace-pre-line')
     expect(descriptionElement?.classes()).toContain('[overflow-wrap:anywhere]')
-    expect(descriptionElement?.classes()).toContain('line-clamp-3')
-    expect(wrapper.find('[title]').attributes('title')).toBe(description)
+    // 描述完整显示，不再 3 行折叠，也不再用原生 tooltip 补充
+    expect(descriptionElement?.classes()).not.toContain('line-clamp-3')
+    expect(wrapper.find('[title]').exists()).toBe(false)
   })
 })

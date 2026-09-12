@@ -1,10 +1,7 @@
 <template>
   <div class="flex min-w-0 flex-1 items-start justify-between gap-3">
-    <!-- Left: name + description -->
-    <div
-      class="flex min-w-0 flex-1 flex-col items-start"
-      :title="description || undefined"
-    >
+    <!-- Left: name + description（完整显示，不再折叠） -->
+    <div class="flex min-w-0 flex-1 flex-col items-start">
       <!-- Row 1: platform badge (name bold) -->
       <GroupBadge
         :name="name"
@@ -16,7 +13,7 @@
       <!-- Row 2: description with top spacing -->
       <span
         v-if="description"
-        class="mt-1.5 w-full whitespace-pre-line [overflow-wrap:anywhere] text-left text-xs leading-relaxed text-gray-500 dark:text-gray-400 line-clamp-3"
+        class="mt-1.5 w-full whitespace-pre-line [overflow-wrap:anywhere] text-left text-xs leading-relaxed text-gray-500 dark:text-gray-400"
       >
         {{ description }}
       </span>
