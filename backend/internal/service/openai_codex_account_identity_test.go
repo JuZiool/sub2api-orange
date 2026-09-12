@@ -24,8 +24,8 @@ func (s *codexAccountIdentityRepoStub) GetByID(_ context.Context, _ int64) (*Acc
 
 func TestCodexRequestBodyIdentityNamespaceIsStablePerOAuthAccount(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.6-codex","prompt_cache_key":"client-session","client_metadata":{"x-codex-installation-id":"client-installation","session_id":"client-session","thread_id":"client-thread","x-codex-window-id":"client-window","x-codex-turn-metadata":"{\"installation_id\":\"client-installation\",\"session_id\":\"client-session\",\"thread_id\":\"client-thread\",\"turn_id\":\"client-turn\",\"window_id\":\"client-window\"}"}}`)
-	account11 := &Account{ID: 11, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: map[string]any{"chatgpt_account_id": "chatgpt-account-11"}}
-	account19 := &Account{ID: 19, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: map[string]any{"chatgpt_account_id": "chatgpt-account-19"}}
+	account11 := &Account{ID: 11, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{codexFingerprintModeExtraKey: "off"}, Credentials: map[string]any{"chatgpt_account_id": "chatgpt-account-11"}}
+	account19 := &Account{ID: 19, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{codexFingerprintModeExtraKey: "off"}, Credentials: map[string]any{"chatgpt_account_id": "chatgpt-account-19"}}
 
 	first, changed, err := applyCodexAccountIdentityClientMetadataRaw(body, account11, 77)
 	require.NoError(t, err)
@@ -137,8 +137,8 @@ func TestBuildOpenAIWSHeadersNamespacesCodexIdentityByOAuthAccount(t *testing.T)
 	c.Request.Header.Set("x-codex-window-id", "client-window")
 	c.Request.Header.Set("x-client-request-id", "client-request")
 
-	account11 := &Account{ID: 11, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: map[string]any{"chatgpt_account_id": "chatgpt-account-11"}}
-	account19 := &Account{ID: 19, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: map[string]any{"chatgpt_account_id": "chatgpt-account-19"}}
+	account11 := &Account{ID: 11, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{codexFingerprintModeExtraKey: "off"}, Credentials: map[string]any{"chatgpt_account_id": "chatgpt-account-11"}}
+	account19 := &Account{ID: 19, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{codexFingerprintModeExtraKey: "off"}, Credentials: map[string]any{"chatgpt_account_id": "chatgpt-account-19"}}
 	service := &OpenAIGatewayService{}
 	build := func(account *Account) http.Header {
 		headers, _, err := service.buildOpenAIWSHeaders(

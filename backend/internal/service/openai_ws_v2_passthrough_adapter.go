@@ -792,6 +792,14 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 	firstClientMessage = updatedFirst
 	firstClientMessage = s.prepareCodexQuotaOverdraftBody(ctx, account, false, firstClientMessage)
+	ensureStagedCodexFingerprintIDs(c, account, s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIAccountUniqueFingerprintEnabled)
+	if fingerprintIDs := stagedCodexFingerprintIDs(c, account); fingerprintIDs != nil {
+		var fingerprintErr error
+		firstClientMessage, _, fingerprintErr = applyCodexFingerprintClientMetadataRaw(firstClientMessage, fingerprintIDs)
+		if fingerprintErr != nil {
+			return fmt.Errorf("apply codex fingerprint to first ws frame: %w", fingerprintErr)
+		}
+	}
 
 	// 在 policy filter 之后再提取 service_tier / reasoning_effort 用于
 	// usage 上报：filter 命中时 service_tier 已经从 firstClientMessage 中删除，
@@ -1113,6 +1121,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			//     service_tier 时按 default 处理，billing 应如实反映。
 			if policyErr == nil && blocked == nil && isResponseCreate {
 				out = s.prepareCodexQuotaOverdraftBody(ctx, account, false, out)
+				if fingerprintIDs := stagedCodexFingerprintIDs(c, account); fingerprintIDs != nil {
+					var fingerprintErr error
+					out, _, fingerprintErr = applyCodexFingerprintClientMetadataRaw(out, fingerprintIDs)
+					if fingerprintErr != nil {
+						return out, nil, fmt.Errorf("apply codex fingerprint to ws frame: %w", fingerprintErr)
+					}
+				}
 				usageMeta.updateFromResponseCreate(out, model, requestModelForThisFrame)
 				_, actualModel := usageMeta.turnModels(requestModelForThisFrame)
 				SetOpsUpstreamModel(c, actualModel)

@@ -106,6 +106,8 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		for _, name := range [...]string{
 			"x-codex-window-id",
 			"x-codex-installation-id",
+			"x-codex-parent-thread-id",
+			"x-openai-subagent",
 			"session-id",
 			"thread-id",
 			"x-client-request-id",
@@ -145,6 +147,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		headers.Set(openAIWSTurnMetadataHeader, metadata)
 	}
 	applyCodexAccountIdentityHeaders(headers, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
+	ensureStagedCodexFingerprintIDs(c, account, s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIAccountUniqueFingerprintEnabled)
 	applyStagedCodexFingerprintHeaders(c, account, headers)
 
 	if account != nil && account.UsesOpenAICodexProtocol() {

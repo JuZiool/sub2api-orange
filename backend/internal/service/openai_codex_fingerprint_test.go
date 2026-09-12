@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -54,6 +55,20 @@ func TestDeriveStableUUIDv4_ValidFormat(t *testing.T) {
 	assert.Equal(t, uuid.RFC4122, parsed.Variant(), "应为 RFC4122 变体")
 }
 
+func TestDeriveStableUUIDv7_Deterministic(t *testing.T) {
+	a := deriveStableUUIDv7("test-seed-1", 1735689600000)
+	b := deriveStableUUIDv7("test-seed-1", 1735689600000)
+	assert.Equal(t, a, b)
+}
+
+func TestDeriveStableUUIDv7_ValidFormat(t *testing.T) {
+	result := deriveStableUUIDv7("test-seed", 1735689600000)
+	parsed, err := uuid.Parse(result)
+	require.NoError(t, err)
+	assert.Equal(t, uuid.Version(7), parsed.Version())
+	assert.Equal(t, uuid.RFC4122, parsed.Variant())
+}
+
 // --- GetCodexFingerprintMode ---
 
 func TestGetCodexFingerprintMode(t *testing.T) {
@@ -72,15 +87,29 @@ func TestGetCodexFingerprintMode(t *testing.T) {
 		{"空值默认 off", newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: ""}), codexFingerprintOff},
 		{"非法值默认 off", newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: "invalid"}), codexFingerprintOff},
 		{"显式 off", newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: "off"}), codexFingerprintOff},
+		{"账号唯一设备", newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: "account_device"}), codexFingerprintAccountDevice},
 		{"device", newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: "device"}), codexFingerprintDevice},
 		{"session", newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: "session"}), codexFingerprintSession},
 		{"full", newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: "full"}), codexFingerprintFull},
+		{"单机多窗口", newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: "single_machine_multi_window"}), codexFingerprintSingleMachineMultiWindow},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert.Equal(t, tt.expected, tt.account.GetCodexFingerprintMode())
 		})
 	}
+}
+
+func TestResolveCodexFingerprintIDsFromRequest_AccountDeviceModeUsesStableAccountSeed(t *testing.T) {
+	account := newTestOAuthAccount(904, map[string]any{codexFingerprintModeExtraKey: "account_device"})
+	first := resolveCodexFingerprintIDsFromRequest(account, nil)
+	second := resolveCodexFingerprintIDsFromRequest(account, nil)
+	require.NotNil(t, first)
+	require.NotNil(t, second)
+	assert.Equal(t, codexFingerprintAccountDevice, first.mode)
+	assert.Equal(t, first.installationID, second.installationID)
+	assert.Equal(t, resolveConvergedInstallationID(account, deriveAccountCodexFingerprintSeed(account)), first.installationID)
+	assert.Empty(t, account.Extra[codexFingerprintSeedExtraKey], "账号唯一设备模式不需要写入系统种子")
 }
 
 // --- resolveConvergedInstallationID ---
@@ -123,12 +152,260 @@ func TestResolveConvergedThreadID_EmptySession(t *testing.T) {
 	assert.Equal(t, "", resolveConvergedThreadID(testCodexFingerprintSeed, ""))
 }
 
+func TestSingleMachineMultiWindow_PreservesSessionBoundaryAndStableWindow(t *testing.T) {
+	account := newTestOAuthAccount(7, map[string]any{codexFingerprintModeExtraKey: string(codexFingerprintSingleMachineMultiWindow)})
+	clientA := http.Header{}
+	clientA.Set("User-Agent", "codex_cli_rs/0.146.0")
+	clientA.Set("session-id", "session-a")
+	first := resolveCodexFingerprintIDsFromRequest(account, clientA)
+	second := resolveCodexFingerprintIDsFromRequest(account, clientA)
+	require.NotNil(t, first)
+	require.NotNil(t, second)
+	assert.Equal(t, first.installationID, second.installationID)
+	assert.Equal(t, first.sessionID, second.sessionID)
+	assert.Equal(t, first.threadID, second.threadID)
+	assert.Equal(t, first.windowID, second.windowID)
+	assert.Equal(t, first.parentThreadID, second.parentThreadID)
+	assert.NotEqual(t, first.turnID, second.turnID)
+	assert.Equal(t, first.windowID, first.threadID+":0")
+	ident := resolveSingleMachineMultiWindowIdentity(testCodexFingerprintSeed, "session-a", false)
+	assert.Equal(t, ident.sessionID, first.sessionID)
+	assert.Equal(t, ident.threadID, first.threadID)
+
+	h := http.Header{"session_id": []string{"legacy"}, "thread_id": []string{"legacy-thread"}}
+	applyCodexFingerprintHeaders(h, first)
+	assert.Equal(t, first.sessionID, h.Get("session_id"))
+	assert.Empty(t, h.Get("thread_id"))
+	assert.Equal(t, first.sessionID, h.Get("session-id"))
+	assert.Equal(t, first.threadID, h.Get("thread-id"))
+}
+
+func firstOtherSessionOnSameRoot(t *testing.T, seed, sessionID string) string {
+	t.Helper()
+	base := resolveSingleMachineMultiWindowIdentity(seed, sessionID, false)
+	for i := 0; i < 2000; i++ {
+		sid := fmt.Sprintf("other-%d", i)
+		if sid == sessionID {
+			continue
+		}
+		ident := resolveSingleMachineMultiWindowIdentity(seed, sid, false)
+		if ident.sessionID == base.sessionID {
+			return sid
+		}
+	}
+	t.Fatalf("could not find another session on the same root as %s", sessionID)
+	return ""
+}
+
+func TestSingleMachineMultiWindow_PoolsWindowsAndRendersOverflowAsSubagents(t *testing.T) {
+	account := newTestOAuthAccount(7, map[string]any{codexFingerprintModeExtraKey: string(codexFingerprintSingleMachineMultiWindow)})
+	rootSession := "session-a"
+	childSession := firstOtherSessionOnSameRoot(t, testCodexFingerprintSeed, rootSession)
+
+	makeClient := func(sessionID string) http.Header {
+		h := http.Header{}
+		h.Set("User-Agent", "codex_cli_rs/0.146.0")
+		h.Set("session-id", sessionID)
+		return h
+	}
+
+	root := resolveCodexFingerprintIDsFromRequest(account, makeClient(rootSession))
+	require.NotNil(t, root)
+	idle := resolveCodexFingerprintIDsFromRequest(account, makeClient(childSession))
+	require.NotNil(t, idle)
+	assert.Empty(t, idle.parentThreadID, "没有进行中的请求时不应伪造子智能体")
+	assert.Equal(t, root.sessionID, idle.sessionID)
+
+	c := newFingerprintStageTestContext(t)
+	stageCodexFingerprintIDs(c, root)
+	t.Cleanup(func() { releaseStagedCodexFingerprintLease(c) })
+
+	child := resolveCodexFingerprintIDsFromRequest(account, makeClient(childSession))
+	require.NotNil(t, child)
+	assert.Equal(t, root.installationID, child.installationID)
+	assert.Equal(t, uuid.Version(7), uuid.MustParse(root.sessionID).Version())
+	assert.Equal(t, uuid.Version(7), uuid.MustParse(root.threadID).Version())
+	assert.Equal(t, uuid.Version(7), uuid.MustParse(child.threadID).Version())
+	assert.Equal(t, root.sessionID, root.threadID, "根对话的 session_id 等于 root thread_id")
+	assert.Empty(t, root.parentThreadID)
+	assert.Empty(t, root.subagentKind)
+	assert.NotEmpty(t, child.parentThreadID)
+	assert.Equal(t, child.sessionID, child.parentThreadID, "子智能体共享父窗口 session")
+	assert.NotEqual(t, child.sessionID, child.threadID)
+	assert.Contains(t, singleMachineSubagentKinds[:], child.subagentKind)
+	assert.NotContains(t, []string{"review", "guardian"}, child.subagentKind)
+
+	rootHeaders := http.Header{}
+	rootHeaders.Set("x-codex-parent-thread-id", "stale-parent")
+	rootHeaders.Set("x-openai-subagent", "review")
+	rootHeaders.Set("x-codex-turn-metadata", `{"parent_thread_id":"stale-parent","subagent_kind":"review","sandbox":"seatbelt"}`)
+	applyCodexFingerprintHeaders(rootHeaders, root)
+	assert.Empty(t, rootHeaders.Get("x-codex-parent-thread-id"))
+	assert.Empty(t, rootHeaders.Get("x-openai-subagent"))
+	var rootMeta map[string]any
+	require.NoError(t, json.Unmarshal([]byte(rootHeaders.Get("x-codex-turn-metadata")), &rootMeta))
+	assert.Nil(t, rootMeta["parent_thread_id"])
+	assert.Nil(t, rootMeta["subagent_kind"])
+	assert.Equal(t, "seatbelt", rootMeta["sandbox"])
+	assert.Equal(t, root.sessionID, rootMeta["session_id"])
+	assert.Equal(t, root.threadID, rootMeta["thread_id"])
+
+	childHeaders := http.Header{}
+	applyCodexFingerprintHeaders(childHeaders, child)
+	assert.Equal(t, child.parentThreadID, childHeaders.Get("x-codex-parent-thread-id"))
+	assert.Equal(t, child.subagentKind, childHeaders.Get("x-openai-subagent"))
+	assert.Equal(t, child.threadID+":0", childHeaders.Get("x-codex-window-id"))
+	var childMeta map[string]any
+	require.NoError(t, json.Unmarshal([]byte(childHeaders.Get("x-codex-turn-metadata")), &childMeta))
+	assert.Equal(t, child.parentThreadID, childMeta["parent_thread_id"])
+	assert.Equal(t, child.subagentKind, childMeta["subagent_kind"])
+	assert.Equal(t, child.sessionID, childMeta["session_id"])
+	assert.Equal(t, child.threadID, childMeta["thread_id"])
+}
+
+func TestSingleMachineMultiWindow_BoundsVisibleIdentityCardinality(t *testing.T) {
+	account := newTestOAuthAccount(7, map[string]any{codexFingerprintModeExtraKey: string(codexFingerprintSingleMachineMultiWindow)})
+	sessions := map[string]struct{}{}
+	threads := map[string]struct{}{}
+	installs := map[string]struct{}{}
+	for i := 0; i < 80; i++ {
+		h := http.Header{}
+		h.Set("User-Agent", "codex_cli_rs/0.146.0")
+		h.Set("session-id", fmt.Sprintf("downstream-%d", i))
+		ids := resolveCodexFingerprintIDsFromRequest(account, h)
+		require.NotNil(t, ids)
+		installs[ids.installationID] = struct{}{}
+		sessions[ids.sessionID] = struct{}{}
+		threads[ids.threadID] = struct{}{}
+		if ids.parentThreadID != "" {
+			assert.Contains(t, sessions, ids.parentThreadID)
+			assert.Equal(t, ids.parentThreadID, ids.sessionID)
+		}
+	}
+	assert.Len(t, installs, 1)
+	assert.LessOrEqual(t, len(sessions), singleMachineRootWindowCount)
+	assert.GreaterOrEqual(t, len(sessions), 1)
+	assert.Equal(t, len(sessions), len(threads), "没有并发时所有请求都应落在根窗口，而不是子智能体")
+	assert.LessOrEqual(t, len(threads), singleMachineRootWindowCount)
+}
+
+func TestSingleMachineMultiWindow_EmptyClientSessionUsesRootWindow(t *testing.T) {
+	account := newTestOAuthAccount(7, map[string]any{codexFingerprintModeExtraKey: string(codexFingerprintSingleMachineMultiWindow)})
+	h := http.Header{}
+	h.Set("User-Agent", "codex_cli_rs/0.146.0")
+	ids := resolveCodexFingerprintIDsFromRequest(account, h)
+	require.NotNil(t, ids)
+	assert.Equal(t, ids.sessionID, ids.threadID)
+	assert.Empty(t, ids.parentThreadID)
+	assert.Equal(t, deriveSingleMachineThreadID(testCodexFingerprintSeed, 0, 0), ids.threadID)
+}
+
+func TestSingleMachineMultiWindow_ConversationIDFollowsRootSession(t *testing.T) {
+	account := newTestOAuthAccount(7, map[string]any{codexFingerprintModeExtraKey: string(codexFingerprintSingleMachineMultiWindow)})
+	hIn := http.Header{}
+	hIn.Set("User-Agent", "codex_cli_rs/0.146.0")
+	hIn.Set("session-id", "session-a")
+	ids := resolveCodexFingerprintIDsFromRequest(account, hIn)
+	require.NotNil(t, ids)
+	h := http.Header{}
+	h.Set("conversation_id", "isolated-downstream")
+	applyCodexFingerprintHeaders(h, ids)
+	assert.Equal(t, ids.sessionID, h.Get("conversation_id"))
+	assert.Equal(t, ids.sessionID, h.Get("session-id"))
+}
+
+func TestSingleMachineMultiWindow_PreservesPerConversationPromptCacheKey(t *testing.T) {
+	account := newTestOAuthAccount(7, map[string]any{codexFingerprintModeExtraKey: string(codexFingerprintSingleMachineMultiWindow)})
+	hIn := http.Header{}
+	hIn.Set("User-Agent", "codex_cli_rs/0.146.0")
+	hIn.Set("session-id", "session-a")
+	ids := resolveCodexFingerprintIDsFromRequest(account, hIn)
+	require.NotNil(t, ids)
+	require.NotEqual(t, "session-a", ids.sessionID)
+
+	body := []byte(`{"model":"gpt-5.6-sol","prompt_cache_key":"session-a","client_metadata":{"session_id":"session-a","trace":"keep"},"input":[]}`)
+	mapBody, rawBody := applyMapAndRawFingerprintBodiesForTest(t, body, ids)
+	require.Equal(t, "session-a", mapBody["prompt_cache_key"])
+	require.Equal(t, "session-a", rawBody["prompt_cache_key"])
+
+	mapCM, _ := mapBody["client_metadata"].(map[string]any)
+	rawCM, _ := rawBody["client_metadata"].(map[string]any)
+	require.Equal(t, ids.sessionID, mapCM["session_id"])
+	require.Equal(t, ids.sessionID, rawCM["session_id"])
+	require.Equal(t, "keep", rawCM["trace"])
+}
+
+func TestSingleMachineMultiWindow_KeepsDistinctPromptCacheKeysAcrossWindows(t *testing.T) {
+	account := newTestOAuthAccount(7, map[string]any{codexFingerprintModeExtraKey: string(codexFingerprintSingleMachineMultiWindow)})
+	cacheKeys := map[string]struct{}{}
+	sessions := map[string]struct{}{}
+	for i := 0; i < 12; i++ {
+		clientSession := fmt.Sprintf("downstream-%d", i)
+		hIn := http.Header{}
+		hIn.Set("User-Agent", "codex_cli_rs/0.146.0")
+		hIn.Set("session-id", clientSession)
+		ids := resolveCodexFingerprintIDsFromRequest(account, hIn)
+		require.NotNil(t, ids)
+		sessions[ids.sessionID] = struct{}{}
+
+		body := []byte(`{"prompt_cache_key":"` + clientSession + `","client_metadata":{"session_id":"` + clientSession + `"}}`)
+		mapBody, rawBody := applyMapAndRawFingerprintBodiesForTest(t, body, ids)
+		require.Equal(t, clientSession, mapBody["prompt_cache_key"])
+		require.Equal(t, clientSession, rawBody["prompt_cache_key"])
+		cacheKeys[mapBody["prompt_cache_key"].(string)] = struct{}{}
+	}
+	assert.Len(t, cacheKeys, 12)
+	assert.LessOrEqual(t, len(sessions), singleMachineRootWindowCount)
+}
+
+func TestSingleMachineMultiWindow_NonCodexDoesNotCreateWindowIdentity(t *testing.T) {
+	account := newTestOAuthAccount(8, map[string]any{codexFingerprintModeExtraKey: string(codexFingerprintSingleMachineMultiWindow)})
+	h := http.Header{"User-Agent": []string{"opencode/1.0"}, "session-id": []string{"session-a"}}
+	assert.Nil(t, resolveCodexFingerprintIDsFromRequest(account, h))
+}
+
 // --- off 模式：resolveCodexFingerprintIDsFromRequest 返回 nil ---
 
 func TestResolveCodexFingerprintIDsFromRequest_ExplicitOff(t *testing.T) {
 	account := newTestOAuthAccount(1, map[string]any{codexFingerprintModeExtraKey: "off"})
 	ids := resolveCodexFingerprintIDsFromRequest(account, nil)
 	assert.Nil(t, ids, "显式 off 模式应返回 nil")
+}
+
+func TestResolveCodexFingerprintIDsFromRequest_DefaultEnabledIsStablePerAccount(t *testing.T) {
+	headers := http.Header{"User-Agent": []string{"codex_cli_rs/0.146.0"}, "Session-Id": []string{"session-a"}}
+	account := &Account{ID: 901, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	first := resolveCodexFingerprintIDsFromRequest(account, headers, true)
+	second := resolveCodexFingerprintIDsFromRequest(account, headers, true)
+	other := resolveCodexFingerprintIDsFromRequest(&Account{ID: 902, Platform: PlatformOpenAI, Type: AccountTypeOAuth}, headers, true)
+
+	require.NotNil(t, first)
+	require.NotNil(t, second)
+	require.NotNil(t, other)
+	assert.Equal(t, codexFingerprintSingleMachineMultiWindow, first.mode)
+	assert.Nil(t, resolveCodexFingerprintIDsFromRequest(account, nil, true), "non-Codex callers must not receive a synthetic window")
+	assert.Equal(t, first.installationID, second.installationID)
+	assert.NotEqual(t, first.installationID, other.installationID)
+	assert.Nil(t, resolveCodexFingerprintIDsFromRequest(account, nil, false))
+	assert.Nil(t, resolveCodexFingerprintIDsFromRequest(&Account{
+		ID:       account.ID,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra:    map[string]any{codexFingerprintModeExtraKey: "off"},
+	}, nil, true))
+}
+
+func TestResolveCodexFingerprintIDsFromRequest_DefaultEnabledUsesPersistedSeed(t *testing.T) {
+	headers := http.Header{"User-Agent": []string{"codex_cli_rs/0.146.0"}}
+	account := &Account{
+		ID:       903,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra:    map[string]any{codexFingerprintSeedExtraKey: testCodexFingerprintSeed},
+	}
+	ids := resolveCodexFingerprintIDsFromRequest(account, headers, true)
+	require.NotNil(t, ids)
+	assert.Equal(t, resolveConvergedInstallationID(account, testCodexFingerprintSeed), ids.installationID)
 }
 
 // 未显式配置的存量账号不得被收敛（#5610）：默认返回 nil，出站身份保持
@@ -573,6 +850,7 @@ func cloneCodexFingerprintIDsForTest(ids *codexFingerprintIDs) *codexFingerprint
 		return nil
 	}
 	cloned := *ids
+	cloned.lease = nil
 	cloned.originalBodySessionID = ""
 	cloned.originalBodySessionIDCaptured = false
 	return &cloned
@@ -639,6 +917,9 @@ func TestApplyCodexFingerprintPromptCacheKey_Negatives(t *testing.T) {
 	deviceAccount := newTestOAuthAccount(4311, map[string]any{codexFingerprintModeExtraKey: "device"})
 	deviceIDs := resolveCodexFingerprintIDs(deviceAccount, "header-session", codexFingerprintDevice)
 	require.NotNil(t, deviceIDs)
+	singleAccount := newTestOAuthAccount(4312, map[string]any{codexFingerprintModeExtraKey: string(codexFingerprintSingleMachineMultiWindow)})
+	singleIDs := resolveCodexFingerprintIDs(singleAccount, "header-session", codexFingerprintSingleMachineMultiWindow)
+	require.NotNil(t, singleIDs)
 
 	tests := []struct {
 		name          string
@@ -704,6 +985,13 @@ func TestApplyCodexFingerprintPromptCacheKey_Negatives(t *testing.T) {
 			wantCacheKey: "body-session",
 		},
 		{
+			name:         "single-machine preserves downstream cache key",
+			body:         []byte(`{"prompt_cache_key":"body-session","client_metadata":{"session_id":"body-session"}}`),
+			ids:          singleIDs,
+			wantExists:   true,
+			wantCacheKey: "body-session",
+		},
+		{
 			name:          "off mode preserves body",
 			body:          []byte(`{"prompt_cache_key":"body-session","client_metadata":{"session_id":"body-session"}}`),
 			ids:           nil,
@@ -751,7 +1039,7 @@ func TestApplyCodexFingerprintClientMetadataRaw_MatchesMapVariant(t *testing.T) 
 		"object_with_extras": `{"model":"gpt-5.6-sol","client_metadata":{"session_id":"client-session","traceparent":"00-abc-def-01","x-codex-turn-metadata":"` + embedded + `"},"stream":true}`,
 		"non_object_value":   `{"model":"gpt-5.6-sol","client_metadata":"bogus","stream":true}`,
 	}
-	for _, mode := range []codexFingerprintMode{codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull} {
+	for _, mode := range []codexFingerprintMode{codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull, codexFingerprintSingleMachineMultiWindow} {
 		account := newTestOAuthAccount(4242, map[string]any{codexFingerprintModeExtraKey: string(mode)})
 		ids := resolveCodexFingerprintIDs(account, "client-sess-raw", mode)
 		require.NotNil(t, ids)

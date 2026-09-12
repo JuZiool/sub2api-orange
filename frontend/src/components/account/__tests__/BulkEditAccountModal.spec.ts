@@ -933,8 +933,12 @@ describe('BulkEditAccountModal', () => {
       selectedTypes: ['oauth']
     })
 
-    // 下拉框默认就是 off，用户只勾选「编辑该项」即提交——正是 issue 描述的操作路径。
+    // 显式选 off 后只勾选「编辑该项」即提交——正是 issue 描述的操作路径
+    // （未显式配置的账号默认已改为单机多窗口，off 需要用户主动选择）。
     await wrapper.get('#bulk-edit-openai-codex-fingerprint-mode-enabled').setValue(true)
+    await wrapper
+      .get('[data-testid="bulk-codex-fingerprint-mode-select"]')
+      .setValue('off')
     await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
     await flushPromises()
 

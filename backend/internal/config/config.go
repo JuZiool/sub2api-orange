@@ -995,6 +995,9 @@ type GatewayConfig struct {
 	// CodexQuotaOverdraftEnabled: Docker 部署默认允许符合条件的 Codex OAuth 账号在上游额度耗尽后进行有限探测与透支调度。
 	// 设为 false 可作为全局 kill switch；账号级仅支持通过 extra 显式禁用。
 	CodexQuotaOverdraftEnabled bool `mapstructure:"codex_quota_overdraft_enabled"`
+	// OpenAIAccountUniqueFingerprintEnabled: 是否为每个 OpenAI OAuth 账号固定唯一的
+	// Codex 设备指纹。默认开启；显式设置账号 extra.codex_fingerprint_mode=off 可对单个账号关闭。
+	OpenAIAccountUniqueFingerprintEnabled bool `mapstructure:"openai_account_unique_fingerprint_enabled"`
 	// ForcedCodexInstructionsTemplateFile: 服务端强制附加到 Codex 顶层 instructions 的模板文件路径。
 	// 模板渲染后会直接覆盖最终 instructions；若需要保留客户端 system 转换结果，请在模板中显式引用 {{ .ExistingInstructions }}。
 	ForcedCodexInstructionsTemplateFile string `mapstructure:"forced_codex_instructions_template_file"`
@@ -2376,6 +2379,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.disable_codex_identity_enforcement", false)
 	viper.SetDefault("gateway.disable_codex_originator_normalization", false)
 	viper.SetDefault("gateway.codex_image_generation_bridge_enabled", false)
+	viper.SetDefault("gateway.openai_account_unique_fingerprint_enabled", true)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	viper.SetDefault("gateway.openai_compact_model", "gpt-5.4")
 	viper.SetDefault("gateway.live.max_session_duration_seconds", 3600)
