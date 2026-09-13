@@ -54,7 +54,7 @@
     <div
       v-if="estimatedTotalCost != null || estimatedUsedCost != null"
       data-testid="usage-cost-estimate"
-      class="mb-0.5 inline-flex w-fit items-center gap-1.5 rounded-md border border-amber-100/80 bg-amber-50/70 px-1.5 py-1 text-[9px] text-stone-600 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100"
+      class="mb-0.5 flex w-fit items-center justify-start gap-1.5 rounded-md border border-amber-100/80 bg-amber-50/70 px-1.5 py-1 text-left text-[9px] text-stone-600 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100"
     >
       <span v-if="estimatedTotalCost != null" :title="t('usage.costEstimateHint')">
         {{ t('usage.estimatedCost') }}: ${{ formatEstimatedTotalCost }}

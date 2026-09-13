@@ -50,11 +50,15 @@ describe('UsageProgressBar', () => {
 
     const estimate = wrapper.get('[data-testid="usage-cost-estimate"]')
     expect(estimate.classes()).toEqual(expect.arrayContaining([
+      'flex',
+      'w-fit',
+      'text-left',
       'rounded-md',
       'border-amber-100/80',
       'bg-amber-50/70',
       'text-stone-600'
     ]))
+    expect(estimate.classes()).not.toContain('inline-flex')
     expect(estimate.text()).toContain('usage.estimatedCost: $0.00')
     expect(estimate.text()).toContain('usage.usedCost: $0.00')
   })
