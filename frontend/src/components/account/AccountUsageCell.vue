@@ -125,10 +125,7 @@
           :utilization="usageInfo.five_hour.utilization"
           :resets-at="usageInfo.five_hour.resets_at"
           :window-stats="usageInfo.five_hour.window_stats"
-          :overdraft-active="usageInfo.five_hour.overdraft_active"
-          :overdraft-stats="usageInfo.five_hour.overdraft_stats"
-          :overdraft-status="codexOverdraftStatusLabel"
-          :overdraft-status-class="codexOverdraftStatusClass"
+
           :show-now-when-idle="true"
           color="indigo"
         />
@@ -138,10 +135,7 @@
           :utilization="usageInfo.seven_day.utilization"
           :resets-at="usageInfo.seven_day.resets_at"
           :window-stats="usageInfo.seven_day.window_stats"
-          :overdraft-active="usageInfo.seven_day.overdraft_active"
-          :overdraft-stats="usageInfo.seven_day.overdraft_stats"
-          :overdraft-status="codexOverdraftStatusLabel"
-          :overdraft-status-class="codexOverdraftStatusClass"
+
           :estimated-total-cost="sevenDayEstimatedCost ?? 0"
           :estimated-used-cost="sevenDayUsedCost"
           :show-now-when-idle="true"
@@ -1131,27 +1125,7 @@ const geminiUsageBars = computed(() => {
   return bars
 })
 
-const codexOverdraftStatusLabel = computed(() => {
-  const status = usageInfo.value?.codex_quota_overdraft?.status
-  const labels: Record<string, string> = {
-    pending: t('admin.accounts.openai.codexQuotaOverdraftPending'),
-    passed: t('admin.accounts.openai.codexQuotaOverdraftPassed'),
-    failed: t('admin.accounts.openai.codexQuotaOverdraftFailed'),
-    inconclusive: t('admin.accounts.openai.codexQuotaOverdraftInconclusive'),
-    recovered: t('admin.accounts.openai.codexQuotaOverdraftRecovered')
-  }
-  return status ? labels[status] || '' : ''
-})
 
-const codexOverdraftStatusClass = computed(() => {
-  switch (usageInfo.value?.codex_quota_overdraft?.status) {
-    case 'passed': return 'text-amber-600 dark:text-amber-400'
-    case 'failed': return 'text-red-600 dark:text-red-400'
-    case 'pending': case 'inconclusive': return 'text-blue-600 dark:text-blue-400'
-    case 'recovered': return 'text-emerald-600 dark:text-emerald-400'
-    default: return 'text-gray-500 dark:text-gray-400'
-  }
-})
 interface GrokQuotaBarInfo {
   utilization: number
   resetsAt: string | null
@@ -1161,11 +1135,9 @@ interface GrokQuotaBarInfo {
 const grokBilling = computed(() => usageInfo.value?.grok_billing || null)
 
 const sevenDayUsedCost = computed(() => {
-  const progress = usageInfo.value?.seven_day
-  const total = progress?.window_stats?.cost
-  const overdraft = progress?.overdraft_stats?.cost ?? 0
+  const total = usageInfo.value?.seven_day?.window_stats?.cost
   if (total == null || !Number.isFinite(total)) return null
-  return Math.max(0, total - overdraft)
+  return total
 })
 
 const sevenDayEstimatedCost = computed(() => {

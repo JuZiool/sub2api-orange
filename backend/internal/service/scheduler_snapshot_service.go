@@ -49,7 +49,6 @@ type schedulerBucketWriteTask struct {
 type schedulerAccountQueryKey struct {
 	groupID  int64
 	platform string
-	context  string
 }
 
 // 查询结果只在一次 rebuild batch 内，按原始 groupID+platform 复用成功的 single/forced 查询；
@@ -89,7 +88,7 @@ func schedulerAccountQueryKeyForBucket(bucket SchedulerBucket) (schedulerAccount
 	if bucket.Mode != SchedulerModeSingle && bucket.Mode != SchedulerModeForced {
 		return schedulerAccountQueryKey{}, false
 	}
-	return schedulerAccountQueryKey{groupID: bucket.GroupID, platform: bucket.Platform, context: bucket.Context}, true
+	return schedulerAccountQueryKey{groupID: bucket.GroupID, platform: bucket.Platform}, true
 }
 
 func (c *schedulerAccountQueryCache) release(bucket SchedulerBucket) {
@@ -212,9 +211,6 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 	useMixed := (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform
 	mode := s.resolveMode(platform, hasForcePlatform)
 	bucket := s.bucketFor(groupID, platform, mode)
-	if platform == PlatformOpenAI && CodexQuotaOverdraftSchedulingEnabled(ctx) {
-		bucket.Context = SchedulerContextCodexOverdraft
-	}
 	var writeToken SchedulerBucketWriteToken
 	canPublish := false
 	if err := ctx.Err(); err != nil {
@@ -841,8 +837,7 @@ func schedulerBucketsForGroup(groupID int64) []SchedulerBucket {
 }
 
 // schedulerCanonicalBucketCount 返回单个分组的 canonical 桶数量。
-// 每个平台 2 个（single/forced），anthropic/gemini 额外 1 个 mixed；
-// OpenAI 在额度透支调度开启时再额外 2 个透支上下文桶。
+// 每个平台 2 个（single/forced），anthropic/gemini 额外 1 个 mixed。
 func schedulerCanonicalBucketCount() int {
 	count := 0
 	for _, platform := range schedulerSnapshotPlatforms() {
@@ -850,16 +845,14 @@ func schedulerCanonicalBucketCount() int {
 		if platform == PlatformAnthropic || platform == PlatformGemini {
 			count++
 		}
-		if platform == PlatformOpenAI && CodexQuotaOverdraftEnabled() {
-			count += 2
-		}
 	}
 	return count
 }
 
 func schedulerCanonicalBuckets(groupID int64) []SchedulerBucket {
-	buckets := make([]SchedulerBucket, 0, schedulerCanonicalBucketCount())
-	for _, platform := range schedulerSnapshotPlatforms() {
+	platforms := schedulerSnapshotPlatforms()
+	buckets := make([]SchedulerBucket, 0, len(platforms)*2+2)
+	for _, platform := range platforms {
 		buckets = append(buckets,
 			SchedulerBucket{GroupID: groupID, Platform: platform, Mode: SchedulerModeSingle},
 			SchedulerBucket{GroupID: groupID, Platform: platform, Mode: SchedulerModeForced},
@@ -867,13 +860,6 @@ func schedulerCanonicalBuckets(groupID int64) []SchedulerBucket {
 		if platform == PlatformAnthropic || platform == PlatformGemini {
 			buckets = append(buckets, SchedulerBucket{GroupID: groupID, Platform: platform, Mode: SchedulerModeMixed})
 		}
-		if platform == PlatformOpenAI && CodexQuotaOverdraftEnabled() {
-			buckets = append(buckets,
-				SchedulerBucket{GroupID: groupID, Platform: platform, Mode: SchedulerModeSingle, Context: SchedulerContextCodexOverdraft},
-				SchedulerBucket{GroupID: groupID, Platform: platform, Mode: SchedulerModeForced, Context: SchedulerContextCodexOverdraft},
-			)
-		}
-
 	}
 	return buckets
 }
@@ -912,12 +898,6 @@ func (s *SchedulerSnapshotService) bucketsForPlatform(platform string, groupIDs 
 		buckets = append(buckets, SchedulerBucket{GroupID: gid, Platform: platform, Mode: SchedulerModeForced})
 		if platform == PlatformAnthropic || platform == PlatformGemini {
 			buckets = append(buckets, SchedulerBucket{GroupID: gid, Platform: platform, Mode: SchedulerModeMixed})
-		}
-		if platform == PlatformOpenAI && CodexQuotaOverdraftEnabled() {
-			buckets = append(buckets,
-				SchedulerBucket{GroupID: gid, Platform: platform, Mode: SchedulerModeSingle, Context: SchedulerContextCodexOverdraft},
-				SchedulerBucket{GroupID: gid, Platform: platform, Mode: SchedulerModeForced, Context: SchedulerContextCodexOverdraft},
-			)
 		}
 	}
 	return buckets
@@ -1490,9 +1470,6 @@ func (s *SchedulerSnapshotService) shouldLogOutboxLagWarning(active bool) bool {
 }
 
 func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucket SchedulerBucket, useMixed bool) ([]Account, error) {
-	if bucket.Context == SchedulerContextCodexOverdraft {
-		ctx = WithCodexQuotaOverdraftScheduling(ctx)
-	}
 	if s.accountRepo == nil {
 		return nil, ErrSchedulerCacheNotReady
 	}
@@ -1539,9 +1516,6 @@ func (s *SchedulerSnapshotService) loadAccountsForRebuild(
 	bucket SchedulerBucket,
 	queries *schedulerAccountQueryCache,
 ) ([]Account, error) {
-	if bucket.Context == SchedulerContextCodexOverdraft {
-		ctx = WithCodexQuotaOverdraftScheduling(ctx)
-	}
 	key, cacheable := schedulerAccountQueryKeyForBucket(bucket)
 	if queries == nil || !cacheable {
 		return s.loadAccountsFromDB(ctx, bucket, bucket.Mode == SchedulerModeMixed)

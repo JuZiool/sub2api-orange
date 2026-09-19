@@ -195,3 +195,11 @@ func openAI429Int64(value any) (int64, bool) {
 		return 0, false
 	}
 }
+
+// laterTime 返回较晚的时间点。
+func laterTime(left, right time.Time) time.Time {
+	if right.After(left) {
+		return right
+	}
+	return left
+}

@@ -480,7 +480,6 @@ type OpenAIGatewayService struct {
 	openaiProxyStreamCircuitOnce  sync.Once
 	openaiWSPassthroughDialerOnce sync.Once
 	openaiModelTransientOnce      sync.Once
-	codexQuotaOverdraftOnce       sync.Once
 	agentIdentityTaskMu           sync.Mutex
 	openaiWSPool                  *openAIWSConnPool
 	openaiWSStateStore            OpenAIWSStateStore
@@ -489,7 +488,6 @@ type OpenAIGatewayService struct {
 	openaiWSSessionPreemptions    openAIWSSessionPreemptRegistry
 	openaiAccountStats            *openAIAccountRuntimeStats
 	openaiModelTransient          *openAIAccountModelTransientState
-	codexQuotaOverdraft           *CodexQuotaOverdraftCoordinator
 	// Orange 定制：可选倍率覆盖扩展点（默认 nil 即官方行为）。
 	rateMultiplierOverride         func(ctx context.Context, in rateMultiplierInput) float64
 	openaiProxyStreamCircuit       *openAIProxyStreamCircuit
@@ -547,11 +545,7 @@ func NewOpenAIGatewayService(
 	// 拿不到配置，故在此发布进程级开关快照。配置取反义，零值即「强制统一出口开启」。
 	if cfg != nil {
 		SetCodexIdentityEnforcementEnabled(!cfg.Gateway.DisableCodexIdentityEnforcement)
-		SetCodexQuotaOverdraftEnabled(cfg.Gateway.CodexQuotaOverdraftEnabled)
 	}
-	// Orange 定制：以可选扩展点注入额度透支行为，使 ratelimit_service.go 的
-	// 上游函数体保持原样，便于后续跟随官方更新。未注入时即官方默认行为。
-	installCodexQuotaOverdraftSchedulingHooks(rateLimitService)
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
 		usageLogRepo:        usageLogRepo,

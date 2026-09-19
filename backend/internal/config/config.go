@@ -992,9 +992,6 @@ type GatewayConfig struct {
 	// CodexImageGenerationBridgeEnabled: 是否为 Codex `/v1/responses` 自动注入 image_generation 工具和桥接指令。
 	// 默认关闭，避免纯文本 Codex 请求被意外改写；显式携带 image_generation 工具的请求仍按分组能力转发。
 	CodexImageGenerationBridgeEnabled bool `mapstructure:"codex_image_generation_bridge_enabled"`
-	// CodexQuotaOverdraftEnabled: Docker 部署默认允许符合条件的 Codex OAuth 账号在上游额度耗尽后进行有限探测与透支调度。
-	// 设为 false 可作为全局 kill switch；账号级仅支持通过 extra 显式禁用。
-	CodexQuotaOverdraftEnabled bool `mapstructure:"codex_quota_overdraft_enabled"`
 	// OpenAIAccountUniqueFingerprintEnabled: 是否为每个 OpenAI OAuth 账号固定唯一的
 	// Codex 设备指纹。默认开启；显式设置账号 extra.codex_fingerprint_mode=off 可对单个账号关闭。
 	OpenAIAccountUniqueFingerprintEnabled bool `mapstructure:"openai_account_unique_fingerprint_enabled"`
@@ -2590,7 +2587,6 @@ func setDefaults() {
 // environment. Any subsystem that wants a richer default still applies it after
 // unmarshal, exactly as before.
 func setEnvReachableDefaults() {
-	viper.SetDefault("gateway.codex_quota_overdraft_enabled", true)
 	viper.SetDefault("gateway.forced_codex_instructions_template_file", "")
 
 	viper.SetDefault("gateway.session_idle_timeout_minutes", 0)

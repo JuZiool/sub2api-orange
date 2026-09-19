@@ -9,6 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// persistedCooldownTestReason 是持久冷却来源隔离测试使用的占位原因，
+// 不依赖任何业务子系统。
+const persistedCooldownTestReason = "persisted_cooldown_test"
+
 func TestOpenAIRuntimeBlock_PersistedCooldownKeepsIndependentOwner(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	account := &Account{ID: 9101, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
@@ -16,7 +20,7 @@ func TestOpenAIRuntimeBlock_PersistedCooldownKeepsIndependentOwner(t *testing.T)
 	persistedUntil := time.Now().Add(10 * time.Minute).UTC()
 
 	svc.BlockAccountScheduling(account, independentUntil, "oauth_401")
-	svc.BlockAccountSchedulingFromPersistedCooldown(account, persistedUntil, codexQuotaOverdraftPauseSource)
+	svc.BlockAccountSchedulingFromPersistedCooldown(account, persistedUntil, persistedCooldownTestReason)
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
 
 	svc.ClearAccountSchedulingBlockFromPersistedCooldown(account.ID, persistedUntil)
@@ -35,8 +39,8 @@ func TestOpenAIRuntimeBlock_PersistedCleanupRejectsChangedDeadline(t *testing.T)
 	persistedUntil := time.Now().Add(10 * time.Minute).UTC()
 	newerUntil := persistedUntil.Add(time.Minute)
 
-	svc.BlockAccountSchedulingFromPersistedCooldown(account, persistedUntil, codexQuotaOverdraftPauseSource)
-	svc.BlockAccountSchedulingFromPersistedCooldown(account, newerUntil, codexQuotaOverdraftPauseSource)
+	svc.BlockAccountSchedulingFromPersistedCooldown(account, persistedUntil, persistedCooldownTestReason)
+	svc.BlockAccountSchedulingFromPersistedCooldown(account, newerUntil, persistedCooldownTestReason)
 	svc.ClearAccountSchedulingBlockFromPersistedCooldown(account.ID, persistedUntil)
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account), "stale cleanup must not remove newer persisted owner")
 }
@@ -46,9 +50,9 @@ func TestOpenAIRuntimeBlock_PersistedNotificationFallsBackToLegacyBlocker(t *tes
 	account := &Account{ID: 9103, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 	until := time.Now().Add(time.Minute)
 
-	notifyPersistedAccountSchedulingCooldown(blocker, account, until, codexQuotaOverdraftPauseSource)
+	notifyPersistedAccountSchedulingCooldown(blocker, account, until, persistedCooldownTestReason)
 	require.Equal(t, 1, len(blocker.accounts))
-	require.Equal(t, codexQuotaOverdraftPauseSource, blocker.reasons[0])
+	require.Equal(t, persistedCooldownTestReason, blocker.reasons[0])
 
 	clearPersistedAccountSchedulingCooldown(blocker, account.ID, until)
 	require.Equal(t, []int64{account.ID}, blocker.clearedIDs)
