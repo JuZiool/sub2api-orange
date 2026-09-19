@@ -1145,7 +1145,7 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 
 retryAcquire:
 	accountID := req.Account.ID
-	compatibility := normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers, p != nil && p.cfg != nil && p.cfg.Gateway.OpenAIAccountUniqueFingerprintEnabled)
+	compatibility := normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers)
 	routingAffinity := normalizeOpenAIWSRoutingAffinity(req.Headers)
 	effectiveMaxConns := p.effectiveMaxConnsByAccount(req.Account)
 	if effectiveMaxConns <= 0 {
@@ -1971,7 +1971,7 @@ func (p *openAIWSConnPool) prewarmConns(accountID int64, req openAIWSAcquireRequ
 			conn.close()
 			continue
 		}
-		if !sameOpenAIWSPrewarmTarget(req, *ap.lastAcquire, p != nil && p.cfg != nil && p.cfg.Gateway.OpenAIAccountUniqueFingerprintEnabled) {
+		if !sameOpenAIWSPrewarmTarget(req, *ap.lastAcquire) {
 			staleTarget = true
 			ap.signalChangedLocked()
 			ap.mu.Unlock()
@@ -2152,7 +2152,7 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 	accountID := req.Account.ID
 	evict := func() { p.evictConn(accountID, id) }
 	pooledConn.onPeerClosed.Store(&evict)
-	pooledConn.handshakeCompatibility = normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers, p != nil && p.cfg != nil && p.cfg.Gateway.OpenAIAccountUniqueFingerprintEnabled)
+	pooledConn.handshakeCompatibility = normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers)
 	pooledConn.routingAffinity = normalizeOpenAIWSRoutingAffinity(req.Headers)
 	return pooledConn, nil
 }
@@ -2330,10 +2330,10 @@ func cloneOpenAIWSAcquireRequestPtr(req *openAIWSAcquireRequest) *openAIWSAcquir
 	return &copied
 }
 
-func sameOpenAIWSPrewarmTarget(a, b openAIWSAcquireRequest, uniqueFingerprintEnabled ...bool) bool {
+func sameOpenAIWSPrewarmTarget(a, b openAIWSAcquireRequest) bool {
 	return stringsTrim(a.WSURL) == stringsTrim(b.WSURL) &&
 		stringsTrim(a.ProxyURL) == stringsTrim(b.ProxyURL) &&
-		normalizeOpenAIWSHandshakeCompatibility(a.Account, a.Headers, uniqueFingerprintEnabled...) == normalizeOpenAIWSHandshakeCompatibility(b.Account, b.Headers, uniqueFingerprintEnabled...)
+		normalizeOpenAIWSHandshakeCompatibility(a.Account, a.Headers) == normalizeOpenAIWSHandshakeCompatibility(b.Account, b.Headers)
 }
 
 func normalizeOpenAIWSBetaFeatures(headers http.Header) string {
@@ -2361,40 +2361,34 @@ func normalizeOpenAIWSBetaFeatures(headers http.Header) string {
 	return strings.Join(normalized, ",")
 }
 
-func normalizeOpenAIWSHandshakeCompatibility(account *Account, headers http.Header, uniqueFingerprintEnabled ...bool) openAIWSHandshakeCompatibilityKey {
+func normalizeOpenAIWSHandshakeCompatibility(account *Account, headers http.Header) openAIWSHandshakeCompatibilityKey {
 	key := openAIWSHandshakeCompatibilityKey{
 		betaFeatures: normalizeOpenAIWSBetaFeatures(headers),
 	}
-	enabled := len(uniqueFingerprintEnabled) > 0 && uniqueFingerprintEnabled[0]
-	mode, isDefault := resolveCodexFingerprintMode(account, enabled)
+	mode := activeCodexFingerprintMode(account)
 	if mode == codexFingerprintOff {
 		return key
 	}
-	if !isDefault {
-		if _, ok := codexFingerprintSeed(account.Extra); !ok {
-			return key
-		}
-	}
-	if isDefault {
-		seed := deriveAccountCodexFingerprintSeed(account)
-		if persisted, ok := codexFingerprintSeed(account.Extra); ok {
-			seed = persisted
-		}
-		key.codexInstallationID = resolveConvergedInstallationID(account, seed)
-	} else {
-		key.codexInstallationID = normalizeOpenAIWSStableIdentityHeader(headers, "x-codex-installation-id")
-	}
-	if mode == codexFingerprintAccountDevice || mode == codexFingerprintDevice {
+	key.codexInstallationID = normalizeOpenAIWSStableIdentityHeader(headers, "x-codex-installation-id")
+	if mode == codexFingerprintDevice {
 		return key
 	}
 	key.sessionIDHyphen = normalizeOpenAIWSStableIdentityHeader(headers, "session-id")
-	if mode != codexFingerprintSingleMachineMultiWindow {
-		key.sessionIDUnderscore = normalizeOpenAIWSStableIdentityHeader(headers, "session_id")
-	}
+	key.sessionIDUnderscore = normalizeOpenAIWSStableIdentityHeader(headers, "session_id")
 	key.threadID = normalizeOpenAIWSStableIdentityHeader(headers, "thread-id")
 	key.clientRequestID = normalizeOpenAIWSStableIdentityHeader(headers, "x-client-request-id")
 	key.codexWindowID = normalizeOpenAIWSStableIdentityHeader(headers, "x-codex-window-id")
 	return key
+}
+
+func activeCodexFingerprintMode(account *Account) codexFingerprintMode {
+	if account == nil || account.GetCodexFingerprintMode() == codexFingerprintOff {
+		return codexFingerprintOff
+	}
+	if _, ok := codexFingerprintSeed(account.Extra); !ok {
+		return codexFingerprintOff
+	}
+	return account.GetCodexFingerprintMode()
 }
 
 func normalizeOpenAIWSStableIdentityHeader(headers http.Header, name string) string {

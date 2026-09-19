@@ -71,7 +71,6 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	firstClientMessage []byte,
 	hooks *OpenAIWSIngressHooks,
 ) (returnErr error) {
-	defer releaseStagedCodexFingerprintLease(c)
 	if s == nil {
 		return errors.New("service is nil")
 	}
