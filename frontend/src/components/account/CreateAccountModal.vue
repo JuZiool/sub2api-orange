@@ -3120,6 +3120,42 @@
         </div>
       </div>
 
+      <!-- OpenAI Codex 打票账号策略（OAuth / Setup Token） -->
+      <div
+        v-if="codexTicketGatewayEnabled && form.platform === 'openai' && accountCategory === 'oauth-based'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="create-codex-ticket-config"
+      >
+        <div class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.codexTicketAccountEnabled') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.codexTicketAccountEnabledDesc') }}
+            </p>
+          </div>
+          <Toggle
+            v-model="codexTicketEnabled"
+            data-testid="create-codex-ticket-enabled"
+            :aria-label="t('admin.accounts.openai.codexTicketAccountEnabled')"
+          />
+        </div>
+        <div v-if="codexTicketEnabled" class="mt-4 space-y-4 border-l-2 border-gray-200 pl-4 dark:border-dark-600">
+          <div class="flex items-center justify-between gap-4">
+            <div class="min-w-0">
+              <label class="input-label mb-0">{{ t('admin.accounts.openai.codexTicketFailClosed') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.openai.codexTicketFailClosedDesc') }}
+              </p>
+            </div>
+            <Toggle
+              v-model="codexTicketFailClosed"
+              data-testid="create-codex-ticket-fail-closed"
+              :aria-label="t('admin.accounts.openai.codexTicketFailClosed')"
+            />
+          </div>
+        </div>
+      </div>
+
       <!-- OpenAI WS Mode 三态（off/ctx_pool/passthrough） -->
       <div
         v-if="form.platform === 'openai' && (accountCategory === 'oauth-based' || accountCategory === 'apikey')"
@@ -3936,6 +3972,7 @@ import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import { useCodexTicketGatewayGate } from '@/composables/useCodexTicketGatewayGate'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
@@ -4441,6 +4478,9 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'single_machine_multi_window' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('single_machine_multi_window')
+const codexTicketEnabled = ref(false)
+const codexTicketFailClosed = ref(true)
+const codexTicketGatewayEnabled = useCodexTicketGatewayGate(() => props.show === true)
 const codexFingerprintModeOptions = computed(() => [
   { value: 'off' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintOff') },
   { value: 'single_machine_multi_window' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintSingleMachineMultiWindow') },
@@ -5364,6 +5404,8 @@ const resetForm = () => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
+  codexTicketEnabled.value = false
+  codexTicketFailClosed.value = true
   codexFingerprintMode.value = 'single_machine_multi_window'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
@@ -5471,6 +5513,11 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     extra.codex_fingerprint_mode = codexFingerprintMode.value
   } else {
     delete extra.codex_fingerprint_mode
+  }
+  // 打票账号策略：仅当网关总开关开启、且为 OpenAI OAuth / Setup Token 时落键。
+  if (codexTicketGatewayEnabled.value && accountCategory.value === 'oauth-based') {
+    extra.codex_ticket_enabled = codexTicketEnabled.value
+    extra.codex_ticket_fail_closed = codexTicketFailClosed.value
   }
   if (openAICompactMode.value !== 'auto') {
     extra.openai_compact_mode = openAICompactMode.value

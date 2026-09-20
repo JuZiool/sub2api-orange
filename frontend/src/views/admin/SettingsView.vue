@@ -4537,6 +4537,12 @@
                   >
                     {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxyConfigured") }}
                   </p>
+                  <CodexTicketProxyTest
+                    :proxy-pool="form.openai_codex_ticket_harvest_proxy_url"
+                    :saved-proxy-pool="savedCodexTicketProxyPool"
+                    :saved-proxy-count="savedCodexTicketProxyCount"
+                    :disabled="loading || saving || loadFailed"
+                  />
                 </div>
                 <div>
                   <h3 class="text-base font-semibold text-gray-900 dark:text-white">
@@ -8892,6 +8898,7 @@ import type {
 import type { ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
+import CodexTicketProxyTest from "@/views/admin/settings/CodexTicketProxyTest.vue";
 import Select, { type SelectOption } from "@/components/common/Select.vue";
 import {
   SITE_BILLING_MODES,
@@ -9035,6 +9042,8 @@ function handleSettingsTabKeydown(event: KeyboardEvent, tab: SettingsTab): void 
 
 const { copyToClipboard } = useClipboard();
 
+const savedCodexTicketProxyPool = ref("");
+const savedCodexTicketProxyCount = ref(0);
 const loading = ref(true);
 const loadFailed = ref(false);
 const saving = ref(false);
@@ -9880,6 +9889,7 @@ const form = reactive<SettingsForm>({
   openai_codex_ticket_enabled: false,
   openai_codex_ticket_harvest_proxy_url: "",
   openai_codex_ticket_harvest_proxy_configured: false,
+  openai_codex_ticket_harvest_proxy_count: 0,
   // codex_cli_only 加固
   min_codex_version: "",
   max_codex_version: "",
@@ -10890,6 +10900,8 @@ async function loadSettings() {
       form.claude_oauth_system_prompt,
     );
     syncClaudeOAuthSystemPromptBlocksFormField();
+    savedCodexTicketProxyPool.value = settings.openai_codex_ticket_harvest_proxy_url ?? "";
+    savedCodexTicketProxyCount.value = settings.openai_codex_ticket_harvest_proxy_count ?? 0;
     codexBlacklistRows.value = parseCodexEntriesToRows(
       form.codex_cli_only_blacklist,
     );

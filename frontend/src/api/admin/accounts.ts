@@ -19,6 +19,7 @@ import type {
   AdminDataImportResult,
   CodexSessionImportRequest,
   CodexSessionImportResult,
+  CodexTicketHistoryResponse,
   OpenAICodexPATCreateRequest,
   CheckMixedChannelRequest,
   CheckMixedChannelResponse,
@@ -1071,7 +1072,16 @@ export async function refreshOllamaCloudUsage(id: number): Promise<OllamaCloudUs
   return data
 }
 
+export async function getCodexTicketHistory(id: number, model: string, signal?: AbortSignal): Promise<CodexTicketHistoryResponse> {
+  const { data } = await apiClient.get<CodexTicketHistoryResponse>(`/admin/accounts/${id}/codex-ticket-history`, {
+    params: { model },
+    signal,
+  })
+  return data
+}
+
 export const accountsAPI = {
+  getCodexTicketHistory,
   list,
   listWithEtag,
   getUpstreamBillingRatesWithEtag,
