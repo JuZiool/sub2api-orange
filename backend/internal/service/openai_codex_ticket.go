@@ -120,6 +120,10 @@ type OpenAICodexTicketStatus struct {
 	RemainingSeconds int64      `json:"remaining_seconds"`
 	Blocked          bool       `json:"blocked"`
 	ExpiresAt        *time.Time `json:"expires_at,omitempty"`
+	// T5 生命周期：ready/pre_running/post_running/retry/stopped/manual_running。
+	Phase          string     `json:"phase,omitempty"`
+	RenewalStopped bool       `json:"renewal_stopped,omitempty"`
+	NextAttemptAt  *time.Time `json:"next_attempt_at,omitempty"`
 }
 
 func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketConfig, now time.Time) []OpenAICodexTicketStatus {
@@ -157,6 +161,11 @@ func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketCon
 			status.ExpiresAt = &exp
 		}
 		status.Blocked = policy.FailClosed && !status.Ready
+		if state := parseCodexTicketLifecycle(account, model); state != nil {
+			status.Phase = state.Phase
+			status.RenewalStopped = state.Phase == "stopped"
+			status.NextAttemptAt = state.NextAt
+		}
 		out = append(out, status)
 	}
 	return out

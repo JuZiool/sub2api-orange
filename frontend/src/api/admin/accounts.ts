@@ -20,6 +20,7 @@ import type {
   CodexSessionImportRequest,
   CodexSessionImportResult,
   CodexTicketHistoryResponse,
+  CodexTicketManualResult,
   OpenAICodexPATCreateRequest,
   CheckMixedChannelRequest,
   CheckMixedChannelResponse,
@@ -1080,7 +1081,18 @@ export async function getCodexTicketHistory(id: number, model: string, signal?: 
   return data
 }
 
+export async function harvestCodexTicket(id: number, model: string, signal?: AbortSignal): Promise<CodexTicketManualResult> {
+  const { data } = await apiClient.post<CodexTicketManualResult>(`/admin/accounts/${id}/codex-ticket/harvest`, { model }, { signal, params: { model } })
+  return data
+}
+
+export async function stopCodexTicketRenewal(id: number, model?: string, signal?: AbortSignal): Promise<void> {
+  await apiClient.post(`/admin/accounts/${id}/codex-ticket/stop`, model ? { model } : {}, { signal })
+}
+
 export const accountsAPI = {
+  harvestCodexTicket,
+  stopCodexTicketRenewal,
   getCodexTicketHistory,
   list,
   listWithEtag,

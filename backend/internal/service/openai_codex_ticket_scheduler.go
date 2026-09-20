@@ -45,6 +45,11 @@ type codexTicketJob struct {
 	model     string
 	nextProxy int
 	cancel    context.CancelFunc
+	// T5 生命周期：人工任务 / 身份绑定 / 有限续期。
+	identity   string
+	manual     bool
+	manualDone chan struct{}
+	manualCode string
 }
 type codexTicketProxyHealth struct {
 	active   int
@@ -238,14 +243,49 @@ func (s *OpenAIGatewayService) startOpenAICodexTicketProbe(ctx context.Context, 
 		r.mu.Unlock()
 		return false
 	}
-	if ticket.valid(now, openAICodexTicketTargetLength(account, cfg)) && !ticket.needsRefresh(now, time.Duration(cfg.RefreshBeforeSeconds)*time.Second) {
+	// T5：凭证身份变化则作废本 job 的续期状态（旧票据归属另一个主体）。
+	identity := CodexTicketAccountIdentity(account)
+	if job.identity != "" && job.identity != identity {
+		job.Paused, job.NextRetryAt, job.ConsecutiveFailures = false, nil, 0
+		job.LastErrorCode, job.LastError = "", ""
+	}
+	job.identity = identity
+	// T5：生命周期（租约 / 未确认即停止 / 有限续期）。仅自动路径受此约束，人工不受「未到期」限制。
+	state := parseCodexTicketLifecycle(account, model)
+	if !job.manual {
+		if state != nil && state.Pending {
+			// 上次尝试已开始但未结算（进程中断）；绝不自动重发。
+			job.LastErrorCode, job.LastError = "interrupted", "Previous attempt was not confirmed; not repeating"
+			next := now.Add(30 * time.Minute)
+			job.NextRetryAt = &next
+			job.Paused = true
+			r.mu.Unlock()
+			return false
+		}
+		if state != nil && state.dueForRenewal(now) {
+			if err := state.begin(now, codexTicketNewLeaseID()); err != nil {
+				// 未到期（含刚进入 retry 等待）——按状态推进下的下次时间重排。
+				if state.NextAt != nil {
+					job.NextRetryAt = state.NextAt
+				}
+				if errors.Is(err, ErrCodexTicketAlreadyTried) {
+					job.LastErrorCode, job.LastError = "interrupted", "Previous attempt was not confirmed; not repeating"
+					job.Paused = true
+				}
+				r.mu.Unlock()
+				return false
+			}
+			s.persistCodexTicketLifecycle(ctx, account, state)
+		}
+	}
+	if !job.manual && ticket.valid(now, openAICodexTicketTargetLength(account, cfg)) && !ticket.needsRefresh(now, time.Duration(cfg.RefreshBeforeSeconds)*time.Second) {
 		next := ticket.ExpiresAt.Add(-time.Duration(cfg.RefreshBeforeSeconds) * time.Second)
 		job.NextRetryAt = &next
 		job.Paused = false
 		r.mu.Unlock()
 		return false
 	}
-	if job.NextRetryAt != nil && now.Before(*job.NextRetryAt) {
+	if !job.manual && job.NextRetryAt != nil && now.Before(*job.NextRetryAt) {
 		r.mu.Unlock()
 		return false
 	}
@@ -272,6 +312,9 @@ func (s *OpenAIGatewayService) startOpenAICodexTicketProbe(ctx context.Context, 
 	}
 	attemptCtx, cancel := context.WithTimeout(ctx, time.Duration(cfg.HarvestAttemptTimeoutSeconds)*time.Second)
 	job.InProgress, job.Paused, job.cancel = true, false, cancel
+	if job.identity == "" {
+		job.identity = CodexTicketAccountIdentity(account)
+	}
 	job.Attempts++
 	job.LastAttemptAt, job.NextRetryAt = &now, nil
 	job.LastProxyIndex = index
@@ -362,9 +405,10 @@ func (s *OpenAIGatewayService) runOpenAICodexTicketProbe(ctx context.Context, ac
 		}
 	}
 	now := time.Now()
+	var storedTicket *openAICodexTicket
 	if result == nil {
-		ticket := &openAICodexTicket{AccountID: account.ID, Model: model, State: state, Length: len(state), CapturedAt: now, ExpiresAt: now.Add(time.Duration(cfg.TTLSeconds) * time.Second), Attempts: attempts}
-		s.storeOpenAICodexTicket(ctx, account, ticket)
+		storedTicket = &openAICodexTicket{AccountID: account.ID, Model: model, State: state, Length: len(state), CapturedAt: now, ExpiresAt: now.Add(time.Duration(cfg.TTLSeconds) * time.Second), Attempts: attempts}
+		s.storeOpenAICodexTicket(ctx, account, storedTicket)
 	}
 	r := &s.openaiCodexTicketScheduler
 	r.mu.Lock()
@@ -385,6 +429,31 @@ func (s *OpenAIGatewayService) runOpenAICodexTicketProbe(ctx context.Context, ac
 	}
 	job.InProgress, job.cancel = false, nil
 	job.LastHTTPStatus, job.LastLength = status, len(state)
+	if job.manual {
+		if result == nil {
+			job.manualCode = "ready"
+		} else {
+			job.manualCode = result.Code
+		}
+	}
+	// T5：结算生命周期——成功登记票据到期与续期时间；失败保留可用旧票并转入 retry。
+	if state := parseCodexTicketLifecycle(account, model); state != nil {
+		code, message, success := "ok", "", result == nil
+		if result != nil {
+			code, message = result.Code, result.Message
+		}
+		state.complete(now, storedTicket, code, message, success)
+		if !success {
+			// 以生命周期状态覆盖退避：未确认不再自动重发，直到 retry 到期或人为干预。
+			if state.Phase == "stopped" {
+				job.Paused = true
+				job.NextRetryAt = nil
+			} else if state.NextAt != nil {
+				job.NextRetryAt = state.NextAt
+			}
+		}
+		s.persistCodexTicketLifecycle(ctx, account, state)
+	}
 	// Removed/disabled jobs must not recreate telemetry after cancellation.
 	if r.jobs[openAICodexTicketKey(account.ID, model)] == job {
 		r.recordProbeEvent(account.ID, model, result, status, len(state), target, proxyIndex, started, now)

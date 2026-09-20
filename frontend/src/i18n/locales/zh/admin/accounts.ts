@@ -797,6 +797,13 @@ export default {
           },
         },
         codexTicketHistory: {
+          harvesting: '打票中',
+          harvestNow: '立即打票',
+          harvestReady: '已取得 {length} 门票',
+          harvestFailed: '打票失败：{reason}',
+          stopRenewal: '停止续期',
+          renewalStopped: '已停止自动续期',
+
           title: '采票历史',
           hint: '仅保留本次服务运行最近 {limit} 次采票，重启后清空。',
           empty: '暂无采票记录',

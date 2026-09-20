@@ -719,6 +719,13 @@ export default {
           },
         },
         codexTicketHistory: {
+          harvesting: 'Harvesting',
+          harvestNow: 'Harvest now',
+          harvestReady: 'Got a {length} ticket',
+          harvestFailed: 'Harvest failed: {reason}',
+          stopRenewal: 'Stop renewal',
+          renewalStopped: 'Automatic renewal stopped',
+
           title: 'Harvest history',
           hint: 'Keeps the most recent {limit} harvests from this service run; cleared on restart.',
           empty: 'No harvests recorded yet',

@@ -8,7 +8,14 @@
       <button v-if="expanded" type="button" class="text-xs text-gray-500 hover:text-primary-600 disabled:opacity-50 dark:text-gray-400" :disabled="loading" data-testid="ticket-history-refresh" @click="loadHistory">
         {{ t('common.refresh') }}
       </button>
+      <button type="button" class="text-xs font-medium text-primary-600 hover:text-primary-500 disabled:opacity-50 dark:text-primary-400" :disabled="manualLoading" data-testid="ticket-manual-harvest" @click="harvestNow">
+        {{ t(manualLoading ? `${key}.harvesting` : `${key}.harvestNow`) }}
+      </button>
+      <button type="button" class="text-xs text-gray-500 hover:text-primary-600 disabled:opacity-50 dark:text-gray-400" :disabled="stopping" data-testid="ticket-stop-renewal" @click="stopRenewal">
+        {{ t(`${key}.stopRenewal`) }}
+      </button>
     </div>
+    <p v-if="manualMessage" class="mt-1 text-xs" :class="manualOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'" data-testid="ticket-manual-result">{{ manualMessage }}</p>
     <div v-if="expanded" class="mt-2 space-y-2" aria-live="polite">
       <p class="text-[11px] text-gray-400 dark:text-gray-500">{{ t(`${key}.hint`, { limit }) }}</p>
       <p v-if="loading" class="text-xs text-gray-500 dark:text-gray-400">{{ t('common.loading') }}</p>
@@ -47,6 +54,10 @@ const { t } = useI18n()
 const key = 'admin.accounts.openai.codexTicketHistory'
 const expanded = ref(false)
 const loading = ref(false)
+const manualLoading = ref(false)
+const stopping = ref(false)
+const manualMessage = ref('')
+const manualOk = ref(false)
 const failed = ref(false)
 const events = ref<CodexTicketHistoryEvent[]>([])
 const limit = ref(20)
@@ -103,6 +114,44 @@ watch(() => [props.accountId, props.model], () => {
   failed.value = false
   events.value = []
 })
+
+async function harvestNow() {
+  if (manualLoading.value) return
+  manualLoading.value = true
+  manualMessage.value = ''
+  try {
+    const result = await adminAPI.accounts.harvestCodexTicket(props.accountId, props.model)
+    manualOk.value = result.success
+    manualMessage.value = result.success
+      ? t(`${key}.harvestReady`, { length: result.length ?? result.target_length ?? 0 })
+      : t(`${key}.harvestFailed`, { reason: codexTicketErrorKey(result.code) })
+    if (!expanded.value) {
+      expanded.value = true
+    }
+    await loadHistory()
+  } catch {
+    manualOk.value = false
+    manualMessage.value = t(`${key}.harvestFailed`, { reason: codexTicketErrorKey('unknown') })
+  } finally {
+    manualLoading.value = false
+  }
+}
+
+async function stopRenewal() {
+  if (stopping.value) return
+  stopping.value = true
+  manualMessage.value = ''
+  try {
+    await adminAPI.accounts.stopCodexTicketRenewal(props.accountId, props.model)
+    manualOk.value = true
+    manualMessage.value = t(`${key}.renewalStopped`)
+  } catch {
+    manualOk.value = false
+    manualMessage.value = t(`${key}.harvestFailed`, { reason: codexTicketErrorKey('unknown') })
+  } finally {
+    stopping.value = false
+  }
+}
 
 onUnmounted(cancelRequest)
 </script>

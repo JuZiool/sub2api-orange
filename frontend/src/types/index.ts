@@ -2493,6 +2493,21 @@ export interface CodexTurnTicketStatus {
   last_proxy_index?: number
   paused?: boolean
   plan_known?: boolean
+  phase?: string
+  renewal_stopped?: boolean
+  next_attempt_at?: string | null
+}
+
+export interface CodexTicketManualResult {
+  model: string
+  success: boolean
+  code: string
+  message: string
+  http_status?: number
+  length?: number
+  target_length?: number
+  duration_ms?: number
+  expires_at?: string
 }
 
 export interface CodexTicketHistoryEvent {
