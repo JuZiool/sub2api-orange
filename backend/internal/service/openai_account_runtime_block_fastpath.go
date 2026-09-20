@@ -684,9 +684,16 @@ func (s *OpenAIGatewayService) clearOpenAIAccountRuntimeBlockIfUnchanged(account
 // the source of truth only for explicitly mirrored DB cooldown contributions.
 // Independent request/credential blockers remain active during recovery.
 // Model-scoped transient blocks remain independent.
-func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Account, requestedModel string) bool {
+// requireCompact 必须与 Forward 的 /responses/compact 判定同源（两侧都来自
+// IsOpenAIResponsesCompactPath）：门票门控按真正出站的模型名判定，否则 compact
+// 请求会被按客户端原始模型误拦（见 openAICodexTicketOutboundModel）。
+func (s *OpenAIGatewayService) isOpenAIAccountRequestRuntimeBlocked(account *Account, requestedModel string, requireCompact bool) bool {
 	if s == nil {
 		return false
+	}
+	outboundModel := s.openAICodexTicketOutboundModel(account, requestedModel, requireCompact)
+	if s.openAICodexTicketBlocksAccount(account, outboundModel) {
+		return true
 	}
 	snapshot := s.peekOpenAIAccountRuntimeBlock(account)
 	if snapshot.blocked {
