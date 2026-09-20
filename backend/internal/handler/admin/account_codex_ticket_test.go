@@ -34,3 +34,20 @@ func TestAccountResponseCodexTicketsReadsLiveSettingsAfterRestart(t *testing.T) 
 	settings.InvalidateOpenAICodexTicketEnabledCache()
 	require.Empty(t, h.accountResponseFromService(account).CodexTurnTickets)
 }
+
+// accountCodexTicketDiagnosticsStub is the minimal diagnostics enricher shared by
+// the account DTO and history endpoint tests.
+type accountCodexTicketDiagnosticsStub struct {
+	diagnostics service.OpenAICodexTicketDiagnostics
+	accountIDs  []int64
+}
+
+func (s *accountCodexTicketDiagnosticsStub) EnrichOpenAICodexTicketDiagnostics(account *service.Account, statuses []service.OpenAICodexTicketStatus) {
+	if len(statuses) == 0 {
+		return
+	}
+	s.accountIDs = append(s.accountIDs, account.ID)
+	for i := range statuses {
+		statuses[i].OpenAICodexTicketDiagnostics = s.diagnostics
+	}
+}

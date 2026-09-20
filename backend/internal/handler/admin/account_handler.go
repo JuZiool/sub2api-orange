@@ -46,6 +46,11 @@ func NewOAuthHandler(oauthService *service.OAuthService) *OAuthHandler {
 	}
 }
 
+// codexTicketDiagnosticsEnricher 由网关实现，用于把进程内打票诊断补进账号 DTO。
+type codexTicketDiagnosticsEnricher interface {
+	EnrichOpenAICodexTicketDiagnostics(*service.Account, []service.OpenAICodexTicketStatus)
+}
+
 // AccountHandler handles admin account management
 type AccountHandler struct {
 	adminService            service.AdminService
@@ -66,6 +71,7 @@ type AccountHandler struct {
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
 	codexTicketSettings     *service.SettingService
+	codexTicketGateway      codexTicketDiagnosticsEnricher
 	cfg                     *config.Config
 }
 
@@ -81,6 +87,11 @@ func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUs
 // SetCodexTicketSettings supplies the live policy without mutating shared config.
 func (h *AccountHandler) SetCodexTicketSettings(settings *service.SettingService) {
 	h.codexTicketSettings = settings
+}
+
+// SetCodexTicketGateway supplies the process-local ticket diagnostics enricher.
+func (h *AccountHandler) SetCodexTicketGateway(gateway codexTicketDiagnosticsEnricher) {
+	h.codexTicketGateway = gateway
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -368,12 +379,21 @@ func (h *AccountHandler) accountListResponseFromService(account *service.Account
 }
 
 func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *dto.Account) {
-	if h != nil && h.cfg != nil && out != nil {
-		cfg := h.cfg.Gateway.OpenAICodexTicket
-		if h.codexTicketSettings != nil {
-			cfg.Enabled = h.codexTicketSettings.GetOpenAICodexTicketEnabled(context.Background(), cfg.Enabled)
-		}
-		out.CodexTurnTickets = service.OpenAICodexTicketStatuses(account, cfg, time.Now())
+	if out == nil || account == nil || !account.IsOpenAIOAuthLike() || account.IsShadow() {
+		return
+	}
+	cfg := config.OpenAICodexTicketConfig{}
+	if h != nil && h.cfg != nil {
+		cfg = h.cfg.Gateway.OpenAICodexTicket
+	}
+	if h != nil && h.codexTicketSettings != nil {
+		cfg.Enabled = h.codexTicketSettings.GetOpenAICodexTicketEnabled(context.Background(), cfg.Enabled)
+	}
+	policy := service.ResolveOpenAICodexTicketAccountConfig(account, cfg)
+	out.CodexTicketConfig = &policy
+	out.CodexTurnTickets = service.OpenAICodexTicketStatuses(account, cfg, time.Now())
+	if h != nil && h.codexTicketGateway != nil {
+		h.codexTicketGateway.EnrichOpenAICodexTicketDiagnostics(account, out.CodexTurnTickets)
 	}
 }
 

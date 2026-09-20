@@ -42,6 +42,17 @@ func ticketTestService(t *testing.T, cfg config.OpenAICodexTicketConfig, upstrea
 	}
 }
 
+func dueTicketJobs(s *OpenAIGatewayService) {
+	r := &s.openaiCodexTicketScheduler
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, job := range r.jobs {
+		if !job.InProgress {
+			job.NextRetryAt = nil
+		}
+	}
+}
+
 func TestApplyOpenAICodexTicket_ReplacesHeader(t *testing.T) {
 	state := fakeCodexTicketState(292)
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{
@@ -230,6 +241,7 @@ func TestHarvestOpenAICodexTicket_StopsAt292AndUsesHarvestProxy(t *testing.T) {
 
 	svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
 	require.Nil(t, svc.lookupOpenAICodexTicket(account, "gpt-6-astra"))
+	dueTicketJobs(svc)
 	svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
 	ticket := svc.lookupOpenAICodexTicket(account, "gpt-6-astra")
 	require.NotNil(t, ticket)
@@ -274,6 +286,7 @@ func TestHarvestOpenAICodexTicket_HTTP503DoesNotAbortHunt(t *testing.T) {
 	account := ticketTestAccount(41)
 	svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
 	require.Nil(t, svc.lookupOpenAICodexTicket(account, "gpt-6-astra"))
+	dueTicketJobs(svc)
 	svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
 	ticket := svc.lookupOpenAICodexTicket(account, "gpt-6-astra")
 	require.NotNil(t, ticket)
@@ -377,9 +390,10 @@ func TestRefreshOpenAICodexTickets_ConcurrentModelsPreserveAccountSnapshot(t *te
 	account.Extra = map[string]any{"existing": true, OpenAICodexTicketEnabledExtraKey: true}
 	repo := &codexTicketRefreshRepo{accounts: []Account{*account}}
 	upstream := &codexTicketConcurrentUpstream{ready: make(chan struct{})}
-	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, HarvestProxyURL: "socks5h://proxy.example.com:1080"}, upstream)
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, HarvestProxyURL: "socks5h://proxy.example.com:1080", HarvestAccountConcurrency: 2}, upstream)
 	svc.accountRepo = repo
 	svc.refreshOpenAICodexTickets(context.Background())
+	svc.openaiCodexTicketScheduler.workers.Wait()
 	require.Equal(t, int64(2), upstream.started.Load())
 	require.Equal(t, map[string]any{"existing": true, OpenAICodexTicketEnabledExtraKey: true}, account.Extra)
 	require.Len(t, repo.updates, 2)
@@ -390,6 +404,7 @@ func TestRefreshOpenAICodexTickets_ConcurrentModelsPreserveAccountSnapshot(t *te
 	}
 	// Valid tickets do not produce another probe on the next cycle.
 	svc.refreshOpenAICodexTickets(context.Background())
+	svc.openaiCodexTicketScheduler.workers.Wait()
 	require.Equal(t, int64(2), upstream.started.Load())
 }
 func TestOpenAICodexTicketStatuses_RespectRuntimeConfiguration(t *testing.T) {

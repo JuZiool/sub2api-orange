@@ -897,7 +897,13 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else if s != nil && s.cfg != nil {
 		result.OpenAICodexTicketEnabled = s.cfg.Gateway.OpenAICodexTicket.Enabled
 	}
-	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
+	// 区分「设置键不存在（回退 yaml/env）」与「显式保存为空（停用打票代理）」：
+	// 两者都可能是空串，必须按存在性判定，避免显式清空后静默复活 yaml 代理。
+	if value, exists := settings[SettingKeyOpenAICodexTicketHarvestProxyURL]; exists {
+		result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(value)
+	} else if s != nil && s.cfg != nil {
+		result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(s.cfg.Gateway.OpenAICodexTicket.HarvestProxyURL)
+	}
 	// codex_cli_only 加固
 	result.MinCodexVersion = settings[SettingKeyMinCodexVersion]
 	result.MaxCodexVersion = settings[SettingKeyMaxCodexVersion]

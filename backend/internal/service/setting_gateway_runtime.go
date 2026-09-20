@@ -333,32 +333,58 @@ func (s *SettingService) InvalidateOpenAICodexTicketEnabledCache() {
 }
 
 type cachedOpenAICodexTicketHarvestProxy struct {
-	value     string
+	value string
+	// missing 区分「数据库无该设置（回退 yaml/env）」与「显式清空为空池」。
+	// 两者都可能是空字符串，必须分开，否则显式清空会静默复活 yaml 代理。
+	missing   bool
 	expiresAt int64
 }
 
 const openAICodexTicketHarvestProxyCacheTTL = 5 * time.Second
 
-// GetOpenAICodexTicketHarvestProxyURL 返回后台配置的 292 打票代理。空则调用方回退 yaml/env。
+// GetOpenAICodexTicketHarvestProxyURL 返回后台存储的多行代理原文。
+// 需要带 yaml/env 回退语义的运行时代理池时，改用 GetOpenAICodexTicketHarvestProxyPool。
 func (s *SettingService) GetOpenAICodexTicketHarvestProxyURL(ctx context.Context) string {
+	return s.getOpenAICodexTicketHarvestProxy(ctx).value
+}
+
+// GetOpenAICodexTicketHarvestProxyPool 仅在数据库不存在该设置时回退 yaml/env；
+// 显式保存空池即彻底停用打票代理，不静默复活 yaml。解析失败返回空池（不打扰业务）。
+func (s *SettingService) GetOpenAICodexTicketHarvestProxyPool(ctx context.Context, fallback string) []string {
+	cached := s.getOpenAICodexTicketHarvestProxy(ctx)
+	raw := cached.value
+	if cached.missing {
+		raw = fallback
+	}
+	proxies, err := ParseOpenAICodexTicketHarvestProxyPool(raw)
+	if err != nil {
+		return nil
+	}
+	return proxies
+}
+
+func (s *SettingService) getOpenAICodexTicketHarvestProxy(ctx context.Context) *cachedOpenAICodexTicketHarvestProxy {
+	missing := &cachedOpenAICodexTicketHarvestProxy{missing: true}
+	if s == nil || s.settingRepo == nil {
+		return missing
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if ctx.Err() != nil {
-		return ""
-	}
-	if s == nil || s.settingRepo == nil {
-		return ""
-	}
+	lastKnown := missing
 	if cached, ok := s.openAICodexTicketHarvestProxyCache.Load().(*cachedOpenAICodexTicketHarvestProxy); ok && cached != nil {
+		lastKnown = cached
 		if time.Now().UnixNano() < cached.expiresAt {
-			return cached.value
+			return cached
 		}
+	}
+	if ctx.Err() != nil {
+		return lastKnown
 	}
 	resultCh := s.openAICodexTicketHarvestProxySF.DoChan(SettingKeyOpenAICodexTicketHarvestProxyURL, func() (any, error) {
 		if cached, ok := s.openAICodexTicketHarvestProxyCache.Load().(*cachedOpenAICodexTicketHarvestProxy); ok && cached != nil {
 			if time.Now().UnixNano() < cached.expiresAt {
-				return cached.value, nil
+				return cached, nil
 			}
 		}
 		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -368,31 +394,28 @@ func (s *SettingService) GetOpenAICodexTicketHarvestProxyURL(ctx context.Context
 			return nil, ctx.Err()
 		}
 		if err != nil && !errors.Is(err, ErrSettingNotFound) {
-			// Keep the last known proxy during transient storage failures.
-			if cached, ok := s.openAICodexTicketHarvestProxyCache.Load().(*cachedOpenAICodexTicketHarvestProxy); ok && cached != nil {
-				value = cached.value
-			}
-			s.openAICodexTicketHarvestProxyCache.Store(&cachedOpenAICodexTicketHarvestProxy{
-				value:     value,
-				expiresAt: time.Now().Add(time.Second).UnixNano(),
-			})
-			return value, nil
+			// 存储瞬时故障：保留上次已知代理池及其「显式清空」语义，1 秒后快速重试。
+			cached := *lastKnown
+			cached.expiresAt = time.Now().Add(time.Second).UnixNano()
+			s.openAICodexTicketHarvestProxyCache.Store(&cached)
+			return &cached, nil
 		}
-		value = strings.TrimSpace(value)
-		s.openAICodexTicketHarvestProxyCache.Store(&cachedOpenAICodexTicketHarvestProxy{
-			value:     value,
+		cached := &cachedOpenAICodexTicketHarvestProxy{
+			value:     strings.TrimSpace(value),
+			missing:   errors.Is(err, ErrSettingNotFound),
 			expiresAt: time.Now().Add(openAICodexTicketHarvestProxyCacheTTL).UnixNano(),
-		})
-		return value, nil
+		}
+		s.openAICodexTicketHarvestProxyCache.Store(cached)
+		return cached, nil
 	})
 	select {
 	case <-ctx.Done():
-		return ""
+		return lastKnown
 	case result := <-resultCh:
-		if v, ok := result.Val.(string); ok && result.Err == nil {
-			return v
+		if cached, ok := result.Val.(*cachedOpenAICodexTicketHarvestProxy); ok && result.Err == nil {
+			return cached
 		}
-		return ""
+		return lastKnown
 	}
 }
 
@@ -401,7 +424,12 @@ func (s *SettingService) InvalidateOpenAICodexTicketHarvestProxyCache() {
 		return
 	}
 	s.openAICodexTicketHarvestProxySF.Forget(SettingKeyOpenAICodexTicketHarvestProxyURL)
-	s.openAICodexTicketHarvestProxyCache.Store(&cachedOpenAICodexTicketHarvestProxy{expiresAt: 0})
+	invalidated := &cachedOpenAICodexTicketHarvestProxy{missing: true}
+	if cached, ok := s.openAICodexTicketHarvestProxyCache.Load().(*cachedOpenAICodexTicketHarvestProxy); ok && cached != nil {
+		*invalidated = *cached
+		invalidated.expiresAt = 0
+	}
+	s.openAICodexTicketHarvestProxyCache.Store(invalidated)
 }
 
 // GetOpenAICodexUserAgent 返回 OpenAI Codex 上游请求使用的 User-Agent。

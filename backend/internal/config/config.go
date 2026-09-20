@@ -1232,6 +1232,9 @@ type OpenAICodexTicketConfig struct {
 	HarvestProxyURL              string   `mapstructure:"harvest_proxy_url"`
 	HarvestProbeIntervalSeconds  int      `mapstructure:"harvest_probe_interval_seconds"`
 	HarvestAttemptTimeoutSeconds int      `mapstructure:"harvest_attempt_timeout_seconds"`
+	HarvestMaxConcurrent         int      `mapstructure:"harvest_max_concurrent"`
+	HarvestAccountConcurrency    int      `mapstructure:"harvest_account_concurrency"`
+	HarvestProxyConcurrency      int      `mapstructure:"harvest_proxy_concurrency"`
 	FailClosed                   bool     `mapstructure:"fail_closed"`
 	Models                       []string `mapstructure:"models"`
 }
@@ -2402,6 +2405,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_proxy_url", "")
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_probe_interval_seconds", 6)
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_attempt_timeout_seconds", 25)
+	viper.SetDefault("gateway.openai_codex_ticket.harvest_max_concurrent", 8)
+	viper.SetDefault("gateway.openai_codex_ticket.harvest_account_concurrency", 1)
+	viper.SetDefault("gateway.openai_codex_ticket.harvest_proxy_concurrency", 2)
 	viper.SetDefault("gateway.openai_codex_ticket.fail_closed", true)
 	viper.SetDefault("gateway.openai_codex_ticket.models", []string{"gpt-6-astra", "gpt-5.6-sol"})
 	viper.SetDefault("gateway.live.max_session_duration_seconds", 3600)

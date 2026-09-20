@@ -205,7 +205,7 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			Platform:           acc.Platform,
 			Type:               acc.Type,
 			Credentials:        acc.Credentials,
-			Extra:              service.RedactOpenAICodexTicketExtra(acc.Extra),
+			Extra:              exportCodexTicketExtra(&acc),
 			ProxyKey:           proxyKey,
 			Concurrency:        acc.Concurrency,
 			Priority:           acc.Priority,
@@ -433,6 +433,7 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 			}
 		}
 
+		item.Extra = stripLegacyCodexTicketProxyExtra(item.Extra)
 		enrichCredentialsFromIDToken(&item)
 
 		accountInput := &service.CreateAccountInput{
