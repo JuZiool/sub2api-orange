@@ -171,10 +171,14 @@ func (s *TLSFingerprintProfileService) getRandomProfile() *tlsfingerprint.Profil
 // ResolveTLSProfile 根据 Account 的配置解析出运行时 TLS Profile
 //
 // 逻辑：
-//  1. 未启用 TLS 指纹 → 返回 nil（不伪装）
-//  2. 启用 + 绑定了 profile_id → 从缓存查找对应 profile
-//  3. 启用 + 未绑定或找不到 → 返回空 Profile（使用代码内置默认值）
+//  1. Codex 单机多窗口 → 强制使用内置 Mac Codex Profile
+//  2. 未启用 TLS 指纹 → 返回 nil（不伪装）
+//  3. 启用 + 绑定了 profile_id → 从缓存查找对应 profile
+//  4. 启用 + 未绑定或找不到 → 返回空 Profile（使用代码内置默认值）
 func (s *TLSFingerprintProfileService) ResolveTLSProfile(account *Account) *tlsfingerprint.Profile {
+	if macProfile := resolveCodexMacTLSProfile(account); macProfile != nil {
+		return macProfile
+	}
 	if account == nil || !account.IsTLSFingerprintEnabled() {
 		return nil
 	}

@@ -15,6 +15,9 @@ func (s *OpenAIGatewayService) doOpenAIUpstream(request *http.Request, proxyURL 
 			return response, err
 		}
 	}
+	if profile := resolveCodexMacTLSProfile(account); profile != nil {
+		return s.httpUpstream.DoWithTLS(request, proxyURL, account.ID, account.Concurrency, profile)
+	}
 	return s.httpUpstream.Do(request, proxyURL, account.ID, account.Concurrency)
 }
 
@@ -40,6 +43,9 @@ func (s *AccountTestService) doOpenAIAccountTestUpstream(
 			account.Concurrency,
 			s.tlsFPProfileService.ResolveTLSProfile(account),
 		)
+	}
+	if profile := resolveCodexMacTLSProfile(account); profile != nil {
+		return s.httpUpstream.DoWithTLS(request, proxyURL, account.ID, account.Concurrency, profile)
 	}
 	return s.httpUpstream.Do(request, proxyURL, account.ID, account.Concurrency)
 }
