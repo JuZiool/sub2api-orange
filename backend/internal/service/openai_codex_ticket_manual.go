@@ -100,6 +100,7 @@ func (s *OpenAIGatewayService) HarvestOpenAICodexTicketNow(ctx context.Context, 
 	r.mu.Unlock()
 
 	// 同步执行一发：async=false 让探针在本次调用内完成。
+	// T5 的租约与「未确认」保护由 startOpenAICodexTicketProbe 在真正发起前统一预占。
 	startedProbe := s.startOpenAICodexTicketProbe(ctx, account, model, cfg, proxies, time.Now(), false)
 
 	r.mu.Lock()

@@ -395,8 +395,13 @@ func TestRefreshOpenAICodexTickets_ConcurrentModelsPreserveAccountSnapshot(t *te
 	svc.refreshOpenAICodexTickets(context.Background())
 	svc.openaiCodexTicketScheduler.workers.Wait()
 	require.Equal(t, int64(2), upstream.started.Load())
-	require.Equal(t, map[string]any{"existing": true, OpenAICodexTicketEnabledExtraKey: true}, account.Extra)
-	require.Len(t, repo.updates, 2)
+	require.Equal(t, map[string]any{"existing": true, OpenAICodexTicketEnabledExtraKey: true}, account.Extra, "the shared snapshot must not be mutated by persistence")
+	// 每个模型落一条票据 + 一条 T5 生命周期状态；生命周期是服务端独占的运行时账本。
+	require.Len(t, repo.updates, 4)
+	for _, model := range []string{openAICodexTicketDefaultModel, openAICodexTicketDefaultSolModel} {
+		require.Contains(t, repo.updates, openAICodexTicketExtraKey(model))
+		require.Contains(t, repo.updates, codexTicketRuntimeExtraKey(model))
+	}
 	for _, model := range []string{openAICodexTicketDefaultModel, openAICodexTicketDefaultSolModel} {
 		ticket := svc.lookupOpenAICodexTicket(account, model)
 		require.NotNil(t, ticket)

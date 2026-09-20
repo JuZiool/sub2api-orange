@@ -103,10 +103,12 @@ func TestCodexTicketHarvesterStopCancelsInFlightWork(t *testing.T) {
 			started := make(chan struct{})
 			cancelled := make(chan struct{})
 			var once sync.Once
+			var cancelOnce sync.Once
 			block := func(ctx context.Context) error {
 				once.Do(func() { close(started) })
 				<-ctx.Done()
-				close(cancelled)
+				// Multiple writers (ticket + lifecycle) may observe cancellation.
+				cancelOnce.Do(func() { close(cancelled) })
 				return ctx.Err()
 			}
 			account := ticketTestAccount(41)

@@ -76,7 +76,8 @@ func codexTicketRuntimeExtraKey(model string) string {
 	return OpenAICodexTicketRuntimeExtraPrefix + strings.TrimSpace(model)
 }
 
-func isOpenAICodexTicketRuntimeExtraKey(key string) bool {
+// IsOpenAICodexTicketRuntimeExtraKey 判断是否为服务端独占的生命周期状态键。
+func IsOpenAICodexTicketRuntimeExtraKey(key string) bool {
 	return strings.HasPrefix(key, OpenAICodexTicketRuntimeExtraPrefix)
 }
 
@@ -110,14 +111,14 @@ func (s *OpenAIGatewayService) persistCodexTicketLifecycle(ctx context.Context, 
 	}
 	state.AccountID = account.ID
 	state.Model = normalizeOpenAICodexTicketModel(state.Model)
-	if account.Extra == nil {
-		account.Extra = make(map[string]any)
-	}
-	account.Extra[codexTicketRuntimeExtraKey(state.Model)] = state
+	// 只落库，不改动传入的账号快照：调度器里的账号快照可能与仓储共享 Extra map，
+	// 就地写入会污染其它 goroutine 的视图（既有票据路径同样只写 DB + 进程内缓存）。
 	if s.accountRepo == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	// 与既有票据落库一致：可取消的短超时。取消时写入失败即保留 Pending，
+	// 重启后按「未确认」处理（绝不自动重发）。
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
 		codexTicketRuntimeExtraKey(state.Model): state,
@@ -164,6 +165,29 @@ func (state *CodexTicketLifecycle) begin(now time.Time, leaseID string) error {
 	return nil
 }
 
+// beginInitial 建立/接续首次自动尝试（无既有状态，或状态尚未排期）。
+// 与 begin 的区别：不做「未到期」判断，仅消耗一次尝试并记录租约。
+func (state *CodexTicketLifecycle) beginInitial(now time.Time, leaseID string) error {
+	if state == nil {
+		return ErrCodexTicketStale
+	}
+	if state.Pending {
+		return ErrCodexTicketAlreadyTried
+	}
+	state.LeaseID = leaseID
+	leaseUntil := now.Add(2 * time.Minute)
+	state.LeaseUntil = &leaseUntil
+	state.Pending = true
+	state.Attempts++
+	if state.ExpiresAt == nil {
+		// 尚无可用票据：按「续票」语义推进，建立后即进入有限续期预算。
+		state.Phase = "pre_running"
+	} else {
+		state.Phase = "pre_running"
+	}
+	return nil
+}
+
 // beginManual 消耗一次人工阶段；manual 打票不受「未到期」限制，但仍拒绝并发。
 func (state *CodexTicketLifecycle) beginManual(now time.Time, leaseID string) error {
 	if state == nil {
@@ -191,10 +215,19 @@ func (state *CodexTicketLifecycle) complete(now time.Time, ticket *openAICodexTi
 	state.LastAttemptAt = &at
 	state.LastCode, state.LastMessage = code, message
 	state.LeaseID, state.LeaseUntil, state.Pending = "", nil, false
-	// 有限续期：连续未确认到上限即停止，避免无限重试。
-	if !success && state.Attempts >= codexTicketMaxPendingAttempts {
+	// 有限续期的预算只针对「已有票据的续期」；尚无票据的首次获取按退避重试，
+	// 不套用上限（与旧调度器连续打票语义一致，避免新账号首次失败即永久停摆）。
+	renewal := state.ExpiresAt != nil
+	if !success && renewal && state.Attempts >= codexTicketMaxPendingAttempts {
 		state.Phase = "stopped"
 		state.NextAt, state.AutoRenew = nil, false
+		return
+	}
+	if !success && !renewal {
+		// 尚未拿到票据：按短间隔重试，保留退避由调度器负责。
+		due := now.Add(codexTicketRenewLead)
+		state.Phase = "retry"
+		state.NextAt = &due
 		return
 	}
 	if success && ticket != nil {

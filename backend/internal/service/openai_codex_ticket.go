@@ -595,12 +595,12 @@ func IsOpenAICodexTicketExtraKey(key string) bool {
 func MergeOpenAICodexTicketExtra(extra, current map[string]any) map[string]any {
 	result := maps.Clone(extra)
 	for key := range result {
-		if IsOpenAICodexTicketExtraKey(key) {
+		if IsOpenAICodexTicketExtraKey(key) || IsOpenAICodexTicketRuntimeExtraKey(key) {
 			delete(result, key)
 		}
 	}
 	for key, value := range current {
-		if IsOpenAICodexTicketExtraKey(key) {
+		if IsOpenAICodexTicketExtraKey(key) || IsOpenAICodexTicketRuntimeExtraKey(key) {
 			if result == nil {
 				result = make(map[string]any)
 			}
@@ -671,9 +671,9 @@ func isOpenAICodexTicketAccount(account *Account) bool {
 }
 
 // IsOpenAICodexTicketPrivateExtraKey also covers the retired account-level proxy
-// override, whose credentials may remain in older account records.
+// override and the T5 lifecycle journal, whose contents are server-managed.
 func IsOpenAICodexTicketPrivateExtraKey(key string) bool {
-	return IsOpenAICodexTicketExtraKey(key) || key == "codex_harvest_proxy_url"
+	return IsOpenAICodexTicketExtraKey(key) || IsOpenAICodexTicketRuntimeExtraKey(key) || key == "codex_harvest_proxy_url"
 }
 
 // RedactOpenAICodexTicketExtra strips ephemeral ticket material from exports

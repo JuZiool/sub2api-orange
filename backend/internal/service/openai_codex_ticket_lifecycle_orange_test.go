@@ -116,9 +116,20 @@ type codexTicketManualRepo struct {
 }
 
 func (r *codexTicketManualRepo) GetByID(context.Context, int64) (*Account, error) {
-	return &r.account, nil
+	clone := r.account
+	return &clone, nil
 }
-func (r *codexTicketManualRepo) UpdateExtra(context.Context, int64, map[string]any) error { return nil }
+
+// UpdateExtra behaves like the real repository: a key-level merge into the stored row.
+func (r *codexTicketManualRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
+	if r.account.Extra == nil {
+		r.account.Extra = make(map[string]any)
+	}
+	for key, value := range updates {
+		r.account.Extra[key] = value
+	}
+	return nil
+}
 
 func TestHarvestOpenAICodexTicketNowSuccessAndStop(t *testing.T) {
 	state := fakeCodexTicketState(292)
@@ -155,4 +166,55 @@ func TestHarvestOpenAICodexTicketNowRejectsDisabledModelAndProxy(t *testing.T) {
 	off := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: false, Models: []string{"gpt-6-astra"}}, nil)
 	off.accountRepo = &codexTicketManualRepo{account: account}
 	require.Equal(t, "disabled", off.HarvestOpenAICodexTicketNow(context.Background(), 1, "gpt-6-astra").Code)
+}
+
+func TestCodexTicketLifecycleReservationReleasedWhenProbeCannotStart(t *testing.T) {
+	// 并发上限为 0 会让预占后退回，绝不能把续期推迟到整段 RefreshBeforeSeconds。
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, HarvestProxyURL: "http://pool.example:80", Models: []string{"gpt-6-astra"}, HarvestMaxConcurrent: 1}, &codexTicketFuncUpstream{do: func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: http.NoBody}, nil
+	}})
+	expiry := time.Now().Add(20 * time.Minute)
+	due := time.Now().Add(-time.Minute)
+	account := activeTicketAccounts(1)[0]
+	account.Extra = map[string]any{
+		OpenAICodexTicketEnabledExtraKey:          true,
+		codexTicketRuntimeExtraKey("gpt-6-astra"): &CodexTicketLifecycle{Phase: "ready", ExpiresAt: &expiry, NextAt: &due},
+	}
+	svc.accountRepo = &codexTicketManualRepo{account: account}
+	// 占住唯一的全局并发槽，令本次无法真正发起。
+	r := &svc.openaiCodexTicketScheduler
+	r.mu.Lock()
+	r.init()
+	r.active = 1
+	r.mu.Unlock()
+
+	started := svc.startOpenAICodexTicketProbe(context.Background(), &account, "gpt-6-astra", svc.openAICodexTicketConfig(), []string{"http://pool.example:80"}, time.Now(), false)
+	require.False(t, started)
+	state := parseCodexTicketLifecycle(&svc.accountRepo.(*codexTicketManualRepo).account, "gpt-6-astra")
+	require.NotNil(t, state)
+	require.False(t, state.Pending, "unstarted reservation must be released")
+	require.Equal(t, "ready", state.Phase)
+	require.NotNil(t, state.NextAt)
+	require.True(t, state.NextAt.Before(time.Now().Add(5*time.Minute)), "release must reschedule promptly, not after the full refresh window")
+}
+
+func TestCodexTicketRuntimeStateIsRedactedAndProtectedFromEdits(t *testing.T) {
+	state := &CodexTicketLifecycle{Phase: "ready", LeaseID: "secret-lease"}
+	extra := map[string]any{
+		"custom": true,
+		codexTicketRuntimeExtraKey("gpt-6-astra"): state,
+		openAICodexTicketExtraKey("gpt-6-astra"):  &openAICodexTicket{State: fakeCodexTicketState(292), Length: 292},
+	}
+	redacted := RedactOpenAICodexTicketExtra(extra)
+	require.NotContains(t, redacted, codexTicketRuntimeExtraKey("gpt-6-astra"))
+	require.NotContains(t, redacted, openAICodexTicketExtraKey("gpt-6-astra"))
+	require.Equal(t, true, redacted["custom"])
+	require.True(t, IsOpenAICodexTicketPrivateExtraKey(codexTicketRuntimeExtraKey("gpt-6-astra")))
+
+	// An account edit supplying a forged runtime state must not be accepted.
+	merged := MergeOpenAICodexTicketExtra(map[string]any{codexTicketRuntimeExtraKey("gpt-6-astra"): map[string]any{"phase": "spoofed"}, "custom": 1}, extra)
+	// The forged runtime value must be replaced by the server-owned one from `current`.
+	require.NotEqual(t, "spoofed", merged[codexTicketRuntimeExtraKey("gpt-6-astra")])
+	require.Equal(t, state, merged[codexTicketRuntimeExtraKey("gpt-6-astra")])
+	require.Equal(t, 1, merged["custom"])
 }
