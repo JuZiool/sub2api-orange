@@ -416,12 +416,10 @@ func redactAccountManagedExtra(extra map[string]any) map[string]any {
 	}
 	redacted := make(map[string]any, len(extra))
 	for key, value := range extra {
-		switch {
-		case key == service.OllamaCloudUsageSessionExtraKey,
-			key == service.OllamaCloudUsageAutoRefreshExtraKey,
-			key == service.OllamaCloudUsageSnapshotExtraKey:
-			continue
-		case service.IsOpenAICodexTicketPrivateExtraKey(key):
+		switch key {
+		case service.OllamaCloudUsageSessionExtraKey,
+			service.OllamaCloudUsageAutoRefreshExtraKey,
+			service.OllamaCloudUsageSnapshotExtraKey:
 			continue
 		default:
 			redacted[key] = value
@@ -462,8 +460,9 @@ func AccountListItemFromAccount(a *Account) *AccountListItem {
 	return &AccountListItem{
 		ID: a.ID, Name: a.Name, Notes: a.Notes, Platform: a.Platform, Type: a.Type,
 		Credentials: a.Credentials, CredentialsStatus: a.CredentialsStatus, Extra: a.Extra,
-		OllamaCloudUsage: a.OllamaCloudUsage, CodexTicketConfig: a.CodexTicketConfig, CodexTurnTickets: a.CodexTurnTickets,
-		ProxyID: a.ProxyID, ProxyIDs: a.ProxyIDs, ProxyFallbackOriginID: a.ProxyFallbackOriginID, ProxyFallbackOriginName: a.ProxyFallbackOriginName, Concurrency: a.Concurrency, LoadFactor: a.LoadFactor, Priority: a.Priority, RateMultiplier: a.RateMultiplier,
+		OllamaCloudUsage: a.OllamaCloudUsage,
+		ProxyID:          a.ProxyID, ProxyIDs: a.ProxyIDs, ProxyFallbackOriginID: a.ProxyFallbackOriginID, ProxyFallbackOriginName: a.ProxyFallbackOriginName,
+		Concurrency: a.Concurrency, LoadFactor: a.LoadFactor, Priority: a.Priority, RateMultiplier: a.RateMultiplier,
 		Status: a.Status, ErrorMessage: a.ErrorMessage, LastUsedAt: a.LastUsedAt, ExpiresAt: a.ExpiresAt,
 		AutoPauseOnExpired: a.AutoPauseOnExpired, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt,
 		Schedulable: a.Schedulable, RateLimitedAt: a.RateLimitedAt, RateLimitResetAt: a.RateLimitResetAt,

@@ -2252,69 +2252,6 @@
         </div>
       </div>
 
-      <!-- Codex 打票账号策略（仅 OpenAI OAuth / Setup Token） -->
-      <div
-        v-if="codexTicketGatewayEnabled && account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token') && !isSparkShadow"
-        class="border-t border-gray-200 pt-4 dark:border-dark-600"
-        data-testid="edit-codex-ticket-config"
-      >
-        <div class="flex items-center justify-between gap-4">
-          <div class="min-w-0">
-            <label class="input-label mb-0">{{ t('admin.accounts.openai.codexTicketAccountEnabled') }}</label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.openai.codexTicketAccountEnabledDesc') }}
-            </p>
-          </div>
-          <Toggle
-            v-model="codexTicketEnabled"
-            data-testid="edit-codex-ticket-enabled"
-            :aria-label="t('admin.accounts.openai.codexTicketAccountEnabled')"
-          />
-        </div>
-        <div v-if="codexTicketEnabled" class="mt-4 space-y-4 border-l-2 border-gray-200 pl-4 dark:border-dark-600">
-          <div class="flex items-center justify-between gap-4">
-            <div class="min-w-0">
-              <label class="input-label mb-0">{{ t('admin.accounts.openai.codexTicketFailClosed') }}</label>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.accounts.openai.codexTicketFailClosedDesc') }}
-              </p>
-            </div>
-            <Toggle
-              v-model="codexTicketFailClosed"
-              data-testid="edit-codex-ticket-fail-closed"
-              :aria-label="t('admin.accounts.openai.codexTicketFailClosed')"
-            />
-          </div>
-        </div>
-      </div>
-
-      <!-- Codex 门票状态（仅 OpenAI OAuth / Setup Token） -->
-      <div
-        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token') && codexTurnTickets.length"
-        class="border-t border-gray-200 pt-4 dark:border-dark-600"
-      >
-        <label class="input-label mb-0">{{ t('admin.accounts.openai.codexTurnTicket', { length: codexTicketTargetLength }) }}</label>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          {{ t('admin.accounts.openai.codexTurnTicketDesc') }}
-        </p>
-        <div class="mt-3 space-y-1.5">
-          <div v-for="ticket in codexTurnTickets" :key="ticket.model" class="rounded-lg bg-gray-50 p-3 text-sm dark:bg-dark-700">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <span class="font-medium">{{ ticket.model }}</span>
-              <span v-if="ticket.ready" class="text-emerald-600 dark:text-emerald-400">
-                {{ t('admin.accounts.openai.codexTurnTicketReady', { time: formatCodexTicketRemaining(ticket.remaining_seconds) }) }}
-              </span>
-              <span v-else-if="ticket.blocked" class="text-amber-600 dark:text-amber-400">
-                {{ t('admin.accounts.openai.codexTurnTicketPaused', { length: ticket.target_length }) }}
-              </span>
-              <span v-else class="text-gray-500">{{ t('admin.accounts.openai.codexTurnTicketMissing', { length: ticket.target_length }) }}</span>
-            </div>
-            <CodexTicketDiagnostics :ticket="ticket" />
-            <CodexTicketHistory :account-id="account.id" :model="ticket.model" />
-          </div>
-        </div>
-      </div>
-
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth'"
@@ -3119,9 +3056,6 @@ import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
-import CodexTicketDiagnostics from '@/components/account/CodexTicketDiagnostics.vue'
-import CodexTicketHistory from '@/components/account/CodexTicketHistory.vue'
-import { useCodexTicketGatewayGate } from '@/composables/useCodexTicketGatewayGate'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -3211,19 +3145,6 @@ const selectableGroups = computed(() => {
 // Spark 影子账号(parent_account_id 非空):代理恒继承母账号,不可独立编辑(外审 B/P1),
 // 故隐藏代理选择器。
 const isSparkShadow = computed(() => props.account?.parent_account_id != null)
-
-const codexTicketGatewayEnabled = useCodexTicketGatewayGate(() => props.show === true)
-const codexTurnTickets = computed(() => codexTicketGatewayEnabled.value ? (props.account?.codex_turn_tickets ?? []) : [])
-const codexTicketTargetLength = computed(() => props.account?.codex_ticket_config?.target_length ?? 292)
-const codexTicketEnabled = ref(false)
-const codexTicketFailClosed = ref(true)
-
-function formatCodexTicketRemaining(seconds: number) {
-  const total = Math.max(0, Math.floor(seconds || 0))
-  const m = Math.floor(total / 60)
-  const s = total % 60
-  return `${m}m${String(s).padStart(2, '0')}s`
-}
 
 const hideAccountLongContextBilling = computed(() => {
   return allSelectedGroupsEnableLongContextPricing(form.group_ids, props.groups)
@@ -4059,13 +3980,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedScheduling.value = false
   allowOverages.value = false
 	const extra = newAccount.extra as Record<string, unknown> | undefined
-	const codexTicketConfig = newAccount.codex_ticket_config
-	codexTicketEnabled.value = typeof extra?.codex_ticket_enabled === 'boolean'
-	  ? extra.codex_ticket_enabled
-	  : codexTicketConfig?.account_enabled === true
-	codexTicketFailClosed.value = typeof extra?.codex_ticket_fail_closed === 'boolean'
-	  ? extra.codex_ticket_fail_closed
-	  : (codexTicketConfig?.account_enabled === true ? codexTicketConfig.fail_closed !== false : true)
 	mixedScheduling.value = extra?.mixed_scheduling === true
 	allowOverages.value = extra?.allow_overages === true
 	upstreamRequestIdHeader.value = readUpstreamRequestIdHeader(extra)
@@ -5691,13 +5605,6 @@ const handleSubmit = async () => {
         } else {
           delete newExtra.codex_fingerprint_mode
         }
-      }
-
-      // 打票账号策略：仅当网关总开关开启、且为 OpenAI OAuth / Setup Token 时落键。
-      // 缺 key 即 false（显式 opt-in），故必须显式写入。
-      if (codexTicketGatewayEnabled.value && props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'setup-token') && !isSparkShadow.value) {
-        newExtra.codex_ticket_enabled = codexTicketEnabled.value
-        newExtra.codex_ticket_fail_closed = codexTicketFailClosed.value
       }
 
       updatePayload.extra = newExtra

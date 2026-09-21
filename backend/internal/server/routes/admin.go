@@ -389,9 +389,6 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.POST("/:id/set-privacy", h.Admin.Account.SetPrivacy)
 		accounts.POST("/:id/refresh-tier", h.Admin.Account.RefreshTier)
 		accounts.GET("/:id/stats", h.Admin.Account.GetStats)
-		accounts.GET("/:id/codex-ticket-history", h.Admin.Account.GetCodexTicketHistory)
-		accounts.POST("/:id/codex-ticket/harvest", h.Admin.Account.HarvestCodexTicket)
-		accounts.POST("/:id/codex-ticket/stop", h.Admin.Account.StopCodexTicketRenewal)
 		accounts.POST("/:id/clear-error", h.Admin.Account.ClearError)
 		accounts.POST("/:id/revert-proxy-fallback", h.Admin.Account.RevertProxyFallback)
 		accounts.GET("/:id/usage", h.Admin.Account.GetUsage)
@@ -560,7 +557,6 @@ func registerPromoCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	adminSettings := admin.Group("/settings")
 	{
-		adminSettings.POST("/openai-codex-ticket/test-proxy", h.Admin.Setting.TestOpenAICodexTicketProxy)
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
 		adminSettings.PUT("", h.Admin.Setting.UpdateSettings)
 		adminSettings.POST("/test-smtp", h.Admin.Setting.TestSMTPConnection)

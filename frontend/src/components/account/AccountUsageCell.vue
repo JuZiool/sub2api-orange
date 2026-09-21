@@ -116,23 +116,8 @@
       </div>
     </template>
 
-    <!-- OpenAI Codex accounts: ticket status; usage querying remains OAuth-only. -->
-    <template v-else-if="account.platform === 'openai' && (account.type === 'oauth' || account.type === 'setup-token')">
-      <div v-if="codexTurnTickets.length" class="mb-1 space-y-0.5">
-        <div
-          v-for="ticket in codexTurnTickets"
-          :key="ticket.model"
-          class="min-w-0 text-[10px] leading-4"
-        >
-          <div class="flex items-center gap-1">
-            <span class="truncate font-medium text-gray-500 dark:text-gray-400" :title="`${ticket.model} · ${t('admin.accounts.openai.codexTurnTicket', { length: ticket.target_length })}`">{{ shortCodexTicketModel(ticket.model) }}</span>
-            <span v-if="ticket.ready" class="text-emerald-600 dark:text-emerald-400">{{ formatCodexTicketRemaining(ticket.remaining_seconds) }}</span>
-            <span v-else-if="ticket.blocked" class="text-amber-600 dark:text-amber-400">{{ t('admin.accounts.openai.codexTurnTicketPaused', { length: ticket.target_length }) }}</span>
-            <span v-else class="text-gray-500">{{ t('admin.accounts.openai.codexTurnTicketMissing', { length: ticket.target_length }) }}</span>
-          </div>
-          <CodexTicketDiagnostics :ticket="ticket" compact />
-        </div>
-      </div>
+    <!-- OpenAI OAuth accounts: single source from /usage API -->
+    <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
         <UsageProgressBar
           v-if="usageInfo?.five_hour"
@@ -204,7 +189,6 @@
         <div class="text-xs text-gray-400">-</div>
         <!-- Always allow on-demand upstream quota query, even before local data exists. -->
         <OpenAIQuotaResetCell
-          v-if="account.type === 'oauth'"
           :account="account"
           class="mt-1"
           @account-updated="handleQuotaResetAccountUpdated"
@@ -674,7 +658,6 @@ import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
 import UsageProgressBar from './UsageProgressBar.vue'
-import CodexTicketDiagnostics from './CodexTicketDiagnostics.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
 import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
@@ -806,21 +789,6 @@ const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
   return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
 })
-
-const codexTurnTickets = computed(() => props.account.codex_ticket_config?.gateway_enabled === false ? [] : (props.account.codex_turn_tickets ?? []))
-
-function shortCodexTicketModel(model: string) {
-  if (model === 'gpt-6-astra') return 'astra'
-  if (model === 'gpt-5.6-sol') return 'sol'
-  return model
-}
-
-function formatCodexTicketRemaining(seconds: number) {
-  const total = Math.max(0, Math.floor(seconds || 0))
-  const m = Math.floor(total / 60)
-  const s = total % 60
-  return `${m}m${String(s).padStart(2, '0')}s`
-}
 
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))
 

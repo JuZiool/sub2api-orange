@@ -514,13 +514,6 @@ type OpenAIGatewayService struct {
 	// 剥离跨账号回带（openai_codex_turn_state.go）。
 	openaiCodexTurnStateOrigins sync.Map
 	openaiCodexTurnStateWrites  atomic.Uint64
-	// openaiCodexTickets: accountID\x00model → *openAICodexTicket，账号套餐对应长度的门票。
-	openaiCodexTickets           sync.Map
-	openaiCodexTicketScheduler   codexTicketScheduler
-	openaiCodexTicketLifecycleMu sync.Mutex
-	openaiCodexTicketCancel      context.CancelFunc
-	openaiCodexTicketDone        chan struct{}
-	openaiCodexTicketStopped     bool
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
@@ -599,7 +592,7 @@ func NewOpenAIGatewayService(
 	}
 	svc.logOpenAIWSModeBootstrap()
 	svc.SetRateMultiplierOverride(resolveModelRateMultiplierOverride)
-	svc.StartOpenAICodexTicketHarvester()
+
 	return svc
 }
 

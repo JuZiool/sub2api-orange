@@ -62,7 +62,6 @@ type SettingHandler struct {
 	notificationEmailService *service.NotificationEmailService
 	totpService              *service.TotpService
 	userService              *service.UserService
-	codexTicketProxyTester   *service.OpenAICodexTicketProxyTester
 }
 
 // NewSettingHandler 创建系统设置处理器
@@ -304,10 +303,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpenAICodexClientVersion:                               settings.OpenAICodexClientVersion,
 		OpenAICodexClientVersionSynced:                         settings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      settings.OpenAICodexVersionAutoSyncEnabled,
-		OpenAICodexTicketEnabled:                               settings.OpenAICodexTicketEnabled,
-		OpenAICodexTicketHarvestProxyURL:                       service.MaskOpenAICodexTicketHarvestProxyPool(settings.OpenAICodexTicketHarvestProxyURL),
-		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL) != "",
-		OpenAICodexTicketHarvestProxyCount:                     openAICodexTicketProxyCount(settings.OpenAICodexTicketHarvestProxyURL),
 		MinCodexVersion:                                        settings.MinCodexVersion,
 		MaxCodexVersion:                                        settings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  settings.CodexCLIOnlyBlacklist,

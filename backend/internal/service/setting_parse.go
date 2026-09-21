@@ -246,7 +246,6 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpenAICodexClientVersion:                           "",
 		SettingKeyOpenAICodexClientVersionSynced:                     "",
 		SettingKeyOpenAICodexVersionAutoSyncEnabled:                  "true",
-		SettingKeyOpenAICodexTicketHarvestProxyURL:                   "",
 		SettingPaymentVisibleMethodAlipaySource:                      "",
 		SettingPaymentVisibleMethodWxpaySource:                       "",
 		SettingPaymentVisibleMethodAlipayEnabled:                     "false",
@@ -891,18 +890,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.OpenAICodexVersionAutoSyncEnabled = v == "true"
 	} else {
 		result.OpenAICodexVersionAutoSyncEnabled = true
-	}
-	if v, ok := settings[SettingKeyOpenAICodexTicketEnabled]; ok && v != "" {
-		result.OpenAICodexTicketEnabled = v == "true"
-	} else if s != nil && s.cfg != nil {
-		result.OpenAICodexTicketEnabled = s.cfg.Gateway.OpenAICodexTicket.Enabled
-	}
-	// 区分「设置键不存在（回退 yaml/env）」与「显式保存为空（停用打票代理）」：
-	// 两者都可能是空串，必须按存在性判定，避免显式清空后静默复活 yaml 代理。
-	if value, exists := settings[SettingKeyOpenAICodexTicketHarvestProxyURL]; exists {
-		result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(value)
-	} else if s != nil && s.cfg != nil {
-		result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(s.cfg.Gateway.OpenAICodexTicket.HarvestProxyURL)
 	}
 	// codex_cli_only 加固
 	result.MinCodexVersion = settings[SettingKeyMinCodexVersion]
