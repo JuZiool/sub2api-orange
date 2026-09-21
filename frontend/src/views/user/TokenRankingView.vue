@@ -49,12 +49,7 @@
 
         <section class="card overflow-hidden">
           <div class="flex flex-wrap items-end justify-between gap-3 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
-            <div>
-              <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('tokenRanking.dailyTitle') }}</h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t('tokenRanking.dateRange', { start: data?.daily.start_date || '-', end: data?.daily.end_date || '-' }) }}
-              </p>
-            </div>
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('tokenRanking.dailyTitle') }}</h2>
             <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('tokenRanking.topTen') }}</span>
           </div>
 
