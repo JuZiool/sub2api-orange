@@ -431,6 +431,8 @@ func (h *UsageHandler) TokenRanking(c *gin.Context) {
 		weekday = 7
 	}
 	weekStart := dayStart.AddDate(0, 0, -(weekday - 1))
+	// 排行榜展示完整自然周（周一至周日）；查询窗口仍截止到今天。
+	weekEnd := weekStart.AddDate(0, 0, 6)
 
 	rows, err := h.usageService.GetGlobalTokenRanking(c.Request.Context(), weekStart, dayStart, dayEnd)
 	if err != nil {
@@ -462,7 +464,7 @@ func (h *UsageHandler) TokenRanking(c *gin.Context) {
 	response.Success(c, gin.H{
 		"weekly": gin.H{
 			"start_date": weekStart.Format("2006-01-02"),
-			"end_date":   dayStart.Format("2006-01-02"),
+			"end_date":   weekEnd.Format("2006-01-02"),
 			"items":      weekly,
 		},
 		"daily": gin.H{

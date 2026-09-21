@@ -76,7 +76,9 @@ func TestTokenRankingBuildsResponseAndMasksEmail(t *testing.T) {
 	var payload struct {
 		Data struct {
 			Weekly struct {
-				Items []tokenRankingItem `json:"items"`
+				StartDate string             `json:"start_date"`
+				EndDate   string             `json:"end_date"`
+				Items     []tokenRankingItem `json:"items"`
 			} `json:"weekly"`
 			Daily struct {
 				Items []tokenRankingItem `json:"items"`
@@ -91,6 +93,37 @@ func TestTokenRankingBuildsResponseAndMasksEmail(t *testing.T) {
 	require.True(t, repo.called)
 	require.Equal(t, repo.dayStart.AddDate(0, 0, 1), repo.dayEnd)
 	require.True(t, !repo.weekStart.After(repo.dayStart))
+	require.Equal(t, repo.weekStart.Format("2006-01-02"), payload.Data.Weekly.StartDate)
+}
+
+func TestTokenRankingWeeklyRangeCoversFullCalendarWeek(t *testing.T) {
+	repo := &tokenRankingHandlerRepoStub{}
+	router := newTokenRankingHandlerRouter(repo, true)
+	req := httptest.NewRequest(http.MethodGet, "/usage/ranking?timezone=Asia/Shanghai", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var payload struct {
+		Data struct {
+			Weekly struct {
+				StartDate string `json:"start_date"`
+				EndDate   string `json:"end_date"`
+			} `json:"weekly"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &payload))
+
+	start, err := time.Parse("2006-01-02", payload.Data.Weekly.StartDate)
+	require.NoError(t, err)
+	end, err := time.Parse("2006-01-02", payload.Data.Weekly.EndDate)
+	require.NoError(t, err)
+
+	require.Equal(t, time.Monday, start.Weekday())
+	require.Equal(t, time.Sunday, end.Weekday())
+	require.True(t, end.Equal(start.AddDate(0, 0, 6)), "weekly range must span Mon~Sun, got %s ~ %s", start, end)
+	require.False(t, end.Before(repo.dayStart), "the week must still contain today")
 }
 
 func TestTokenRankingReturnsEmptyArraysOnEmptyRepositoryResult(t *testing.T) {
