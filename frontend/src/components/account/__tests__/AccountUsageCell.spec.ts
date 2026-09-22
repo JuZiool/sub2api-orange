@@ -1656,4 +1656,90 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('7d S')
     expect(wrapper.text()).not.toContain('7d F')
   })
+  it('OpenAI OAuth 透传 5h/7d 各自的 overdraft 统计与状态', async () => {
+    getUsage.mockResolvedValue({
+      codex_quota_overdraft: { status: 'passed' },
+      five_hour: {
+        utilization: 100,
+        resets_at: '2099-03-07T12:00:00Z',
+        remaining_seconds: 3600,
+        window_stats: { requests: 10, tokens: 1000, cost: 5 },
+        overdraft_active: true,
+        overdraft_stats: { requests: 3, tokens: 300, cost: 1.5 }
+      },
+      seven_day: {
+        utilization: 100,
+        resets_at: '2099-03-13T12:00:00Z',
+        remaining_seconds: 3600,
+        window_stats: { requests: 40, tokens: 4000, cost: 10 },
+        overdraft_active: false,
+        overdraft_stats: null
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 2030, platform: 'openai', type: 'oauth' })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: [
+              'label',
+              'utilization',
+              'windowStats',
+              'color',
+              'estimatedTotalCost',
+              'estimatedUsedCost',
+              'overdraftActive',
+              'overdraftStats',
+              'overdraftStatus',
+              'overdraftStatusClass'
+            ],
+            template:
+              '<div class="usage-bar">{{ label }}|odActive={{ overdraftActive }}|odReq={{ overdraftStats?.requests }}|odStatus={{ overdraftStatus }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    // 5h 与 7d 各自使用自己的 overdraft_stats，不串窗口
+    expect(wrapper.text()).toContain('5h|odActive=true|odReq=3')
+    expect(wrapper.text()).toContain('7d|odActive=false|odReq=')
+  })
+
+  it('OpenAI OAuth 估算成本不重复计算透支成本', async () => {
+    getUsage.mockResolvedValue({
+      seven_day: {
+        utilization: 50,
+        resets_at: '2099-03-13T12:00:00Z',
+        remaining_seconds: 3600,
+        window_stats: { requests: 40, tokens: 4000, cost: 10 },
+        overdraft_stats: { requests: 4, tokens: 400, cost: 4 }
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 2031, platform: 'openai', type: 'oauth' })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'windowStats', 'estimatedTotalCost', 'estimatedUsedCost'],
+            template: '<div class="usage-bar">{{ label }}|used={{ estimatedUsedCost }}|total={{ estimatedTotalCost }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    // 已用成本 = 10 - 4 = 6；估算总额 = 6 / 50% = 12
+    expect(wrapper.text()).toContain('7d|used=6|total=12')
+  })
 })
