@@ -1316,6 +1316,40 @@ func (a *Account) IsOpenAIOAuth() bool {
 	return a.IsOpenAI() && a.Type == AccountTypeOAuth
 }
 
+// ResolveCodexQuotaOverdraftEnabled resolves the Orange account-level overdraft switch
+// against the global default. Missing means inherit; only explicit disable turns it off.
+// HTE 的 codex_quota_overdraft_enabled 仅作只读别名，且只在 Orange 字段缺省时生效。
+func (a *Account) ResolveCodexQuotaOverdraftEnabled(globalDefault bool) bool {
+	if a == nil || !a.IsOpenAIOAuth() || a.IsShadow() {
+		return false
+	}
+	if a.Extra == nil {
+		return globalDefault
+	}
+	if raw, exists := a.Extra["codex_quota_overdraft_disabled"]; exists && raw != nil {
+		switch value := raw.(type) {
+		case bool:
+			return globalDefault && !value
+		case string:
+			return globalDefault && strings.TrimSpace(strings.ToLower(value)) != "true"
+		default:
+			return globalDefault
+		}
+	}
+	// 只读兼容 HTE 的 enabled 字段；后台只写 Orange 既有字段。
+	if raw, exists := a.Extra["codex_quota_overdraft_enabled"]; exists && raw != nil {
+		switch value := raw.(type) {
+		case bool:
+			return globalDefault && value
+		case string:
+			return globalDefault && strings.TrimSpace(strings.ToLower(value)) == "true"
+		default:
+			return globalDefault
+		}
+	}
+	return globalDefault
+}
+
 // IsOpenAIOAuthLike reports OpenAI credentials that use the ChatGPT/Codex
 // inference protocol. Setup tokens share that forwarding contract but do not
 // participate in the refreshable OAuth credential lifecycle.

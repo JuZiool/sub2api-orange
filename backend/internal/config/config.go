@@ -992,6 +992,10 @@ type GatewayConfig struct {
 	// CodexImageGenerationBridgeEnabled: 是否为 Codex `/v1/responses` 自动注入 image_generation 工具和桥接指令。
 	// 默认关闭，避免纯文本 Codex 请求被意外改写；显式携带 image_generation 工具的请求仍按分组能力转发。
 	CodexImageGenerationBridgeEnabled bool `mapstructure:"codex_image_generation_bridge_enabled"`
+	// CodexQuotaOverdraftEnabled: Docker 部署默认允许符合条件的 Codex OAuth 账号在上游额度耗尽后
+	// 进行有限探测与透支调度（Orange 特有）。设为 false 可作为全局 kill switch；账号级仅支持通过
+	// extra.codex_quota_overdraft_disabled 显式禁用。
+	CodexQuotaOverdraftEnabled bool `mapstructure:"codex_quota_overdraft_enabled"`
 	// ForcedCodexInstructionsTemplateFile: 服务端强制附加到 Codex 顶层 instructions 的模板文件路径。
 	// 模板渲染后会直接覆盖最终 instructions；若需要保留客户端 system 转换结果，请在模板中显式引用 {{ .ExistingInstructions }}。
 	ForcedCodexInstructionsTemplateFile string `mapstructure:"forced_codex_instructions_template_file"`
@@ -2583,6 +2587,7 @@ func setDefaults() {
 // environment. Any subsystem that wants a richer default still applies it after
 // unmarshal, exactly as before.
 func setEnvReachableDefaults() {
+	viper.SetDefault("gateway.codex_quota_overdraft_enabled", true)
 	viper.SetDefault("gateway.forced_codex_instructions_template_file", "")
 
 	viper.SetDefault("gateway.session_idle_timeout_minutes", 0)
