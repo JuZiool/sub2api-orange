@@ -1334,6 +1334,11 @@ export interface UsageProgress {
   remaining_seconds: number
   window_stats?: WindowStats | null // 窗口期统计（从窗口开始到当前的使用量）
 
+  overdraft_active?: boolean
+  overdraft_stats?: WindowStats | null
+  overdraft_started_at?: string | null
+  overdraft_recover_at?: string | null
+
   used_requests?: number
   limit_requests?: number
 }
@@ -1388,9 +1393,24 @@ export interface GrokBillingSummary {
 }
 
 
+export interface CodexQuotaOverdraftProbeState {
+  status: 'pending' | 'passed' | 'failed' | 'inconclusive' | 'recovered' | string
+  quota_window?: string
+  cycle_key?: string
+  attempts?: number
+  limit?: number
+  model?: string
+  reason_code?: string
+  started_at?: string
+  retry_at?: string | null
+  recover_at?: string | null
+  overdraft_started_at?: string | null
+}
+
 export interface AccountUsageInfo {
   source?: 'passive' | 'active'
   updated_at: string | null
+  codex_quota_overdraft?: CodexQuotaOverdraftProbeState | null
   five_hour: UsageProgress | null
   seven_day: UsageProgress | null
   seven_day_sonnet: UsageProgress | null

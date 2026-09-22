@@ -64,7 +64,12 @@
       </span>
     </div>
 
-
+    <CodexOverdraftPanel
+      :active="overdraftActive"
+      :stats="overdraftStats"
+      :status="overdraftStatus"
+      :status-class="overdraftStatusClass"
+    />
   </div>
 </template>
 
@@ -74,6 +79,7 @@ import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import type { WindowStats } from '@/types'
 import { formatCompactNumber } from '@/utils/format'
+import CodexOverdraftPanel from '@/components/account/CodexOverdraftPanel.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -82,6 +88,10 @@ const props = withDefaults(
     resetsAt?: string | null
     color: 'indigo' | 'emerald' | 'purple' | 'amber'
     windowStats?: WindowStats | null
+    overdraftActive?: boolean
+    overdraftStats?: WindowStats | null
+    overdraftStatus?: string
+    overdraftStatusClass?: string
 
     estimatedTotalCost?: number | null
     estimatedUsedCost?: number | null
