@@ -1,7 +1,8 @@
 <template>
   <div class="flex items-center gap-2">
     <!-- Rate Limit Display (429) - Two-line layout -->
-    <div v-if="isRateLimited" class="flex flex-col items-center gap-1">
+    <!-- Orange 特有：透支确认失败会同时写入 429 + temp_unschedulable，优先显示透支冷却，避免误判为上游限流 -->
+    <div v-if="isRateLimited && !isCodexQuotaOverdraftPause" class="flex flex-col items-center gap-1">
       <span class="badge text-xs badge-warning">{{ t('admin.accounts.status.rateLimited') }}</span>
       <span class="text-[11px] text-gray-400 dark:text-gray-500">{{ rateLimitResumeText }}</span>
     </div>
@@ -277,6 +278,23 @@ const isTempUnschedulable = computed(() => {
   return new Date(props.account.temp_unschedulable_until) > new Date()
 })
 
+// Orange 特有：Codex 额度透支确认失败会以临时不可调度暂停账号，来源标记在
+// temp_unschedulable_reason.source。这里单独识别，避免误显示为上游限流。
+const tempUnschedulableSource = computed(() => {
+  const reason = props.account.temp_unschedulable_reason
+  if (!reason) return ''
+  try {
+    const parsed = JSON.parse(reason) as { source?: unknown }
+    return typeof parsed.source === 'string' ? parsed.source : ''
+  } catch {
+    return ''
+  }
+})
+
+const isCodexQuotaOverdraftPause = computed(() => {
+  return isTempUnschedulable.value && tempUnschedulableSource.value === 'codex_quota_overdraft'
+})
+
 // Computed: has error status
 const hasError = computed(() => {
   return props.account.status === 'error'
@@ -340,6 +358,9 @@ const statusText = computed(() => {
     return t('admin.accounts.status.error')
   }
   if (isTempUnschedulable.value) {
+    if (isCodexQuotaOverdraftPause.value) {
+      return t('admin.accounts.status.codexQuotaPaused')
+    }
     return t('admin.accounts.status.tempUnschedulable')
   }
   if (props.account.status !== 'active') {

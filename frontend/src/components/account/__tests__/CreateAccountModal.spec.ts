@@ -711,4 +711,23 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
   })
+  it('Codex 透支关闭开关仅 OpenAI OAuth 显示，且默认允许透支', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+
+    // OpenAI（默认 OAuth）显示透支关闭开关，缺省为关闭（即允许透支）
+    const toggle = wrapper.get('[data-testid="create-codex-quota-overdraft-disabled-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+
+    // 打开开关后切换为已勾选状态（提交时写入 codex_quota_overdraft_disabled）
+    await toggle.trigger('click')
+    expect(
+      wrapper.get('[data-testid="create-codex-quota-overdraft-disabled-toggle"]').attributes('aria-checked'),
+    ).toBe('true')
+
+    // 切到 API Key 后该开关消失（仅 OAuth 提供）
+    await selectButtonByText(wrapper, 'API Key')
+    expect(wrapper.find('[data-testid="create-codex-quota-overdraft-disabled-toggle"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
 })

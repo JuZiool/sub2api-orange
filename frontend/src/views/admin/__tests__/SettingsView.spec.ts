@@ -745,6 +745,19 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("submits the Codex quota overdraft toggle (default enabled)", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ codex_quota_overdraft_enabled: true }),
+    );
+    wrapper.unmount();
+  });
+
   it("submits the compact home page toggle", async () => {
     const wrapper = mountView();
     await flushPromises();

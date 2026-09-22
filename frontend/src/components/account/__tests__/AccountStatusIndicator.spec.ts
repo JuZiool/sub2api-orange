@@ -51,6 +51,45 @@ function makeAccount(overrides: Partial<Account>): Account {
 }
 
 describe('AccountStatusIndicator', () => {
+  it('Codex 透支确认失败时优先显示额度暂停，而不是 429 限流', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 6,
+          platform: 'openai',
+          rate_limited_at: '2026-08-15T00:00:00Z',
+          rate_limit_reset_at: '2099-08-15T05:00:00Z',
+          temp_unschedulable_until: '2099-08-15T05:00:00Z',
+          temp_unschedulable_reason: JSON.stringify({
+            source: 'codex_quota_overdraft',
+            error_message: 'injected overdraft request confirmed quota exhaustion'
+          })
+        })
+      },
+      global: { stubs: { Icon: true } }
+    })
+
+    expect(wrapper.find('.badge-warning').text()).toBe('admin.accounts.status.codexQuotaPaused')
+    expect(wrapper.text()).toContain('admin.accounts.status.tempUnschedulableUntil')
+    expect(wrapper.text()).not.toContain('admin.accounts.status.rateLimitedAutoResume')
+  })
+
+  it('普通临时不可调度（非透支来源）仍显示通用文案', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 7,
+          platform: 'openai',
+          temp_unschedulable_until: '2099-08-15T05:00:00Z',
+          temp_unschedulable_reason: JSON.stringify({ source: 'oauth_401' })
+        })
+      },
+      global: { stubs: { Icon: true } }
+    })
+
+    expect(wrapper.find('.badge-warning').text()).toBe('admin.accounts.status.tempUnschedulable')
+  })
+
   it('Claude 5 模型限流时显示 Opus 和 Sonnet 的短别名', () => {
     const wrapper = mount(AccountStatusIndicator, {
       props: {

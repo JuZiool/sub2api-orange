@@ -1711,4 +1711,38 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     expect(updateAccountMock).not.toHaveBeenCalled()
     wrapper.unmount()
   })
+  it('回填并提交账号级 Codex 透支关闭开关（写入 extra.codex_quota_overdraft_disabled）', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = { codex_quota_overdraft_disabled: true }
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    const toggle = wrapper.get('[data-testid="edit-codex-quota-overdraft-disabled-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+
+    // 关闭开关后提交应删除该 extra 键（缺省即允许透支）
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra ?? {}
+    expect(extra).not.toHaveProperty('codex_quota_overdraft_disabled')
+    wrapper.unmount()
+  })
+
+  it('开启账号级 Codex 透支关闭开关时写入 extra', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = {}
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    const toggle = wrapper.get('[data-testid="edit-codex-quota-overdraft-disabled-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+    await toggle.trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra ?? {}
+    expect(extra.codex_quota_overdraft_disabled).toBe(true)
+    wrapper.unmount()
+  })
 })

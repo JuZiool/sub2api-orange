@@ -639,6 +639,8 @@ export interface SystemSettings {
   openai_codex_client_version: string;
   openai_codex_client_version_synced: string;
   openai_codex_version_auto_sync_enabled: boolean;
+  // Orange 特有：Codex 额度透支全局开关（缺省 true）
+  codex_quota_overdraft_enabled: boolean;
   // codex_cli_only 加固
   min_codex_version: string;
   max_codex_version: string;
@@ -958,6 +960,7 @@ export interface UpdateSettingsRequest {
   openai_codex_user_agent?: string;
   openai_codex_client_version?: string;
   openai_codex_version_auto_sync_enabled?: boolean;
+  codex_quota_overdraft_enabled?: boolean;
   // codex_cli_only 加固
   min_codex_version?: string;
   max_codex_version?: string;
