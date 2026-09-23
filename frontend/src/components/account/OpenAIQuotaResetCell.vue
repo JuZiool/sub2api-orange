@@ -11,12 +11,12 @@
       owns that real estate. This cell queries Codex points and reset credits,
       and lets the operator consume a reset credit if needed.
     -->
-    <div data-testid="openai-quota-actions" class="grid min-w-0 grid-cols-3 items-center gap-x-1.5 gap-y-0.5">
+    <div data-testid="openai-quota-actions" class="grid min-w-0 grid-cols-3 items-center gap-x-1.5 gap-y-1">
       <slot name="pre-actions" />
 
       <button
         type="button"
-        class="inline-flex min-w-0 items-center gap-0.5 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+        class="inline-flex min-w-0 items-center gap-1 whitespace-nowrap rounded px-2 py-1 text-[11px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
         :disabled="loading || resetting"
         :title="countButtonTitle"
         @click="handleQuery()"
@@ -40,7 +40,7 @@
 
       <button
         type="button"
-        class="inline-flex min-w-0 items-center gap-0.5 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium text-orange-600 transition-colors hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-orange-400 dark:hover:bg-orange-900/30"
+        class="inline-flex min-w-0 items-center gap-1 whitespace-nowrap rounded px-2 py-1 text-[11px] font-medium text-orange-600 transition-colors hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-orange-400 dark:hover:bg-orange-900/30"
         :disabled="resetting || loading || !canReset"
         :title="resetButtonTitle"
         @click="openResetConfirm"
@@ -65,7 +65,7 @@
       <button
         type="button"
         data-testid="codex-credits"
-        class="inline-flex min-w-0 max-w-full items-center gap-1 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-400 dark:hover:bg-emerald-900/30"
+        class="inline-flex min-w-0 max-w-full items-center gap-1 whitespace-nowrap rounded px-2 py-1 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-400 dark:hover:bg-emerald-900/30"
         :disabled="loading || resetting"
         :title="creditsButtonTitle"
         @click="handleQuery()"

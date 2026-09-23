@@ -74,6 +74,9 @@ describe('OpenAIQuotaResetCell — 操作区布局', () => {
     })
     const actions = wrapper.get('[data-testid="openai-quota-actions"]')
     expect(actions.classes()).toEqual(expect.arrayContaining(['grid', 'grid-cols-3']))
+    expect(actions.classes()).toContain('gap-y-1')
+    expect(actions.get('[data-testid="codex-credits"]').classes()).toContain('text-[11px]')
+    expect(wrapper.get('[data-testid="openai-referral-actions"]').classes()).toContain('col-span-2')
     expect(actions.find('[data-testid="active-query"]').exists()).toBe(true)
 
     const referralActions = wrapper.get('[data-testid="openai-referral-actions"]')

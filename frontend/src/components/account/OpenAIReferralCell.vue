@@ -1,9 +1,9 @@
 <template>
-  <div class="flex flex-wrap items-center gap-1.5">
+  <div class="grid min-w-0 grid-cols-2 items-center gap-x-1 gap-y-1">
     <button
       type="button"
       data-testid="referral-count"
-      class="rounded px-1.5 py-0.5 text-[10px] font-medium text-violet-600 hover:bg-violet-50 disabled:opacity-50 dark:text-violet-400 dark:hover:bg-violet-900/30"
+      class="inline-flex min-w-0 items-center justify-center whitespace-nowrap rounded px-2 py-1 text-[11px] font-medium text-violet-600 hover:bg-violet-50 disabled:opacity-50 dark:text-violet-400 dark:hover:bg-violet-900/30"
       :disabled="loading || sending"
       :title="countTitle"
       @click="refresh()"
@@ -13,15 +13,15 @@
     <button
       type="button"
       data-testid="referral-open"
-      class="rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+      class="inline-flex min-w-0 items-center justify-center whitespace-nowrap rounded px-2 py-1 text-[11px] font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
       :disabled="sending || isShadow"
       :title="isShadow ? t('admin.accounts.openaiReferral.shadowHint') : undefined"
       @click="openDialog"
     >
       {{ t('admin.accounts.openaiReferral.invite') }}
     </button>
-    <span v-if="error && !show" class="max-w-48 truncate text-[10px] text-red-600" :title="error">{{ error }}</span>
-    <span v-if="warning && !show" class="max-w-48 truncate text-[10px] text-amber-700 dark:text-amber-400" :title="warning">{{ warning }}</span>
+    <span v-if="error && !show" class="col-span-2 max-w-48 truncate text-[10px] text-red-600" :title="error">{{ error }}</span>
+    <span v-if="warning && !show" class="col-span-2 max-w-48 truncate text-[10px] text-amber-700 dark:text-amber-400" :title="warning">{{ warning }}</span>
     <BaseDialog
       v-if="show"
       :show="show"
