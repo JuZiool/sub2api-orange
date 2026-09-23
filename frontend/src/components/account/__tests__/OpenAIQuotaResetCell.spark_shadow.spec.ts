@@ -66,6 +66,22 @@ beforeEach(() => {
   vi.mocked(resetOpenAIQuota).mockReset()
 })
 
+describe('OpenAIQuotaResetCell — 操作区布局', () => {
+  it('将用量窗口操作区固定为三列两排，并让邀请操作跨过后两列', () => {
+    const wrapper = mount(OpenAIQuotaResetCell, {
+      props: { account: makeAccount({}) },
+      slots: { 'pre-actions': '<button data-testid="active-query">查询</button>' },
+    })
+    const actions = wrapper.get('[data-testid="openai-quota-actions"]')
+    expect(actions.classes()).toEqual(expect.arrayContaining(['grid', 'grid-cols-3']))
+    expect(actions.find('[data-testid="active-query"]').exists()).toBe(true)
+
+    const referralActions = wrapper.get('[data-testid="openai-referral-actions"]')
+    expect(referralActions.classes()).toEqual(expect.arrayContaining(['col-span-2', 'min-w-0']))
+    expect(Array.from(actions.element.children)).toHaveLength(5)
+    wrapper.unmount()
+  })
+})
 describe('OpenAIQuotaResetCell — Codex 点数', () => {
   const points = (wrapper: ReturnType<typeof mount>) => wrapper.get('[data-testid="codex-credits"]')
   const balance = { has_credits: true, unlimited: false, balance: '12345678901234567890.0123' }
