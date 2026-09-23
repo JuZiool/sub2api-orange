@@ -1656,7 +1656,7 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('7d S')
     expect(wrapper.text()).not.toContain('7d F')
   })
-  it('OpenAI OAuth 透传 5h/7d 各自的 overdraft 统计与状态', async () => {
+  it('OpenAI OAuth 将 5h/7d 透支统计汇总到同一行并保留窗口数据', async () => {
     getUsage.mockResolvedValue({
       codex_quota_overdraft: { status: 'passed' },
       five_hour: {
@@ -1684,20 +1684,8 @@ describe('AccountUsageCell', () => {
       global: {
         stubs: {
           UsageProgressBar: {
-            props: [
-              'label',
-              'utilization',
-              'windowStats',
-              'color',
-              'estimatedTotalCost',
-              'estimatedUsedCost',
-              'overdraftActive',
-              'overdraftStats',
-              'overdraftStatus',
-              'overdraftStatusClass'
-            ],
-            template:
-              '<div class="usage-bar">{{ label }}|odActive={{ overdraftActive }}|odReq={{ overdraftStats?.requests }}|odStatus={{ overdraftStatus }}</div>'
+            props: ['label', 'utilization', 'windowStats', 'color', 'estimatedTotalCost', 'estimatedUsedCost'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
           },
           AccountQuotaInfo: true
         }
@@ -1706,9 +1694,11 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    // 5h 与 7d 各自使用自己的 overdraft_stats，不串窗口
-    expect(wrapper.text()).toContain('5h|odActive=true|odReq=3')
-    expect(wrapper.text()).toContain('7d|odActive=false|odReq=')
+    expect(wrapper.findAll('[data-testid="overdraft-stats"]')).toHaveLength(1)
+    expect(wrapper.get('[data-testid="overdraft-stats"] [data-window="5h"]').text()).toContain('5h')
+    expect(wrapper.find('[data-testid="overdraft-stats"] [data-window="7d"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="overdraft-stats"]').text()).toContain('3 req')
+    expect(wrapper.get('[data-testid="overdraft-stats"]').text()).toContain('300')
   })
 
   it('OpenAI OAuth 估算成本不重复计算透支成本', async () => {

@@ -125,10 +125,6 @@
           :utilization="usageInfo.five_hour.utilization"
           :resets-at="usageInfo.five_hour.resets_at"
           :window-stats="usageInfo.five_hour.window_stats"
-          :overdraft-active="usageInfo.five_hour.overdraft_active"
-          :overdraft-stats="usageInfo.five_hour.overdraft_stats"
-          :overdraft-status="codexOverdraftStatusLabel"
-          :overdraft-status-class="codexOverdraftStatusClass"
           :show-now-when-idle="true"
           color="indigo"
         />
@@ -138,14 +134,18 @@
           :utilization="usageInfo.seven_day.utilization"
           :resets-at="usageInfo.seven_day.resets_at"
           :window-stats="usageInfo.seven_day.window_stats"
-          :overdraft-active="usageInfo.seven_day.overdraft_active"
-          :overdraft-stats="usageInfo.seven_day.overdraft_stats"
-          :overdraft-status="codexOverdraftStatusLabel"
-          :overdraft-status-class="codexOverdraftStatusClass"
           :estimated-total-cost="sevenDayEstimatedCost ?? 0"
           :estimated-used-cost="sevenDayUsedCost"
           :show-now-when-idle="true"
           color="emerald"
+        />
+        <CodexOverdraftPanel
+          :five-hour-active="usageInfo?.five_hour?.overdraft_active"
+          :five-hour-stats="usageInfo?.five_hour?.overdraft_stats"
+          :seven-day-active="usageInfo?.seven_day?.overdraft_active"
+          :seven-day-stats="usageInfo?.seven_day?.overdraft_stats"
+          :status="codexOverdraftStatusLabel"
+          :status-class="codexOverdraftStatusClass"
         />
         <!--
           Upstream codex /wham/usage quota query + reset. The local active-sampling
@@ -664,6 +664,7 @@ import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
 import UsageProgressBar from './UsageProgressBar.vue'
+import CodexOverdraftPanel from './CodexOverdraftPanel.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
 import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
