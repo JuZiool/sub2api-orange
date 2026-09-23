@@ -36,6 +36,8 @@ done
 assert_contains .goreleaser.yaml 'sub2api-orange'
 assert_contains .goreleaser.simple.yaml 'sub2api-orange'
 assert_contains .github/workflows/release.yml 'sub2api-orange'
+assert_contains .github/release-tools/release-images.sh 'sub2api-orange'
+assert_not_contains .github/release-tools/release-images.sh 'ghcr.io/${owner,,}/sub2api:'
 
 for file in \
   .goreleaser.yaml \
