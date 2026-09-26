@@ -7,9 +7,9 @@ import (
 )
 
 func TestNormalizeModelRateMultiplierRules(t *testing.T) {
-	rules, err := NormalizeModelRateMultiplierRules([]ModelRateMultiplierRule{{Model: " gpt-5.6 ", Multiplier: 0.8}})
+	rules, err := NormalizeModelRateMultiplierRules([]ModelRateMultiplierRule{{Model: " gpt-5.6 ", Multiplier: 0.8, Hidden: true}})
 	require.NoError(t, err)
-	require.Equal(t, []ModelRateMultiplierRule{{Model: "gpt-5.6", Multiplier: 0.8}}, rules)
+	require.Equal(t, []ModelRateMultiplierRule{{Model: "gpt-5.6", Multiplier: 0.8, Hidden: true}}, rules)
 
 	for _, rule := range []ModelRateMultiplierRule{{Model: "", Multiplier: 1}, {Model: "gpt-*", Multiplier: 1}, {Model: "gpt", Multiplier: 0}, {Model: "gpt", Multiplier: 1001}} {
 		_, err = NormalizeModelRateMultiplierRules([]ModelRateMultiplierRule{rule})

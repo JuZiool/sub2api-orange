@@ -5873,10 +5873,10 @@ const validateProfitControlForm = (form: ProfitControlFormState): boolean => {
 };
 
 const normalizeModelRateMultipliers = (
-  rules: Array<{ model: string; multiplier: number }>,
-): Array<{ model: string; multiplier: number }> | null => {
+  rules: Array<{ model: string; multiplier: number; hidden?: boolean }>,
+): Array<{ model: string; multiplier: number; hidden?: boolean }> | null => {
   const seen = new Set<string>();
-  const normalized: Array<{ model: string; multiplier: number }> = [];
+  const normalized: Array<{ model: string; multiplier: number; hidden?: boolean }> = [];
   for (const rule of rules) {
     const model = String(rule.model ?? "").trim();
     const multiplier = Number(rule.multiplier);
@@ -5892,7 +5892,7 @@ const normalizeModelRateMultipliers = (
       return null;
     }
     seen.add(model);
-    normalized.push({ model, multiplier });
+    normalized.push({ model, multiplier, ...(rule.hidden ? { hidden: true } : {}) });
   }
   return normalized;
 };

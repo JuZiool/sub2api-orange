@@ -9,7 +9,7 @@
         <Icon name="plus" size="sm" class="mr-1" />{{ t('admin.groups.modelRateMultipliers.add') }}
       </button>
     </div>
-    <div v-for="(rule, index) in rules" :key="index" class="mt-3 grid grid-cols-[minmax(0,1fr)_8rem_auto] items-end gap-2">
+    <div v-for="(rule, index) in rules" :key="index" class="mt-3 grid grid-cols-[minmax(0,1fr)_8rem_auto_auto] items-end gap-2">
       <div>
         <label class="input-label text-xs">{{ t('admin.groups.modelRateMultipliers.model') }}</label>
         <input v-model="rule.model" class="input" :placeholder="t('admin.groups.modelRateMultipliers.modelPlaceholder')" />
@@ -18,7 +18,22 @@
         <label class="input-label text-xs">{{ t('admin.groups.modelRateMultipliers.multiplier') }}</label>
         <input v-model.number="rule.multiplier" type="number" min="0.0001" step="0.0001" class="input" />
       </div>
-      <button type="button" class="p-2 text-gray-400 hover:text-red-500" :title="t('admin.groups.modelRateMultipliers.remove')" @click="removeRule(index)">
+      <button
+        type="button"
+        class="rounded p-2 text-gray-400 transition-colors hover:text-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-400/50"
+        :title="rule.hidden ? t('admin.groups.modelRateMultipliers.show') : t('admin.groups.modelRateMultipliers.hide')"
+        :aria-label="rule.hidden ? t('admin.groups.modelRateMultipliers.show') : t('admin.groups.modelRateMultipliers.hide')"
+        @click="toggleVisibility(index)"
+      >
+        <Icon :name="rule.hidden ? 'eyeOff' : 'eye'" size="sm" />
+      </button>
+      <button
+        type="button"
+        class="rounded p-2 text-gray-400 transition-colors hover:text-red-500 focus:outline-none focus:ring-2 focus:ring-red-400/50"
+        :title="t('admin.groups.modelRateMultipliers.remove')"
+        :aria-label="t('admin.groups.modelRateMultipliers.remove')"
+        @click="removeRule(index)"
+      >
         <Icon name="trash" size="sm" />
       </button>
     </div>
@@ -40,6 +55,13 @@ const rules = computed(() => props.modelValue)
 
 function addRule() {
   emit('update:modelValue', [...props.modelValue, { model: '', multiplier: 1 }])
+}
+
+function toggleVisibility(index: number) {
+  emit(
+    'update:modelValue',
+    props.modelValue.map((rule, i) => (i === index ? { ...rule, hidden: !rule.hidden } : rule))
+  )
 }
 
 function removeRule(index: number) {

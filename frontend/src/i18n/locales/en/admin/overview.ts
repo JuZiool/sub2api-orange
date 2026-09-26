@@ -991,6 +991,8 @@ export default {
         modelPlaceholder: 'Exact model name',
         multiplier: 'Multiplier',
         remove: 'Remove rule',
+        hide: 'Hide this model rate in API group selection',
+        show: 'Show this model rate in API group selection',
         displayLabel: 'Model rates: {models}',
         validation: 'Each model must be unique, exact (no wildcards), and have a multiplier greater than 0 and at most 1000.',
       },

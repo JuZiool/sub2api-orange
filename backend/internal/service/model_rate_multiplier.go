@@ -30,7 +30,7 @@ func NormalizeModelRateMultiplierRules(rules []ModelRateMultiplierRule) ([]Model
 			return nil, fmt.Errorf("duplicate model_rate_multipliers model: %s", model)
 		}
 		seen[model] = struct{}{}
-		out = append(out, ModelRateMultiplierRule{Model: model, Multiplier: rule.Multiplier})
+		out = append(out, ModelRateMultiplierRule{Model: model, Multiplier: rule.Multiplier, Hidden: rule.Hidden})
 	}
 	return out, nil
 }

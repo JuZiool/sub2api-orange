@@ -5,4 +5,5 @@ package domain
 type ModelRateMultiplierRule struct {
 	Model      string  `json:"model"`
 	Multiplier float64 `json:"multiplier"`
+	Hidden     bool    `json:"hidden,omitempty"`
 }

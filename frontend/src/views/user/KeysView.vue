@@ -1515,9 +1515,12 @@ const groupOptions = computed(() =>
     label: group.name,
     description: [
       group.description,
-      (group.model_rate_multipliers ?? []).length > 0
+      (group.model_rate_multipliers ?? []).filter((rule) => !rule.hidden).length > 0
         ? t('admin.groups.modelRateMultipliers.displayLabel', {
-            models: (group.model_rate_multipliers ?? []).map((rule) => `${rule.model} ${rule.multiplier}x`).join('；'),
+            models: (group.model_rate_multipliers ?? [])
+              .filter((rule) => !rule.hidden)
+              .map((rule) => `${rule.model} ${rule.multiplier}x`)
+              .join('；'),
           })
         : '',
     ].filter(Boolean).join('\n'),

@@ -667,6 +667,8 @@ export interface ModelAllowlist {
 export interface ModelRateMultiplierRule {
   model: string
   multiplier: number
+  /** Hide this rule from the user-facing API key group selector without changing billing. */
+  hidden?: boolean
 }
 
 // 固定账号获取 Codex Model Manifest 配置（仅 openai 分组）
