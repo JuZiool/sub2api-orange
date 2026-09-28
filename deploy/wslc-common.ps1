@@ -109,6 +109,15 @@ function Get-OrangeAppEnvironment {
     return $app
 }
 
+function Get-OrangeRedisEnvironment {
+    param([hashtable]$AppEnvironment)
+    $values = @{ REDIS_PASSWORD=$AppEnvironment.REDIS_PASSWORD; TZ=$AppEnvironment.TZ }
+    # Redis 8 的 CLI 即使收到空 REDISCLI_AUTH 也会尝试 AUTH，不能设置空认证变量。
+    if (-not [string]::IsNullOrEmpty([string]$AppEnvironment.REDIS_PASSWORD)) {
+        $values['REDISCLI_AUTH'] = $AppEnvironment.REDIS_PASSWORD
+    }
+    return $values
+}
 function Write-OrangeEnvironmentFile {
     param([string]$Path, [hashtable]$Values)
     $lines = foreach ($key in @($Values.Keys | Sort-Object)) {

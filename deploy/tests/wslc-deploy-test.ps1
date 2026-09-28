@@ -48,6 +48,10 @@ try {
     Assert-Equal $app.DATABASE_HOST 'postgres' '数据库别名'
     Assert-Equal $app.REDIS_HOST 'redis' 'Redis 别名'
     Assert-Throws { Get-OrangeAppEnvironment (Join-Path $PSScriptRoot '../docker-compose.local.yml') @{} } '无数据库密码不能部署'
+    $redisWithoutPassword = Get-OrangeRedisEnvironment -AppEnvironment @{REDIS_PASSWORD='';TZ='Asia/Shanghai'}
+    Assert-Equal $redisWithoutPassword.ContainsKey('REDISCLI_AUTH') $false '无密码时禁止 CLI 空认证'
+    $redisWithPassword = Get-OrangeRedisEnvironment -AppEnvironment @{REDIS_PASSWORD='existing-redis';TZ='Asia/Shanghai'}
+    Assert-Equal $redisWithPassword.REDISCLI_AUTH 'existing-redis' 'Redis 保留现有认证密码'
     $file = Join-Path $temp 'generated.env'
     Write-OrangeEnvironmentFile -Path $file -Values @{Z='a$b';A='space # value'}
     $bytes = [System.IO.File]::ReadAllBytes($file)

@@ -88,7 +88,7 @@ try {
         POSTGRES_USER=$appEnv.DATABASE_USER; POSTGRES_PASSWORD=$appEnv.DATABASE_PASSWORD
         POSTGRES_DB=$appEnv.DATABASE_DBNAME; PGDATA='/var/lib/postgresql/data'; TZ=$appEnv.TZ
     }
-    $redisEnv = @{REDIS_PASSWORD=$appEnv.REDIS_PASSWORD; REDISCLI_AUTH=$appEnv.REDIS_PASSWORD; TZ=$appEnv.TZ}
+    $redisEnv = Get-OrangeRedisEnvironment -AppEnvironment $appEnv
     $appMount = Get-OrangeBindMount -Source (Join-Path $deployDir 'data') -Target '/app/data'
     $pgMount = Get-OrangeBindMount -Source (Join-Path $deployDir 'postgres_data') -Target '/var/lib/postgresql/data'
     $redisMount = Get-OrangeBindMount -Source (Join-Path $deployDir 'redis_data') -Target '/data'
