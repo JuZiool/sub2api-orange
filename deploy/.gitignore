@@ -20,3 +20,6 @@ backups/
 # Temporary files
 *.tmp
 *.log
+
+# Orange 特有：WSLC 本地状态、环境文件及备份
+.wslc/

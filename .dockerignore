@@ -88,3 +88,6 @@ deploy/redis_data/
 .claude/
 issues/
 CLAUDE.md
+
+# Orange 特有：WSLC 本地运行配置不能进入镜像上下文
+deploy/.wslc/
