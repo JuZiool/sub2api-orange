@@ -22,7 +22,7 @@ describe('UsageProgressBar', () => {
     vi.useRealTimers()
   })
 
-  it('showNowWhenIdle=true 且利用率为 0 时显示“现在”', () => {
+  it('showNowWhenIdle=true 且利用率为 0 但有未来 resetsAt 时显示倒计时', () => {
     const wrapper = mount(UsageProgressBar, {
       props: {
         label: '5h',
@@ -33,8 +33,8 @@ describe('UsageProgressBar', () => {
       }
     })
 
-    expect(wrapper.text()).toContain('usage.resetNow')
-    expect(wrapper.text()).not.toContain('2h 30m')
+    expect(wrapper.text()).toContain('2h 30m')
+    expect(wrapper.text()).not.toContain('usage.resetNow')
   })
 
   it('成本估算始终在米白色信息框中展示约额度和已用', () => {
