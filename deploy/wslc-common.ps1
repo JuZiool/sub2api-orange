@@ -4,7 +4,15 @@ Set-StrictMode -Version Latest
 
 function Invoke-OrangeWslc {
     param([Parameter(Mandatory)][string[]]$Arguments, [switch]$AllowFailure)
-    $output = @(& wslc @Arguments 2>&1)
+    # Orange 特有：wslc 输出为 UTF-8，控制台默认 GBK 解码会把中文路径末字节与后续反斜杠
+    # 合成一个乱码字符，使 JSON 里合法的 \\ 变成非法转义（如 \s），这里临时切 UTF-8 捕获。
+    $prevEncoding = [Console]::OutputEncoding
+    [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+    try {
+        $output = @(& wslc @Arguments 2>&1)
+    } finally {
+        [Console]::OutputEncoding = $prevEncoding
+    }
     $code = $LASTEXITCODE
     $text = ($output | ForEach-Object { $_.ToString() }) -join "`n"
     if ($code -ne 0 -and -not $AllowFailure) {
