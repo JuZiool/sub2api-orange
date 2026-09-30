@@ -54,13 +54,16 @@
     <div
       v-if="estimatedTotalCost != null || estimatedUsedCost != null"
       data-testid="usage-cost-estimate"
-      class="mb-0.5 flex w-fit items-center justify-start gap-1.5 rounded-md border border-amber-100/80 bg-amber-50/70 px-1.5 py-1 text-left text-[9px] text-stone-600 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100"
+      class="mb-0.5 flex w-fit max-w-full flex-wrap items-center justify-start gap-x-1.5 gap-y-0.5 rounded-md border border-amber-100/80 bg-amber-50/70 px-1.5 py-1 text-left text-[9px] text-stone-600 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100"
     >
-      <span v-if="estimatedTotalCost != null" :title="t('usage.costEstimateHint')">
+      <span v-if="estimatedTotalCost != null" class="whitespace-nowrap" :title="t('usage.costEstimateHint')">
         {{ t('usage.estimatedCost') }}: ${{ formatEstimatedTotalCost }}
       </span>
-      <span>
+      <span class="whitespace-nowrap">
         {{ t('usage.usedCost') }}: ${{ formatEstimatedUsedCost }}
+      </span>
+      <span class="whitespace-nowrap" :title="t('usage.costEstimateHint')">
+        {{ t('usage.remainingCost') }}: {{ formatEstimatedRemainingCost }}
       </span>
     </div>
 
@@ -225,6 +228,16 @@ const formatResetTime = computed(() => {
 
 const formatEstimatedTotalCost = computed(() => (props.estimatedTotalCost ?? 0).toFixed(2))
 const formatEstimatedUsedCost = computed(() => (props.estimatedUsedCost ?? 0).toFixed(2))
+
+// Orange 特有：沿用现有估算口径，仅展示剩余额度，不改变计费或透支逻辑。
+const formatEstimatedRemainingCost = computed(() => {
+  const total = props.estimatedTotalCost
+  const used = props.estimatedUsedCost
+  if (total == null || used == null || !Number.isFinite(total) || !Number.isFinite(used)) {
+    return '--'
+  }
+  return '$' + Math.max(0, total - used).toFixed(2)
+})
 
 const formatRequests = computed(() => {
   if (!props.windowStats) return ''

@@ -368,6 +368,7 @@ export default {
     overdraft: '透支',
     estimatedCost: '约',
     usedCost: '已用',
+    remainingCost: '剩余',
     costEstimateHint: '根据上游 7 天使用率和本地已用成本估算，不是上游官方账单值',
     resetNow: '现在',
     resetPending: '待刷新',

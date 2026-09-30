@@ -363,6 +363,7 @@ export default {
     overdraft: 'Overdraft',
     estimatedCost: 'Est.',
     usedCost: 'Used',
+    remainingCost: 'Remaining',
     costEstimateHint: 'Estimated from upstream 7-day utilization and local usage; not an official upstream bill',
     resetNow: 'Now',
     resetPending: 'Pending refresh',

@@ -37,7 +37,7 @@ describe('UsageProgressBar', () => {
     expect(wrapper.text()).not.toContain('usage.resetNow')
   })
 
-  it('成本估算始终在米白色信息框中展示约额度和已用', () => {
+  it('成本估算始终在米白色信息框中展示约额度、已用和剩余', () => {
     const wrapper = mount(UsageProgressBar, {
       props: {
         label: '7d',
@@ -52,6 +52,8 @@ describe('UsageProgressBar', () => {
     expect(estimate.classes()).toEqual(expect.arrayContaining([
       'flex',
       'w-fit',
+      'max-w-full',
+      'flex-wrap',
       'text-left',
       'rounded-md',
       'border-amber-100/80',
@@ -61,6 +63,92 @@ describe('UsageProgressBar', () => {
     expect(estimate.classes()).not.toContain('inline-flex')
     expect(estimate.text()).toContain('usage.estimatedCost: $0.00')
     expect(estimate.text()).toContain('usage.usedCost: $0.00')
+    expect(estimate.text()).toContain('usage.remainingCost: $0.00')
+  })
+
+
+  it('剩余额度紧跟约额度和已用，沿用估算提示且单项不拆行', () => {
+    const wrapper = mount(UsageProgressBar, {
+      props: {
+        label: '7d', utilization: 25, color: 'emerald',
+        estimatedTotalCost: 100, estimatedUsedCost: 25
+      }
+    })
+
+    const items = wrapper.get('[data-testid="usage-cost-estimate"]').findAll('span')
+    expect(items.map(item => item.text())).toEqual([
+      'usage.estimatedCost: $100.00',
+      'usage.usedCost: $25.00',
+      'usage.remainingCost: $75.00'
+    ])
+    expect(items[2].attributes('title')).toBe('usage.costEstimateHint')
+    expect(items.every(item => item.classes().includes('whitespace-nowrap'))).toBe(true)
+  })
+
+  it.each([
+    [12, 6, '$6.00'],
+    [100, 0, '$100.00'],
+    [0, 0, '$0.00'],
+    [100, 100, '$0.00'],
+    [100, 120, '$0.00'],
+    [10.004, 0.005, '$10.00']
+  ])('按原始金额计算剩余且不显示负值：总额 %s，已用 %s', (total, used, remaining) => {
+    const wrapper = mount(UsageProgressBar, {
+      props: {
+        label: '7d', utilization: 50, color: 'emerald',
+        estimatedTotalCost: total, estimatedUsedCost: used
+      }
+    })
+
+    expect(wrapper.get('[data-testid="usage-cost-estimate"]').text())
+      .toContain('usage.remainingCost: ' + remaining)
+  })
+
+  it.each([
+    [null, 25],
+    [undefined, 25],
+    [100, null],
+    [100, undefined],
+    [Number.NaN, 25],
+    [Number.POSITIVE_INFINITY, 25],
+    [100, Number.NaN],
+    [100, Number.POSITIVE_INFINITY]
+  ])('输入缺失或非有限时剩余显示占位：总额 %s，已用 %s', (total, used) => {
+    const wrapper = mount(UsageProgressBar, {
+      props: {
+        label: '7d', utilization: 50, color: 'emerald',
+        estimatedTotalCost: total, estimatedUsedCost: used
+      }
+    })
+
+    expect(wrapper.get('[data-testid="usage-cost-estimate"]').text())
+      .toContain('usage.remainingCost: --')
+  })
+
+  it('额度更新后剩余响应式刷新', async () => {
+    const wrapper = mount(UsageProgressBar, {
+      props: {
+        label: '7d', utilization: 25, color: 'emerald',
+        estimatedTotalCost: 100, estimatedUsedCost: 25
+      }
+    })
+    const estimate = () => wrapper.get('[data-testid="usage-cost-estimate"]').text()
+    expect(estimate()).toContain('usage.remainingCost: $75.00')
+
+    await wrapper.setProps({ estimatedUsedCost: 40 })
+    expect(estimate()).toContain('usage.remainingCost: $60.00')
+    await wrapper.setProps({ estimatedTotalCost: 120 })
+    expect(estimate()).toContain('usage.remainingCost: $80.00')
+    await wrapper.setProps({ estimatedUsedCost: null })
+    expect(estimate()).toContain('usage.remainingCost: --')
+  })
+
+  it('未启用额度估算的进度条不新增额度信息框', () => {
+    const wrapper = mount(UsageProgressBar, {
+      props: { label: '5h', utilization: 25, color: 'indigo' }
+    })
+    expect(wrapper.find('[data-testid="usage-cost-estimate"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('usage.remainingCost')
   })
 
   it('showNowWhenIdle=true 但利用率大于 0 时显示倒计时', () => {
