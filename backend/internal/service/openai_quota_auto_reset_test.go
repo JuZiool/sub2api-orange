@@ -17,6 +17,7 @@ func TestNormalizeOpenAIAutoResetCreditExtra(t *testing.T) {
 		account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 		config := ResolveOpenAIAutoResetCreditConfig(account)
 		require.False(t, config.Enabled)
+		require.False(t, config.Disable5h)
 		require.Equal(t, 1.0, config.Threshold5h)
 		require.Equal(t, 1.0, config.Threshold7d)
 	})
@@ -30,6 +31,35 @@ func TestNormalizeOpenAIAutoResetCreditExtra(t *testing.T) {
 		require.Equal(t, 1.0, extra[OpenAIAutoResetCredit5hThresholdExtraKey])
 		require.Equal(t, 1.0, extra[OpenAIAutoResetCredit7dThresholdExtraKey])
 		require.NotContains(t, extra, OpenAIAutoResetCreditStateExtraKey)
+	})
+
+	t.Run("5h禁用仅接受布尔值并保留到配置中", func(t *testing.T) {
+		extra, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
+			OpenAIAutoResetCredit5hDisabledExtraKey: true,
+		})
+		require.NoError(t, err)
+		require.Equal(t, true, extra[OpenAIAutoResetCredit5hDisabledExtraKey])
+		config := ResolveOpenAIAutoResetCreditConfig(&Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: extra})
+		require.True(t, config.Disable5h)
+		config = ResolveOpenAIAutoResetCreditConfig(&Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+			OpenAIAutoResetCredit5hDisabledExtraKey: false,
+		}})
+		require.False(t, config.Disable5h)
+		config = ResolveOpenAIAutoResetCreditConfig(&Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{
+			OpenAIAutoResetCredit5hDisabledExtraKey: "true",
+		}})
+		require.False(t, config.Disable5h)
+		stripOpenAIAutoResetCreditManagedExtra(extra, true)
+		require.NotContains(t, extra, OpenAIAutoResetCredit5hDisabledExtraKey)
+
+		_, err = normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
+			OpenAIAutoResetCredit5hDisabledExtraKey: "true",
+		})
+		require.Error(t, err)
+		_, err = normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeAPIKey, false, map[string]any{
+			OpenAIAutoResetCredit5hDisabledExtraKey: true,
+		})
+		require.Error(t, err)
 	})
 
 	t.Run("阈值和账号类型严格校验", func(t *testing.T) {
@@ -86,6 +116,47 @@ func TestShouldAutoPauseOpenAIAccountByQuota_AutoResetCreditStates(t *testing.T)
 		paused, decision := shouldAutoPauseOpenAIAccountByQuota(context.Background(), account)
 		require.True(t, paused)
 		require.Equal(t, "quota_auto_reset_pending_5h", decision.reason)
+	})
+
+	t.Run("5h自动用卡关闭后有卡也不能绕过普通暂停", func(t *testing.T) {
+		for _, test := range []struct {
+			name                  string
+			utilization           float64
+			includePauseThreshold bool
+		}{
+			{name: "普通暂停阈值", utilization: 90, includePauseThreshold: true},
+			{name: "100%上限", utilization: 100},
+		} {
+			t.Run(test.name, func(t *testing.T) {
+				extra := cloneOpenAIAutoResetExtra(baseExtra)
+				extra[OpenAIAutoResetCredit5hDisabledExtraKey] = true
+				extra["codex_5h_used_percent"] = test.utilization
+				if !test.includePauseThreshold {
+					delete(extra, "auto_pause_5h_threshold")
+				}
+				extra[OpenAIAutoResetCreditStateExtraKey] = OpenAIAutoResetCreditState{
+					Status: OpenAIAutoResetStatusAvailable, AvailableCount: 1, CheckedAt: now.Format(time.RFC3339),
+				}
+				account := &Account{ID: 5, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: extra}
+				paused, decision := shouldAutoPauseOpenAIAccountByQuota(context.Background(), account)
+				require.True(t, paused)
+				require.Equal(t, "5h", decision.window)
+				require.NotEqual(t, "quota_auto_reset_pending_5h", decision.reason)
+				require.NotEqual(t, "quota_auto_reset_credit_check_5h", decision.reason)
+			})
+		}
+	})
+
+	t.Run("双窗口都达自动用卡阈值时优先由7d触发", func(t *testing.T) {
+		extra := cloneOpenAIAutoResetExtra(baseExtra)
+		extra["codex_5h_used_percent"] = 100.0
+		extra["codex_7d_used_percent"] = 100.0
+		extra["codex_7d_reset_at"] = now.Add(24 * time.Hour).Format(time.RFC3339)
+		extra[OpenAIAutoResetCredit5hDisabledExtraKey] = true
+		account := &Account{ID: 6, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: extra}
+		paused, decision := shouldAutoPauseOpenAIAccountByQuota(context.Background(), account)
+		require.True(t, paused)
+		require.Equal(t, "quota_auto_reset_pending_7d", decision.reason)
 	})
 
 	t.Run("自然窗口重置后清除动态阻塞", func(t *testing.T) {
@@ -182,6 +253,17 @@ func TestOpenAIQuotaAutoResetService_AssessesIndependentWindows(t *testing.T) {
 			require.Equal(t, test.wantWindow, assessment.triggerWindow)
 		})
 	}
+
+	config.Disable5h = true
+	assessment := service.buildAssessment(account, config, 1, 0.2)
+	require.False(t, assessment.resetReached)
+	require.False(t, assessment.creditCheckNeeded)
+	require.Empty(t, assessment.triggerWindow)
+
+	assessment = service.buildAssessment(account, config, 1, 0.9)
+	require.True(t, assessment.resetReached)
+	require.True(t, assessment.creditCheckNeeded)
+	require.Equal(t, "7d", assessment.triggerWindow)
 }
 
 type autoResetTestAccountRepo struct {
@@ -273,10 +355,11 @@ func TestOpenAIQuotaAutoResetService_ConcurrentInstancesConsumeOnce(t *testing.T
 		Status: StatusActive, Schedulable: true,
 		Extra: map[string]any{
 			OpenAIAutoResetCreditEnabledExtraKey:     true,
+			OpenAIAutoResetCredit5hDisabledExtraKey:  true,
 			OpenAIAutoResetCredit5hThresholdExtraKey: 1.0,
 			OpenAIAutoResetCredit7dThresholdExtraKey: 1.0,
 			"codex_5h_used_percent":                  100.0,
-			"codex_7d_used_percent":                  10.0,
+			"codex_7d_used_percent":                  100.0,
 			"codex_usage_updated_at":                 now.Format(time.RFC3339),
 			"codex_5h_reset_at":                      now.Add(time.Hour).Format(time.RFC3339),
 			"codex_7d_reset_at":                      now.Add(24 * time.Hour).Format(time.RFC3339),
@@ -287,7 +370,7 @@ func TestOpenAIQuotaAutoResetService_ConcurrentInstancesConsumeOnce(t *testing.T
 		FetchedAt: now.Unix(),
 		RateLimit: &OpenAIRateLimit{
 			PrimaryWindow:   &OpenAIRateLimitWindow{UsedPercent: 100, LimitWindowSeconds: 5 * 60 * 60, ResetAfterSeconds: 3600, ResetAt: now.Add(time.Hour).Unix()},
-			SecondaryWindow: &OpenAIRateLimitWindow{UsedPercent: 10, LimitWindowSeconds: 7 * 24 * 60 * 60, ResetAfterSeconds: 86400, ResetAt: now.Add(24 * time.Hour).Unix()},
+			SecondaryWindow: &OpenAIRateLimitWindow{UsedPercent: 100, LimitWindowSeconds: 7 * 24 * 60 * 60, ResetAfterSeconds: 86400, ResetAt: now.Add(24 * time.Hour).Unix()},
 		},
 		RateLimitResetCredits: &OpenAIRateLimitResetCredits{
 			AvailableCount: 1,
@@ -324,9 +407,46 @@ func TestOpenAIQuotaAutoResetService_ConcurrentInstancesConsumeOnce(t *testing.T
 	repo.mu.Unlock()
 	require.NotNil(t, state)
 	require.Equal(t, OpenAIAutoResetStatusSuccess, state.Status)
+	require.Equal(t, "7d", state.TriggerWindow)
 	encodedState, err := json.Marshal(state)
 	require.NoError(t, err)
 	require.NotContains(t, string(encodedState), "credit-sensitive-id")
+}
+
+func TestOpenAIQuotaAutoResetService_Disabled5hDoesNotQueryOrConsumeAt5hThreshold(t *testing.T) {
+	now := time.Now().UTC()
+	account := &Account{
+		ID: 140, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+		Status: StatusActive, Schedulable: true,
+		Extra: map[string]any{
+			OpenAIAutoResetCreditEnabledExtraKey:     true,
+			OpenAIAutoResetCredit5hDisabledExtraKey:  true,
+			OpenAIAutoResetCredit5hThresholdExtraKey: 1.0,
+			OpenAIAutoResetCredit7dThresholdExtraKey: 0.95,
+			"auto_pause_5h_threshold":                0.8,
+			"codex_5h_used_percent":                  100.0,
+			"codex_7d_used_percent":                  20.0,
+			"codex_usage_updated_at":                 now.Format(time.RFC3339),
+			"codex_5h_reset_at":                      now.Add(time.Hour).Format(time.RFC3339),
+			"codex_7d_reset_at":                      now.Add(24 * time.Hour).Format(time.RFC3339),
+			OpenAIAutoResetCreditStateExtraKey: OpenAIAutoResetCreditState{
+				Status: OpenAIAutoResetStatusAvailable, AvailableCount: 1, CheckedAt: now.Format(time.RFC3339),
+			},
+		},
+	}
+	repo := &autoResetTestAccountRepo{account: account}
+	quota := &autoResetTestQuota{usage: &OpenAIQuotaUsage{
+		RateLimitResetCredits: &OpenAIRateLimitResetCredits{
+			AvailableCount: 1,
+			Credits:        []OpenAIRateLimitResetCreditDetail{{ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)}},
+		},
+		autoResetCandidates: []openAIAutoResetCreditCandidate{{ID: "unused-credit", ExpiresAt: now.Add(time.Hour).Format(time.RFC3339)}},
+	}}
+	service := NewOpenAIQuotaAutoResetService(repo, quota, autoResetTestRecoverer{}, NewIdempotencyCoordinator(newInMemoryIdempotencyRepo(), DefaultIdempotencyConfig()), nil, nil, nil)
+
+	require.NoError(t, service.evaluateAccount(context.Background(), account.ID))
+	require.Zero(t, quota.queryCalls.Load())
+	require.Zero(t, quota.resetCalls.Load())
 }
 
 func TestOpenAIQuotaAutoResetService_TimeoutRetryReusesRequestBody(t *testing.T) {

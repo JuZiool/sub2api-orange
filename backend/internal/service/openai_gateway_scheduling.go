@@ -541,33 +541,40 @@ func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) 
 		return false, openAIQuotaAutoPauseDecision{}
 	}
 	// 自动用卡有独立阈值：达到消费阈值时必须先退出调度；仅达到普通暂停阈值时，
-	// 只有新鲜状态明确存在可用卡才继续放行到消费阈值。
+	// 只有仍允许自动用卡的窗口才可因新鲜可用卡继续调度。
 	if config := ResolveOpenAIAutoResetCreditConfig(account); config.Enabled {
 		now := time.Now()
 		utilization5h, has5h := resolveOpenAIQuotaUtilization(account.Extra, "5h", now)
 		utilization7d, has7d := resolveOpenAIQuotaUtilization(account.Extra, "7d", now)
-		if has5h && utilization5h >= config.Threshold5h {
-			notifyOpenAIAutoResetFromScheduler(account.ID)
-			return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: config.Threshold5h, utilization: utilization5h, reason: "quota_auto_reset_pending_5h"}
-		}
 		if has7d && utilization7d >= config.Threshold7d {
 			notifyOpenAIAutoResetFromScheduler(account.ID)
 			return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: config.Threshold7d, utilization: utilization7d, reason: "quota_auto_reset_pending_7d"}
+		}
+		if !config.Disable5h && has5h && utilization5h >= config.Threshold5h {
+			notifyOpenAIAutoResetFromScheduler(account.ID)
+			return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: config.Threshold5h, utilization: utilization5h, reason: "quota_auto_reset_pending_5h"}
 		}
 
 		disabled5h := resolveAccountExtraBool(account.Extra, "auto_pause_5h_disabled")
 		disabled7d := resolveAccountExtraBool(account.Extra, "auto_pause_7d_disabled")
 		pause5h, pause7d := resolveOpenAIQuotaAutoPauseThresholds(ctx, account)
-		pauseReached5h := !disabled5h && pause5h > 0 && has5h && utilization5h >= pause5h
+		pauseReached5h := !disabled5h && has5h && ((pause5h > 0 && utilization5h >= pause5h) || (config.Disable5h && utilization5h >= 1))
 		pauseReached7d := !disabled7d && pause7d > 0 && has7d && utilization7d >= pause7d
 		if pauseReached5h || pauseReached7d {
 			state := openAIAutoResetStateFromExtra(account.Extra)
-			if state != nil && state.Status == OpenAIAutoResetStatusAvailable && state.AvailableCount > 0 && !openAIAutoResetStateStale(state, now) {
+			available := state != nil && state.Status == OpenAIAutoResetStatusAvailable && state.AvailableCount > 0 && !openAIAutoResetStateStale(state, now)
+			if available && (!pauseReached5h || !config.Disable5h) {
 				return false, openAIQuotaAutoPauseDecision{}
 			}
-			notifyOpenAIAutoResetFromScheduler(account.ID)
+			if (pauseReached5h && !config.Disable5h) || pauseReached7d {
+				notifyOpenAIAutoResetFromScheduler(account.ID)
+			}
 			if pauseReached5h {
-				return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: pause5h, utilization: utilization5h, reason: "quota_auto_reset_credit_check_5h"}
+				decision := openAIQuotaAutoPauseDecision{window: "5h", threshold: pause5h, utilization: utilization5h}
+				if !config.Disable5h {
+					decision.reason = "quota_auto_reset_credit_check_5h"
+				}
+				return true, decision
 			}
 			return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: pause7d, utilization: utilization7d, reason: "quota_auto_reset_credit_check_7d"}
 		}

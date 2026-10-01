@@ -266,13 +266,14 @@ func (s *OpenAIQuotaAutoResetService) tryAcquireScanLock(ctx context.Context) (f
 }
 
 type openAIAutoResetAssessment struct {
-	triggerWindow string
-	resetReached  bool
-	pauseReached  bool
-	utilization5h float64
-	utilization7d float64
-	threshold5h   float64
-	threshold7d   float64
+	triggerWindow     string
+	resetReached      bool
+	pauseReached      bool
+	creditCheckNeeded bool
+	utilization5h     float64
+	utilization7d     float64
+	threshold5h       float64
+	threshold7d       float64
 }
 
 func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accountID int64) error {
@@ -297,9 +298,9 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 	state := openAIAutoResetStateFromExtra(account.Extra)
 	// 达到用卡阈值本应立即查询以便用卡；但 10 分钟内已确认无卡时，重查不会改变结论，
 	// 只会让调度热路径的通知把同一账号的上游额度接口打到十几秒一次。
-	needsQuery := openAIAutoResetSnapshotStale(account.Extra, now) ||
-		(assessment.resetReached && !openAIAutoResetNoCreditConfirmed(state, now))
-	if assessment.pauseReached && !assessment.resetReached {
+	needsQuery := assessment.creditCheckNeeded && (openAIAutoResetSnapshotStale(account.Extra, now) ||
+		(assessment.resetReached && !openAIAutoResetNoCreditConfirmed(state, now)))
+	if assessment.creditCheckNeeded && assessment.pauseReached && !assessment.resetReached {
 		needsQuery = needsQuery || state == nil || state.Status == OpenAIAutoResetStatusChecking || state.Status == OpenAIAutoResetStatusFailed || openAIAutoResetStateStale(state, now)
 	}
 	if needsQuery && openAIAutoResetQueryFailureBackoffActive(state, now) {
@@ -532,7 +533,7 @@ func (s *OpenAIQuotaAutoResetService) buildAssessment(account *Account, config O
 		threshold5h:   config.Threshold5h,
 		threshold7d:   config.Threshold7d,
 	}
-	reset5h := utilization5h >= config.Threshold5h
+	reset5h := !config.Disable5h && utilization5h >= config.Threshold5h
 	reset7d := utilization7d >= config.Threshold7d
 	assessment.resetReached = reset5h || reset7d
 	assessment.triggerWindow = joinOpenAIAutoResetWindows(reset5h, reset7d)
@@ -544,11 +545,13 @@ func (s *OpenAIQuotaAutoResetService) buildAssessment(account *Account, config O
 			account,
 		)
 	}
-	pauseReached5h := !resolveAccountExtraBool(account.Extra, "auto_pause_5h_disabled") && pause5h > 0 && utilization5h >= pause5h
+	disabled5h := resolveAccountExtraBool(account.Extra, "auto_pause_5h_disabled")
 	pauseReached7d := !resolveAccountExtraBool(account.Extra, "auto_pause_7d_disabled") && pause7d > 0 && utilization7d >= pause7d
+	pauseReached5h := !disabled5h && ((pause5h > 0 && utilization5h >= pause5h) || (config.Disable5h && utilization5h >= 1))
 	assessment.pauseReached = pauseReached5h || pauseReached7d || assessment.resetReached
+	assessment.creditCheckNeeded = reset5h || reset7d || (!config.Disable5h && pauseReached5h) || pauseReached7d
 	if assessment.triggerWindow == "" {
-		assessment.triggerWindow = joinOpenAIAutoResetWindows(pauseReached5h, pauseReached7d)
+		assessment.triggerWindow = joinOpenAIAutoResetWindows(pauseReached5h && !config.Disable5h, pauseReached7d)
 	}
 	return assessment
 }

@@ -979,9 +979,11 @@ export default {
       autoResetCredit: {
 	    title: 'Automatically use reset credits',
 	    hint: 'Uses the earliest-expiring available credit only when actual usage reaches a threshold. Off by default; the account remains paused if no credit is available or reset fails.',
+	    enable5h: '5h automatic reset',
+	    hint5h: 'When off, reaching the 5h limit pauses the account until natural recovery without using a reset credit. The 7d threshold still triggers automatic resets.',
 	    threshold5h: '5h auto-reset threshold (%)',
 	    threshold7d: '7d auto-reset threshold (%)',
-	    thresholdHint: 'Each window is evaluated independently. Enter 0.1–100; both default to 100.',
+	    thresholdHint: 'Each enabled window is evaluated independently. Enter 0.1–100; both default to 100.',
 	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.'
 	  },
       // Quota control (Anthropic OAuth/SetupToken only)

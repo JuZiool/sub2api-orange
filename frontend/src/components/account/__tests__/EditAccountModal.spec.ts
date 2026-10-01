@@ -1682,6 +1682,7 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
   it('仅对 OpenAI OAuth 母账号显示，默认关闭且阈值为 100/100', () => {
     const parent = mountModal(buildOpenAIOAuthParentAccount())
     expect(parent.find('[data-testid="auto-reset-credit-settings"]').exists()).toBe(true)
+    expect((parent.get('[data-testid="auto-reset-credit-5h-enabled"]').element as HTMLInputElement).checked).toBe(true)
     expect((parent.get('[data-testid="auto-reset-credit-5h-threshold"]').element as HTMLInputElement).value).toBe('100')
     expect((parent.get('[data-testid="auto-reset-credit-7d-threshold"]').element as HTMLInputElement).value).toBe('100')
     expect(parent.get('[data-testid="auto-reset-credit-5h-threshold"]').attributes('disabled')).toBeDefined()
@@ -1718,8 +1719,58 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
       auto_reset_credit_5h_threshold: 0.755,
       auto_reset_credit_7d_threshold: 0.92
     })
+    expect(extra).not.toHaveProperty('auto_reset_credit_5h_disabled')
     expect(extra).not.toHaveProperty('codex_auto_reset_credit_state')
     wrapper.unmount()
+  })
+
+  it('回填并保存5h自动用卡关闭状态，保留历史阈值且不阻止提交', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = {
+      auto_reset_credit_enabled: true,
+      auto_reset_credit_5h_disabled: true,
+      auto_reset_credit_5h_threshold: 0.05,
+      auto_reset_credit_7d_threshold: 0.92
+    }
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    const enabled = wrapper.get<HTMLInputElement>('[data-testid="auto-reset-credit-5h-enabled"]')
+    expect(enabled.element.checked).toBe(false)
+    expect(wrapper.get('[data-testid="auto-reset-credit-5h-threshold"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      auto_reset_credit_5h_disabled: true,
+      auto_reset_credit_5h_threshold: 0.05,
+      auto_reset_credit_7d_threshold: 0.92
+    })
+    wrapper.unmount()
+  })
+
+  it('重新开启5h自动用卡时删除禁用字段，7d非法阈值仍阻止提交', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = {
+      auto_reset_credit_enabled: true,
+      auto_reset_credit_5h_disabled: true,
+      auto_reset_credit_5h_threshold: 0.8,
+      auto_reset_credit_7d_threshold: 1.01
+    }
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="auto-reset-credit-5h-enabled"]').setValue(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+
+    account.extra.auto_reset_credit_7d_threshold = 0.92
+    updateAccountMock.mockResolvedValue(account)
+    const reopened = mountModal(account)
+    await reopened.get('[data-testid="auto-reset-credit-5h-enabled"]').setValue(true)
+    await reopened.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('auto_reset_credit_5h_disabled')
+    reopened.unmount()
   })
 
   it('开启后拒绝超出 0.1–100 范围的任一阈值', async () => {

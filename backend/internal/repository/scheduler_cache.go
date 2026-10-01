@@ -1044,6 +1044,7 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		// 候选过滤读的是本投影，缺这几个键时放行分支永远不会生效，
 		// 账号会在暂停阈值处被一刀切停调，直到窗口自然重置。
 		service.OpenAIAutoResetCreditEnabledExtraKey,
+		service.OpenAIAutoResetCredit5hDisabledExtraKey,
 		service.OpenAIAutoResetCredit5hThresholdExtraKey,
 		service.OpenAIAutoResetCredit7dThresholdExtraKey,
 		service.OpenAIAutoResetCreditStateExtraKey,
