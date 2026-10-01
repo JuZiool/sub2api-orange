@@ -1846,7 +1846,7 @@ function getAntigravityTierClass(row: any): string {
 const allColumns = computed<Column[]>(() => {
   const c: Column[] = [
     { key: 'select', label: '', sortable: false },
-    { key: 'name', label: isColumnVisible('platform_type') ? t('admin.accounts.columns.namePlatform') : t('admin.accounts.columns.name'), sortable: true },
+    { key: 'name', label: isColumnVisible('platform_type') ? t('admin.accounts.columns.namePlatform') : t('admin.accounts.columns.name'), sortable: true, class: 'align-top' },
     { key: 'id', label: t('admin.accounts.columns.id'), sortable: true },
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
@@ -1891,6 +1891,7 @@ const cols = computed(() => {
           key: 'account_runtime',
           label: t('admin.accounts.columns.runtimeInfo'),
           sortable: false,
+          class: 'align-top',
           sortKeys: [
             ...(!hiddenColumns.has('status') ? ['status'] : []),
             ...(!hiddenColumns.has('schedulable') ? ['schedulable'] : [])
