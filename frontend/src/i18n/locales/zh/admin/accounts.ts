@@ -98,7 +98,7 @@ export default {
       columns: {
         name: '名称',
         namePlatform: '账号',
-        runtimeInfo: '相关配置',
+        runtimeInfo: '相关信息',
         id: '账号ID',
         platformType: '平台/类型',
         platform: '平台',
