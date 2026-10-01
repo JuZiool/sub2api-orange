@@ -83,6 +83,7 @@ const AccountGroupsCellStub = defineComponent({
   props: { groups: { type: Array, default: () => [] } },
   template: '<span data-test="account-groups">{{ groups.map(group => group.name).join(",") }}</span>'
 })
+const AccountStatusIndicatorStub = defineComponent({ template: '<span data-test="account-status">status</span>' })
 
 const EditAccountModalStub = defineComponent({
   props: { show: Boolean, account: { type: Object, default: null } },
@@ -127,7 +128,7 @@ function mountView(stubActionMenu = true) {
         BulkEditAccountModal: true,
         PlatformTypeBadge: true,
         AccountCapacityCell,
-        AccountStatusIndicator: true,
+        AccountStatusIndicator: AccountStatusIndicatorStub,
         AccountTodayStatsCell: true,
         AccountGroupsCell: AccountGroupsCellStub,
         AccountUsageCell: true,
@@ -201,6 +202,24 @@ describe('admin AccountsView lite account list', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-test="account-groups"]').text()).toBe('codex')
+    wrapper.unmount()
+  })
+
+  it('renders capacity, labeled schedulable switch, status, and groups in that order', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const capacity = wrapper.findComponent(AccountCapacityCell).element
+    const schedulable = wrapper.get('button[role="switch"]')
+    const status = wrapper.get('[data-test="account-status"]')
+    const groupsCell = wrapper.get('[data-test="account-groups"]')
+    const isBefore = (left: Element, right: Element) =>
+      Boolean(left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING)
+
+    expect(wrapper.text()).toContain('admin.accounts.columns.schedulable')
+    expect(isBefore(capacity, schedulable.element)).toBe(true)
+    expect(isBefore(schedulable.element, status.element)).toBe(true)
+    expect(isBefore(status.element, groupsCell.element)).toBe(true)
     wrapper.unmount()
   })
 

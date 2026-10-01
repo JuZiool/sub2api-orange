@@ -314,13 +314,13 @@
             </div>
           </template>
           <template #cell-account_runtime="{ row }">
-            <div class="flex w-full min-w-0 flex-col items-start gap-2 whitespace-normal text-left md:min-w-[240px] md:max-w-[360px]">
-              <div v-if="isColumnVisible('capacity') || isColumnVisible('schedulable')" class="flex w-full min-w-0 items-start gap-3 text-left">
-                <div v-if="isColumnVisible('capacity')" class="min-w-0 flex-1">
-                  <AccountCapacityCell :account="row" />
-                </div>
+            <div class="flex w-full min-w-0 flex-col items-start gap-1.5 whitespace-normal text-left md:min-w-[240px] md:max-w-[360px]">
+              <div v-if="isColumnVisible('capacity')" class="w-full min-w-0 text-left">
+                <AccountCapacityCell :account="row" />
+              </div>
+              <div v-if="isColumnVisible('schedulable')" class="flex items-center gap-2 text-left">
+                <span class="text-xs text-gray-600 dark:text-gray-300">{{ t('admin.accounts.columns.schedulable') }}</span>
                 <button
-                  v-if="isColumnVisible('schedulable')"
                   type="button"
                   role="switch"
                   :aria-checked="row.schedulable"
