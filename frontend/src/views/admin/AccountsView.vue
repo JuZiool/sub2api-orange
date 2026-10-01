@@ -222,9 +222,6 @@
           <template #cell-id="{ value }">
             <span class="font-mono text-xs text-gray-500 dark:text-gray-400">#{{ value }}</span>
           </template>
-          <template #header-name="{ column }">
-            <span>{{ isColumnVisible('platform_type') ? t('admin.accounts.columns.namePlatform') : column.label }}</span>
-          </template>
           <template #cell-name="{ row, value }">
             <div class="flex w-full min-w-0 max-w-full flex-col items-start gap-1 whitespace-normal text-left md:w-56 md:max-w-[240px]">
               <HelpTooltip
@@ -245,6 +242,13 @@
                 </template>
               </HelpTooltip>
               <span v-else class="max-w-full break-words font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <span
+                v-if="accountDisplayEmail(row)"
+                class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]"
+                :title="accountDisplayEmail(row) + (row.parent_chatgpt_account_id ? ' · ' + row.parent_chatgpt_account_id : '')"
+              >
+                {{ accountDisplayEmail(row) }}
+              </span>
               <div v-if="isColumnVisible('platform_type')" class="flex min-w-0 flex-col gap-1">
                 <div class="flex flex-wrap items-center gap-1">
                   <PlatformTypeBadge :platform="row.platform" :type="row.type"
@@ -271,47 +275,11 @@
                   <span>{{ getOpenAICompactMeta(row)?.label }}</span>
                 </div>
               </div>
-              <span
-                v-if="accountDisplayEmail(row)"
-                class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]"
-                :title="accountDisplayEmail(row) + (row.parent_chatgpt_account_id ? ' · ' + row.parent_chatgpt_account_id : '')"
-              >
-                {{ accountDisplayEmail(row) }}
-              </span>
             </div>
           </template>
           <template #cell-notes="{ value }">
             <span v-if="value" :title="value" class="block max-w-xs truncate text-sm text-gray-600 dark:text-gray-300">{{ value }}</span>
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
-          </template>
-          <template #header-account_runtime="{ sortKey, sortOrder, sort }">
-            <div class="flex flex-col items-start gap-2 normal-case">
-              <span class="font-medium uppercase tracking-wider">{{ t('admin.accounts.columns.runtimeInfo') }}</span>
-              <div class="flex flex-wrap items-center gap-3">
-                <button
-                  v-if="isColumnVisible('status')"
-                  type="button"
-                  class="inline-flex items-center gap-1 text-xs font-medium normal-case text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:text-gray-300 dark:hover:text-white"
-                  :aria-label="t('admin.accounts.sortByStatus')"
-                  :aria-pressed="sortKey === 'status'"
-                  @click.stop="sort('status')"
-                >
-                  {{ t('admin.accounts.columns.status') }}
-                  <span v-if="sortKey === 'status'" aria-hidden="true">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
-                </button>
-                <button
-                  v-if="isColumnVisible('schedulable')"
-                  type="button"
-                  class="inline-flex items-center gap-1 text-xs font-medium normal-case text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:text-gray-300 dark:hover:text-white"
-                  :aria-label="t('admin.accounts.sortBySchedulable')"
-                  :aria-pressed="sortKey === 'schedulable'"
-                  @click.stop="sort('schedulable')"
-                >
-                  {{ t('admin.accounts.columns.schedulable') }}
-                  <span v-if="sortKey === 'schedulable'" aria-hidden="true">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
-                </button>
-              </div>
-            </div>
           </template>
           <template #cell-account_runtime="{ row }">
             <div class="flex min-w-0 flex-col items-start gap-1.5 whitespace-normal text-left md:max-w-[360px]">
@@ -1846,7 +1814,7 @@ function getAntigravityTierClass(row: any): string {
 const allColumns = computed<Column[]>(() => {
   const c: Column[] = [
     { key: 'select', label: '', sortable: false },
-    { key: 'name', label: isColumnVisible('platform_type') ? t('admin.accounts.columns.namePlatform') : t('admin.accounts.columns.name'), sortable: true, class: 'align-top' },
+    { key: 'name', label: t('admin.accounts.columns.namePlatform'), sortable: true, class: 'align-top' },
     { key: 'id', label: t('admin.accounts.columns.id'), sortable: true },
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },

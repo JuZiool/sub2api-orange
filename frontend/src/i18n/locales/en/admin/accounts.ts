@@ -246,8 +246,8 @@ export default {
       },
       columns: {
         name: 'Name',
-        namePlatform: 'Name / Platform Type',
-        runtimeInfo: 'Runtime Info',
+        namePlatform: 'Account',
+        runtimeInfo: 'Configuration',
         id: 'Account ID',
         platformType: 'Platform/Type',
         platform: 'Platform',
