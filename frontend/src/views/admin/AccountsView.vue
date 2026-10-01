@@ -314,9 +314,9 @@
             </div>
           </template>
           <template #cell-account_runtime="{ row }">
-            <div class="flex w-full min-w-0 flex-col items-start gap-1.5 whitespace-normal text-left md:min-w-[240px] md:max-w-[360px]">
+            <div class="flex min-w-0 flex-col items-start gap-1.5 whitespace-normal text-left md:max-w-[360px]">
               <div v-if="isColumnVisible('capacity')" class="w-full min-w-0 text-left">
-                <AccountCapacityCell :account="row" />
+                <AccountCapacityCell :account="row" class="items-start" />
               </div>
               <div v-if="isColumnVisible('schedulable')" class="flex items-center gap-2 text-left">
                 <span class="text-xs text-gray-600 dark:text-gray-300">{{ t('admin.accounts.columns.schedulable') }}</span>
