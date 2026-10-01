@@ -283,11 +283,12 @@
           </template>
           <template #cell-account_runtime="{ row }">
             <div class="flex min-w-0 flex-col items-start gap-1.5 whitespace-normal text-left md:max-w-[360px]">
-              <div v-if="isColumnVisible('capacity')" class="w-full min-w-0 text-left">
-                <AccountCapacityCell :account="row" class="items-start" />
+              <div v-if="isColumnVisible('capacity')" class="flex w-full min-w-0 items-start gap-2 text-left">
+                <span class="shrink-0 text-xs leading-5 text-gray-600 dark:text-gray-300">{{ t('admin.accounts.columns.capacity') }}:</span>
+                <AccountCapacityCell :account="row" class="min-w-0 items-start" />
               </div>
               <div v-if="isColumnVisible('schedulable')" class="flex items-center gap-2 text-left">
-                <span class="text-xs text-gray-600 dark:text-gray-300">{{ t('admin.accounts.columns.schedulable') }}</span>
+                <span class="shrink-0 text-xs leading-5 text-gray-600 dark:text-gray-300">{{ t('admin.accounts.columns.schedulable') }}:</span>
                 <button
                   type="button"
                   role="switch"
@@ -302,11 +303,13 @@
                   <span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out" :class="[row.schedulable ? 'translate-x-4' : 'translate-x-0']" />
                 </button>
               </div>
-              <div v-if="isColumnVisible('status')" class="text-left">
+              <div v-if="isColumnVisible('status')" class="flex w-full min-w-0 items-start gap-2 text-left">
+                <span class="shrink-0 text-xs leading-5 text-gray-600 dark:text-gray-300">{{ t('admin.accounts.columns.status') }}:</span>
                 <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
               </div>
-              <div v-if="isColumnVisible('groups') && !authStore.isSimpleMode" class="w-full text-left">
-                <AccountGroupsCell :groups="accountGroupsForRow(row)" :max-display="4" />
+              <div v-if="isColumnVisible('groups') && !authStore.isSimpleMode" class="flex w-full min-w-0 items-start gap-2 text-left">
+                <span class="shrink-0 text-xs leading-5 text-gray-600 dark:text-gray-300">{{ t('admin.accounts.columns.groups') }}:</span>
+                <AccountGroupsCell :groups="accountGroupsForRow(row)" :max-display="4" class="min-w-0" />
               </div>
             </div>
           </template>
