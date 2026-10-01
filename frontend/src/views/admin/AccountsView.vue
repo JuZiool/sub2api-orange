@@ -222,8 +222,11 @@
           <template #cell-id="{ value }">
             <span class="font-mono text-xs text-gray-500 dark:text-gray-400">#{{ value }}</span>
           </template>
+          <template #header-name="{ column }">
+            <span>{{ isColumnVisible('platform_type') ? t('admin.accounts.columns.namePlatform') : column.label }}</span>
+          </template>
           <template #cell-name="{ row, value }">
-            <div class="flex flex-col">
+            <div class="flex w-full min-w-0 max-w-full flex-col items-start gap-1 whitespace-normal text-left md:w-56 md:max-w-[240px]">
               <HelpTooltip
                 v-if="accountHomepageUrl(row)"
                 :content="accountHomepageUrl(row)"
@@ -235,13 +238,39 @@
                     :href="accountHomepageUrl(row)"
                     target="_blank"
                     rel="noopener noreferrer"
-                    class="border-b border-dotted border-gray-300 font-medium text-gray-900 dark:border-dark-600 dark:text-white"
+                    class="max-w-full break-words border-b border-dotted border-gray-300 font-medium text-gray-900 dark:border-dark-600 dark:text-white"
                   >
                     {{ value }}
                   </a>
                 </template>
               </HelpTooltip>
-              <span v-else class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <span v-else class="max-w-full break-words font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <div v-if="isColumnVisible('platform_type')" class="flex min-w-0 flex-col gap-1">
+                <div class="flex flex-wrap items-center gap-1">
+                  <PlatformTypeBadge :platform="row.platform" :type="row.type"
+                    :auth-mode="getOpenAIAuthMode(row)"
+                    :plan-type="getAccountPlanType(row)"
+                    :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
+                    :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at" />
+                  <span
+                    v-if="getAntigravityTierLabel(row)"
+                    :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
+                  >
+                    {{ getAntigravityTierLabel(row) }}
+                  </span>
+                </div>
+                <div
+                  v-if="getOpenAICompactMeta(row)"
+                  :class="[
+                    'inline-flex items-center gap-1.5 pl-0.5 text-[11px] font-medium leading-4',
+                    getOpenAICompactMeta(row)?.className
+                  ]"
+                  :title="getOpenAICompactTitle(row)"
+                >
+                  <span :class="['h-1.5 w-1.5 rounded-full', getOpenAICompactMeta(row)?.dotClass]" />
+                  <span>{{ getOpenAICompactMeta(row)?.label }}</span>
+                </div>
+              </div>
               <span
                 v-if="accountDisplayEmail(row)"
                 class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]"
@@ -255,46 +284,63 @@
             <span v-if="value" :title="value" class="block max-w-xs truncate text-sm text-gray-600 dark:text-gray-300">{{ value }}</span>
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
-          <template #cell-platform_type="{ row }">
-            <div class="flex min-w-0 flex-col gap-1">
-              <div class="flex flex-wrap items-center gap-1">
-                <PlatformTypeBadge :platform="row.platform" :type="row.type"
-                  :auth-mode="getOpenAIAuthMode(row)"
-                  :plan-type="getAccountPlanType(row)"
-                  :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
-                  :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at" />
-                <span
-                  v-if="getAntigravityTierLabel(row)"
-                  :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
+          <template #header-account_runtime="{ sortKey, sortOrder, sort }">
+            <div class="flex flex-col items-start gap-2 normal-case">
+              <span class="font-medium uppercase tracking-wider">{{ t('admin.accounts.columns.runtimeInfo') }}</span>
+              <div class="flex flex-wrap items-center gap-3">
+                <button
+                  v-if="isColumnVisible('status')"
+                  type="button"
+                  class="inline-flex items-center gap-1 text-xs font-medium normal-case text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:text-gray-300 dark:hover:text-white"
+                  :aria-label="t('admin.accounts.sortByStatus')"
+                  :aria-pressed="sortKey === 'status'"
+                  @click.stop="sort('status')"
                 >
-                  {{ getAntigravityTierLabel(row) }}
-                </span>
-              </div>
-              <div
-                v-if="getOpenAICompactMeta(row)"
-                :class="[
-                  'inline-flex items-center gap-1.5 pl-0.5 text-[11px] font-medium leading-4',
-                  getOpenAICompactMeta(row)?.className
-                ]"
-                :title="getOpenAICompactTitle(row)"
-              >
-                <span :class="['h-1.5 w-1.5 rounded-full', getOpenAICompactMeta(row)?.dotClass]" />
-                <span>{{ getOpenAICompactMeta(row)?.label }}</span>
+                  {{ t('admin.accounts.columns.status') }}
+                  <span v-if="sortKey === 'status'" aria-hidden="true">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
+                </button>
+                <button
+                  v-if="isColumnVisible('schedulable')"
+                  type="button"
+                  class="inline-flex items-center gap-1 text-xs font-medium normal-case text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 dark:text-gray-300 dark:hover:text-white"
+                  :aria-label="t('admin.accounts.sortBySchedulable')"
+                  :aria-pressed="sortKey === 'schedulable'"
+                  @click.stop="sort('schedulable')"
+                >
+                  {{ t('admin.accounts.columns.schedulable') }}
+                  <span v-if="sortKey === 'schedulable'" aria-hidden="true">{{ sortOrder === 'asc' ? '↑' : '↓' }}</span>
+                </button>
               </div>
             </div>
           </template>
-          <template #cell-capacity="{ row }">
-            <AccountCapacityCell :account="row" />
-          </template>
-          <template #cell-status="{ row }">
-            <div class="flex items-center gap-1.5">
-              <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
+          <template #cell-account_runtime="{ row }">
+            <div class="flex w-full min-w-0 flex-col items-start gap-2 whitespace-normal text-left md:min-w-[240px] md:max-w-[360px]">
+              <div v-if="isColumnVisible('capacity') || isColumnVisible('schedulable')" class="flex w-full min-w-0 items-start gap-3 text-left">
+                <div v-if="isColumnVisible('capacity')" class="min-w-0 flex-1">
+                  <AccountCapacityCell :account="row" />
+                </div>
+                <button
+                  v-if="isColumnVisible('schedulable')"
+                  type="button"
+                  role="switch"
+                  :aria-checked="row.schedulable"
+                  :aria-label="row.schedulable ? t('admin.accounts.schedulableEnabled') : t('admin.accounts.schedulableDisabled')"
+                  @click="handleToggleSchedulable(row)"
+                  :disabled="togglingSchedulable === row.id"
+                  class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-dark-800"
+                  :class="[row.schedulable ? 'bg-primary-500 hover:bg-primary-600' : 'bg-gray-200 hover:bg-gray-300 dark:bg-dark-600 dark:hover:bg-dark-500']"
+                  :title="row.schedulable ? t('admin.accounts.schedulableEnabled') : t('admin.accounts.schedulableDisabled')"
+                >
+                  <span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out" :class="[row.schedulable ? 'translate-x-4' : 'translate-x-0']" />
+                </button>
+              </div>
+              <div v-if="isColumnVisible('status')" class="text-left">
+                <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
+              </div>
+              <div v-if="isColumnVisible('groups') && !authStore.isSimpleMode" class="w-full text-left">
+                <AccountGroupsCell :groups="accountGroupsForRow(row)" :max-display="4" />
+              </div>
             </div>
-          </template>
-          <template #cell-schedulable="{ row }">
-            <button @click="handleToggleSchedulable(row)" :disabled="togglingSchedulable === row.id" class="relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-dark-800" :class="[row.schedulable ? 'bg-primary-500 hover:bg-primary-600' : 'bg-gray-200 hover:bg-gray-300 dark:bg-dark-600 dark:hover:bg-dark-500']" :title="row.schedulable ? t('admin.accounts.schedulableEnabled') : t('admin.accounts.schedulableDisabled')">
-              <span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out" :class="[row.schedulable ? 'translate-x-4' : 'translate-x-0']" />
-            </button>
           </template>
           <template #cell-today_stats="{ row }">
             <AccountTodayStatsCell
@@ -302,9 +348,6 @@
               :loading="todayStatsLoading"
               :error="todayStatsError"
             />
-          </template>
-          <template #cell-groups="{ row }">
-            <AccountGroupsCell :groups="accountGroupsForRow(row)" :max-display="4" />
           </template>
           <template #header-usage="{ column }">
             <div class="flex items-center">
@@ -500,6 +543,7 @@ import TotpStepUpDialog from '@/components/auth/TotpStepUpDialog.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
+import type { Column } from '@/components/common/types'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -667,6 +711,9 @@ const ACCOUNT_SORTABLE_KEYS = new Set([
   'created_at',
   'expires_at'
 ])
+const isAccountSortVisible = (key: string) =>
+  (key !== 'status' || !hiddenColumns.has('status')) &&
+  (key !== 'schedulable' || !hiddenColumns.has('schedulable'))
 const loadInitialAccountSortState = (): AccountSortState => {
   const fallback: AccountSortState = { sort_by: 'name', sort_order: 'asc' }
   try {
@@ -674,7 +721,7 @@ const loadInitialAccountSortState = (): AccountSortState => {
     if (!raw) return fallback
     const parsed = JSON.parse(raw) as { key?: string; order?: string }
     const key = typeof parsed.key === 'string' ? parsed.key : ''
-    if (!ACCOUNT_SORTABLE_KEYS.has(key)) return fallback
+    if (!ACCOUNT_SORTABLE_KEYS.has(key) || !isAccountSortVisible(key)) return fallback
     return {
       sort_by: key,
       sort_order: parsed.order === 'desc' ? 'desc' : 'asc'
@@ -1014,6 +1061,11 @@ const saveAutoRefreshToStorage = () => {
 if (typeof window !== 'undefined') {
   loadSavedColumns()
   loadSavedAutoRefresh()
+  if (!isAccountSortVisible(sortState.sort_by)) {
+    sortState.sort_by = 'name'
+    sortState.sort_order = 'asc'
+    localStorage.setItem(ACCOUNT_SORT_STORAGE_KEY, JSON.stringify({ key: 'name', order: 'asc' }))
+  }
 }
 
 const setAutoRefreshEnabled = (enabled: boolean) => {
@@ -1791,10 +1843,10 @@ function getAntigravityTierClass(row: any): string {
 }
 
 // All available columns
-const allColumns = computed(() => {
-  const c = [
+const allColumns = computed<Column[]>(() => {
+  const c: Column[] = [
     { key: 'select', label: '', sortable: false },
-    { key: 'name', label: t('admin.accounts.columns.name'), sortable: true },
+    { key: 'name', label: isColumnVisible('platform_type') ? t('admin.accounts.columns.namePlatform') : t('admin.accounts.columns.name'), sortable: true },
     { key: 'id', label: t('admin.accounts.columns.id'), sortable: true },
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
@@ -1827,11 +1879,32 @@ const toggleableColumns = computed(() =>
 )
 
 // Filtered columns based on visibility
-const cols = computed(() =>
-  allColumns.value.filter(col =>
-    col.key === 'select' || col.key === 'name' || col.key === 'actions' || !hiddenColumns.has(col.key)
-  )
-)
+const cols = computed(() => {
+  const logicalColumns = allColumns.value
+  const runtimeFields = ['capacity', 'status', 'schedulable', 'groups']
+  const runtimeVisible = runtimeFields.some(key => isColumnVisible(key) && (key !== 'groups' || !authStore.isSimpleMode))
+  const columns: Column[] = []
+  for (const col of logicalColumns) {
+    if (col.key === 'capacity') {
+      if (runtimeVisible) {
+        columns.push({
+          key: 'account_runtime',
+          label: t('admin.accounts.columns.runtimeInfo'),
+          sortable: false,
+          sortKeys: [
+            ...(!hiddenColumns.has('status') ? ['status'] : []),
+            ...(!hiddenColumns.has('schedulable') ? ['schedulable'] : [])
+          ]
+        })
+      }
+      continue
+    }
+    if (col.key === 'platform_type' || runtimeFields.includes(col.key)) continue
+    if (col.key !== 'select' && col.key !== 'name' && col.key !== 'actions' && hiddenColumns.has(col.key)) continue
+    columns.push(col)
+  }
+  return columns
+})
 
 const accountDetailLoading = new Set<number>()
 const loadAccountDetails = async (account: Pick<AccountListItem, 'id'>): Promise<Account | null> => {

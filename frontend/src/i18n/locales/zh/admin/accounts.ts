@@ -97,6 +97,8 @@ export default {
       groupCountTotal: '共 {count} 个分组',
       columns: {
         name: '名称',
+        namePlatform: '名称 / 平台类型',
+        runtimeInfo: '运行信息',
         id: '账号ID',
         platformType: '平台/类型',
         platform: '平台',
@@ -119,6 +121,8 @@ export default {
         expiresAt: '过期时间',
         actions: '操作'
       },
+      sortByStatus: '按状态排序',
+      sortBySchedulable: '按调度状态排序',
       schedulerScore: {
         baseShort: '普通',
         stickyShort: '粘性',

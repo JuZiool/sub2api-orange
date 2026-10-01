@@ -246,6 +246,8 @@ export default {
       },
       columns: {
         name: 'Name',
+        namePlatform: 'Name / Platform Type',
+        runtimeInfo: 'Runtime Info',
         id: 'Account ID',
         platformType: 'Platform/Type',
         platform: 'Platform',
@@ -268,6 +270,8 @@ export default {
         expiresAt: 'Expires At',
         actions: 'Actions'
       },
+      sortByStatus: 'Sort by status',
+      sortBySchedulable: 'Sort by schedulability',
       schedulerScore: {
         baseShort: 'Base',
         stickyShort: 'Sticky',

@@ -223,7 +223,6 @@ const mountViewWithRow = () =>
           template: `<div>
             <div v-for="(row, idx) in (data || [])" :key="idx">
               <slot name="cell-name" :row="row" :value="row.name" />
-              <slot name="cell-platform_type" :row="row" />
             </div>
           </div>`
         },

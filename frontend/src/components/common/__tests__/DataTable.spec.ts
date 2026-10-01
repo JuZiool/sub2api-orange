@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { h } from 'vue'
 
 import DataTable from '../DataTable.vue'
 
@@ -81,6 +82,41 @@ describe('DataTable', () => {
     expect(nameHeader.attributes('aria-sort')).toBe('descending')
     expect(nameHeader.findAll('svg')[0].classes()).toContain('text-gray-300')
     expect(nameHeader.findAll('svg')[1].classes()).toContain('text-primary-600')
+  })
+
+  it('supports header sort keys and falls back once when a child sort key becomes hidden', async () => {
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [
+          { key: 'name', label: 'Name', sortable: true },
+          { key: 'runtime', label: 'Runtime', sortKeys: ['status', 'schedulable'] }
+        ],
+        data: [{ id: 1, name: 'Alpha', status: 'active' }],
+        defaultSortKey: 'name',
+        defaultSortOrder: 'asc',
+        serverSideSort: true,
+        sortStorageKey: 'runtime-sort'
+      },
+      slots: {
+        'header-runtime': ({ sort }: { sort: (key: string, order?: 'asc' | 'desc') => void }) =>
+          h('button', { 'data-test': 'sort-status', onClick: () => sort('status') }, 'Status')
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+    await wrapper.get('[data-test="sort-status"]').trigger('click')
+    expect(wrapper.emitted('sort')).toEqual([['status', 'asc']])
+
+    await wrapper.setProps({ columns: [
+      { key: 'name', label: 'Name', sortable: true },
+      { key: 'runtime', label: 'Runtime', sortKeys: ['schedulable'] }
+    ] })
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.emitted('sort')).toEqual([['status', 'asc'], ['name', 'asc']])
+    expect(localStorage.getItem('runtime-sort')).toBe(JSON.stringify({ key: 'name', order: 'asc' }))
+    ;(wrapper.vm as any).setSort('runtime')
+    expect(wrapper.emitted('sort')).toHaveLength(2)
   })
 
   it('renders every row with no virtual padding spacer for small datasets (virtualization off)', async () => {

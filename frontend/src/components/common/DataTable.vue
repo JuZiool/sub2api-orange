@@ -137,6 +137,7 @@
                 :column="column"
                 :sort-key="sortKey"
                 :sort-order="sortOrder"
+                :sort="setSort"
               >
                 <span>{{ column.label }}</span>
               </slot>
@@ -502,6 +503,7 @@ const getSortableKeys = () => {
   const keys = new Set<string>()
   for (const col of props.columns) {
     if (col.sortable) keys.add(col.key)
+    col.sortKeys?.forEach(key => keys.add(key))
   }
   return keys
 }
@@ -636,7 +638,7 @@ const resolveRowKey = (row: any, index: number) => resolveStableRowKey(row) ?? i
 
 const dataColumns = computed(() => props.columns.filter((column) => column.key !== 'actions'))
 const columnsSignature = computed(() =>
-  props.columns.map((column) => `${column.key}:${column.sortable ? '1' : '0'}`).join('|')
+  props.columns.map((column) => `${column.key}:${column.sortable ? '1' : '0'}:${column.sortKeys?.join(',') || ''}`).join('|')
 )
 
 watch(
@@ -668,11 +670,9 @@ watch(actionsExpanded, async () => {
   checkScrollable()
 })
 
-const handleSort = (key: string) => {
-  let newOrder: 'asc' | 'desc' = 'asc'
-  if (sortKey.value === key) {
-    newOrder = sortOrder.value === 'asc' ? 'desc' : 'asc'
-  }
+const setSort = (key: string, order?: 'asc' | 'desc') => {
+  if (!normalizeSortKey(key)) return
+  const newOrder = order ?? (sortKey.value === key && sortOrder.value === 'asc' ? 'desc' : 'asc')
 
   if (props.serverSideSort) {
     // Server-side sort mode: emit event and update internal state for UI feedback
@@ -685,6 +685,8 @@ const handleSort = (key: string) => {
     sortOrder.value = newOrder
   }
 }
+
+const handleSort = (key: string) => setSort(key)
 
 const sortedData = computed(() => {
   // Server-side sort mode: return data as-is (server handles sorting)
@@ -919,7 +921,7 @@ watch(
     if (!normalized) {
       const fallback = resolveInitialSortState()
       if (fallback) {
-        applySortState(fallback)
+        setSort(fallback.key, fallback.order)
       } else {
         sortKey.value = ''
         sortOrder.value = 'asc'
@@ -947,6 +949,7 @@ defineExpose({
   sortedData,
   resolveRowKey,
   tableWrapperEl: tableWrapperRef,
+  setSort,
 })
 </script>
 

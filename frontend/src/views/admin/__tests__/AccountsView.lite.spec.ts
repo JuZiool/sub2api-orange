@@ -30,6 +30,7 @@ const {
   showError: vi.fn(),
   showWarning: vi.fn()
 }))
+const simpleMode = vi.hoisted(() => ({ value: false }))
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
@@ -55,7 +56,7 @@ vi.mock('@/stores/app', () => ({
 }))
 
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({ token: 'test-token', isSimpleMode: false })
+  useAuthStore: () => ({ token: 'test-token', isSimpleMode: simpleMode.value })
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -64,12 +65,14 @@ vi.mock('vue-i18n', async () => {
 })
 
 const DataTableStub = defineComponent({
-  props: { data: { type: Array, default: () => [] } },
+  props: {
+    data: { type: Array, default: () => [] },
+    columns: { type: Array, default: () => [] }
+  },
   template: `
     <div>
       <div v-for="row in data" :key="row.id" :data-account-name="row.name">
-        <slot name="cell-capacity" :row="row" />
-        <slot name="cell-groups" :row="row" />
+        <slot name="cell-account_runtime" :row="row" />
         <slot name="cell-actions" :row="row" />
       </div>
     </div>
@@ -162,6 +165,7 @@ const fullAccount = {
 describe('admin AccountsView lite account list', () => {
   beforeEach(() => {
     localStorage.clear()
+    simpleMode.value = false
     listAccounts.mockReset().mockResolvedValue({ items: [listRow], total: 1, page: 1, page_size: 20, pages: 1 })
     listWithEtag.mockReset().mockResolvedValue({ notModified: true, etag: 'compact-etag', data: null })
     getById.mockReset().mockResolvedValue(fullAccount)
@@ -197,6 +201,66 @@ describe('admin AccountsView lite account list', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-test="account-groups"]').text()).toBe('codex')
+    wrapper.unmount()
+  })
+
+  it('renders the two merged physical columns while preserving the ID column', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const keys = wrapper.getComponent(DataTableStub).props('columns').map((column: any) => column.key)
+    expect(keys).toContain('name')
+    expect(keys).toContain('id')
+    expect(keys).toContain('account_runtime')
+    expect(keys).not.toEqual(expect.arrayContaining(['platform_type', 'capacity', 'status', 'schedulable', 'groups']))
+    wrapper.unmount()
+  })
+
+  it('keeps runtime status and schedulable sortable when capacity is hidden', async () => {
+    localStorage.setItem('account-hidden-columns', JSON.stringify(['capacity']))
+    const wrapper = mountView()
+    await flushPromises()
+
+    const runtime = wrapper.getComponent(DataTableStub).props('columns').find((column: any) => column.key === 'account_runtime')
+    expect(runtime.sortKeys).toEqual(['status', 'schedulable'])
+    wrapper.unmount()
+  })
+
+  it('hides the runtime column only when all four child fields are hidden', async () => {
+    localStorage.setItem('account-hidden-columns', JSON.stringify(['capacity', 'status', 'schedulable', 'groups']))
+    const wrapper = mountView()
+    await flushPromises()
+
+    const keys = wrapper.getComponent(DataTableStub).props('columns').map((column: any) => column.key)
+    expect(keys).not.toContain('account_runtime')
+    wrapper.unmount()
+  })
+
+  it('does not render account groups in simple mode even when the saved preference shows them', async () => {
+    simpleMode.value = true
+    localStorage.setItem('account-hidden-columns', JSON.stringify([]))
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="account-groups"]').exists()).toBe(false)
+    expect(wrapper.getComponent(DataTableStub).props('columns').map((column: any) => column.key)).not.toContain('groups')
+    wrapper.unmount()
+  })
+
+  it('falls back to name ascending before the first request when the saved sort field is hidden', async () => {
+    localStorage.setItem('account-hidden-columns', JSON.stringify(['status']))
+    localStorage.setItem('account-table-sort', JSON.stringify({ key: 'status', order: 'desc' }))
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(listAccounts).toHaveBeenCalledWith(
+      1,
+      20,
+      expect.objectContaining({ sort_by: 'name', sort_order: 'asc' }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    )
+    expect(JSON.parse(localStorage.getItem('account-table-sort') || '{}')).toEqual({ key: 'name', order: 'asc' })
     wrapper.unmount()
   })
 
