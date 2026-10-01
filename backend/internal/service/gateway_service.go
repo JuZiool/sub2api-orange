@@ -580,6 +580,11 @@ type AccountSelectionResult struct {
 	Acquired    bool
 	ReleaseFunc func()
 	WaitPlan    *AccountWaitPlan // nil means no wait allowed
+	// RoutedGroupID is set when API-key fallback routing selected an account from
+	// a group other than the API key's original group. That routed group becomes
+	// the effective billing and usage-attribution group for this request.
+	RoutedGroupID      int64
+	UsedAPIKeyFallback bool
 	// stickySessionHit 标记账号来自会话粘性绑定命中，供非高级调度路径回填决策标签。
 	stickySessionHit bool
 	// profitGate 携带本次选号真实生效的利润门（无门为 nil）。门安装在调度栈的

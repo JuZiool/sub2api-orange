@@ -2673,6 +2673,29 @@ func HasAPIKeysWith(preds ...predicate.APIKey) predicate.Group {
 	})
 }
 
+// HasFallbackAPIKeys applies the HasEdge predicate on the "fallback_api_keys" edge.
+func HasFallbackAPIKeys() predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, FallbackAPIKeysTable, FallbackAPIKeysColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasFallbackAPIKeysWith applies the HasEdge predicate on the "fallback_api_keys" edge with a given conditions (other predicates).
+func HasFallbackAPIKeysWith(preds ...predicate.APIKey) predicate.Group {
+	return predicate.Group(func(s *sql.Selector) {
+		step := newFallbackAPIKeysStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasRedeemCodes applies the HasEdge predicate on the "redeem_codes" edge.
 func HasRedeemCodes() predicate.Group {
 	return predicate.Group(func(s *sql.Selector) {

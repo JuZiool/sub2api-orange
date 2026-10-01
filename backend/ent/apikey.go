@@ -34,6 +34,8 @@ type APIKey struct {
 	Name string `json:"name,omitempty"`
 	// GroupID holds the value of the "group_id" field.
 	GroupID *int64 `json:"group_id,omitempty"`
+	// Fallback group used only when the primary group has no available accounts
+	FallbackGroupID *int64 `json:"fallback_group_id,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// Last usage time of this API key
@@ -78,11 +80,13 @@ type APIKeyEdges struct {
 	User *User `json:"user,omitempty"`
 	// Group holds the value of the group edge.
 	Group *Group `json:"group,omitempty"`
+	// FallbackGroup holds the value of the fallback_group edge.
+	FallbackGroup *Group `json:"fallback_group,omitempty"`
 	// UsageLogs holds the value of the usage_logs edge.
 	UsageLogs []*UsageLog `json:"usage_logs,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [4]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -107,10 +111,21 @@ func (e APIKeyEdges) GroupOrErr() (*Group, error) {
 	return nil, &NotLoadedError{edge: "group"}
 }
 
+// FallbackGroupOrErr returns the FallbackGroup value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e APIKeyEdges) FallbackGroupOrErr() (*Group, error) {
+	if e.FallbackGroup != nil {
+		return e.FallbackGroup, nil
+	} else if e.loadedTypes[2] {
+		return nil, &NotFoundError{label: group.Label}
+	}
+	return nil, &NotLoadedError{edge: "fallback_group"}
+}
+
 // UsageLogsOrErr returns the UsageLogs value or an error if the edge
 // was not loaded in eager-loading.
 func (e APIKeyEdges) UsageLogsOrErr() ([]*UsageLog, error) {
-	if e.loadedTypes[2] {
+	if e.loadedTypes[3] {
 		return e.UsageLogs, nil
 	}
 	return nil, &NotLoadedError{edge: "usage_logs"}
@@ -125,7 +140,7 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case apikey.FieldQuota, apikey.FieldQuotaUsed, apikey.FieldRateLimit5h, apikey.FieldRateLimit1d, apikey.FieldRateLimit7d, apikey.FieldUsage5h, apikey.FieldUsage1d, apikey.FieldUsage7d:
 			values[i] = new(sql.NullFloat64)
-		case apikey.FieldID, apikey.FieldUserID, apikey.FieldGroupID:
+		case apikey.FieldID, apikey.FieldUserID, apikey.FieldGroupID, apikey.FieldFallbackGroupID:
 			values[i] = new(sql.NullInt64)
 		case apikey.FieldKey, apikey.FieldName, apikey.FieldStatus:
 			values[i] = new(sql.NullString)
@@ -195,6 +210,13 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.GroupID = new(int64)
 				*_m.GroupID = value.Int64
+			}
+		case apikey.FieldFallbackGroupID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field fallback_group_id", values[i])
+			} else if value.Valid {
+				_m.FallbackGroupID = new(int64)
+				*_m.FallbackGroupID = value.Int64
 			}
 		case apikey.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -324,6 +346,11 @@ func (_m *APIKey) QueryGroup() *GroupQuery {
 	return NewAPIKeyClient(_m.config).QueryGroup(_m)
 }
 
+// QueryFallbackGroup queries the "fallback_group" edge of the APIKey entity.
+func (_m *APIKey) QueryFallbackGroup() *GroupQuery {
+	return NewAPIKeyClient(_m.config).QueryFallbackGroup(_m)
+}
+
 // QueryUsageLogs queries the "usage_logs" edge of the APIKey entity.
 func (_m *APIKey) QueryUsageLogs() *UsageLogQuery {
 	return NewAPIKeyClient(_m.config).QueryUsageLogs(_m)
@@ -374,6 +401,11 @@ func (_m *APIKey) String() string {
 	builder.WriteString(", ")
 	if v := _m.GroupID; v != nil {
 		builder.WriteString("group_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	if v := _m.FallbackGroupID; v != nil {
+		builder.WriteString("fallback_group_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")

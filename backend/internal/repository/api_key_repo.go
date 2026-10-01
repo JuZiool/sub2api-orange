@@ -49,6 +49,7 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetName(key.Name).
 		SetStatus(key.Status).
 		SetNillableGroupID(key.GroupID).
+		SetNillableFallbackGroupID(key.FallbackGroupID).
 		SetNillableLastUsedAt(key.LastUsedAt).
 		SetQuota(key.Quota).
 		SetQuotaUsed(key.QuotaUsed).
@@ -79,6 +80,7 @@ func (r *apiKeyRepository) GetByID(ctx context.Context, id int64) (*service.APIK
 		Where(apikey.IDEQ(id)).
 		WithUser().
 		WithGroup().
+		WithFallbackGroup().
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
@@ -117,6 +119,7 @@ func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.A
 			})
 		}).
 		WithGroup().
+		WithFallbackGroup().
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
@@ -134,6 +137,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldID,
 			apikey.FieldUserID,
 			apikey.FieldGroupID,
+			apikey.FieldFallbackGroupID,
 			apikey.FieldName,
 			apikey.FieldStatus,
 			apikey.FieldIPWhitelist,
@@ -233,6 +237,9 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldProfitSafetyBuffer,
 			)
 		}).
+		// 兜底分组被选中后即成为实际计费分组，需要完整的定价、订阅、
+		// RPM 与并发配置进入请求级认证快照。
+		WithFallbackGroup().
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
@@ -305,6 +312,13 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 			builder.SetGroupID(*key.GroupID)
 		} else {
 			builder.ClearGroupID()
+		}
+	}
+	if fields.FallbackGroupID {
+		if key.FallbackGroupID != nil {
+			builder.SetFallbackGroupID(*key.FallbackGroupID)
+		} else {
+			builder.ClearFallbackGroupID()
 		}
 	}
 
@@ -466,6 +480,7 @@ func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, param
 
 	keysQuery := q.
 		WithGroup().
+		WithFallbackGroup().
 		Offset(params.Offset()).
 		Limit(params.Limit())
 	for _, order := range apiKeyListOrder(params) {
@@ -491,6 +506,7 @@ func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, param
 func (r *apiKeyRepository) ListAllByUserID(ctx context.Context, userID int64, filters service.APIKeyListFilters) ([]service.APIKey, error) {
 	keys, err := r.apiKeyListByUserIDQuery(userID, filters).
 		WithGroup().
+		WithFallbackGroup().
 		Order(dbent.Asc(apikey.FieldID)).
 		All(ctx)
 	if err != nil {
@@ -746,7 +762,7 @@ func (r *apiKeyRepository) ListKeysByUserID(ctx context.Context, userID int64) (
 
 func (r *apiKeyRepository) ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error) {
 	keys, err := r.activeQuery().
-		Where(apikey.GroupIDEQ(groupID)).
+		Where(apikey.Or(apikey.GroupIDEQ(groupID), apikey.FallbackGroupIDEQ(groupID))).
 		Select(apikey.FieldKey).
 		Strings(ctx)
 	if err != nil {
@@ -874,29 +890,30 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		return nil
 	}
 	out := &service.APIKey{
-		ID:            m.ID,
-		UserID:        m.UserID,
-		Key:           m.Key,
-		Name:          m.Name,
-		Status:        m.Status,
-		IPWhitelist:   m.IPWhitelist,
-		IPBlacklist:   m.IPBlacklist,
-		LastUsedAt:    m.LastUsedAt,
-		CreatedAt:     m.CreatedAt,
-		UpdatedAt:     m.UpdatedAt,
-		GroupID:       m.GroupID,
-		Quota:         m.Quota,
-		QuotaUsed:     m.QuotaUsed,
-		ExpiresAt:     m.ExpiresAt,
-		RateLimit5h:   m.RateLimit5h,
-		RateLimit1d:   m.RateLimit1d,
-		RateLimit7d:   m.RateLimit7d,
-		Usage5h:       m.Usage5h,
-		Usage1d:       m.Usage1d,
-		Usage7d:       m.Usage7d,
-		Window5hStart: m.Window5hStart,
-		Window1dStart: m.Window1dStart,
-		Window7dStart: m.Window7dStart,
+		ID:              m.ID,
+		UserID:          m.UserID,
+		Key:             m.Key,
+		Name:            m.Name,
+		Status:          m.Status,
+		IPWhitelist:     m.IPWhitelist,
+		IPBlacklist:     m.IPBlacklist,
+		LastUsedAt:      m.LastUsedAt,
+		CreatedAt:       m.CreatedAt,
+		UpdatedAt:       m.UpdatedAt,
+		GroupID:         m.GroupID,
+		FallbackGroupID: m.FallbackGroupID,
+		Quota:           m.Quota,
+		QuotaUsed:       m.QuotaUsed,
+		ExpiresAt:       m.ExpiresAt,
+		RateLimit5h:     m.RateLimit5h,
+		RateLimit1d:     m.RateLimit1d,
+		RateLimit7d:     m.RateLimit7d,
+		Usage5h:         m.Usage5h,
+		Usage1d:         m.Usage1d,
+		Usage7d:         m.Usage7d,
+		Window5hStart:   m.Window5hStart,
+		Window1dStart:   m.Window1dStart,
+		Window7dStart:   m.Window7dStart,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
@@ -911,6 +928,9 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 	}
 	if m.Edges.Group != nil {
 		out.Group = groupEntityToService(m.Edges.Group)
+	}
+	if m.Edges.FallbackGroup != nil {
+		out.FallbackGroup = groupEntityToService(m.Edges.FallbackGroup)
 	}
 	return out
 }

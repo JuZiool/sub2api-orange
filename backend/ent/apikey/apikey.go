@@ -29,6 +29,8 @@ const (
 	FieldName = "name"
 	// FieldGroupID holds the string denoting the group_id field in the database.
 	FieldGroupID = "group_id"
+	// FieldFallbackGroupID holds the string denoting the fallback_group_id field in the database.
+	FieldFallbackGroupID = "fallback_group_id"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldLastUsedAt holds the string denoting the last_used_at field in the database.
@@ -65,6 +67,8 @@ const (
 	EdgeUser = "user"
 	// EdgeGroup holds the string denoting the group edge name in mutations.
 	EdgeGroup = "group"
+	// EdgeFallbackGroup holds the string denoting the fallback_group edge name in mutations.
+	EdgeFallbackGroup = "fallback_group"
 	// EdgeUsageLogs holds the string denoting the usage_logs edge name in mutations.
 	EdgeUsageLogs = "usage_logs"
 	// Table holds the table name of the apikey in the database.
@@ -83,6 +87,13 @@ const (
 	GroupInverseTable = "groups"
 	// GroupColumn is the table column denoting the group relation/edge.
 	GroupColumn = "group_id"
+	// FallbackGroupTable is the table that holds the fallback_group relation/edge.
+	FallbackGroupTable = "api_keys"
+	// FallbackGroupInverseTable is the table name for the Group entity.
+	// It exists in this package in order to avoid circular dependency with the "group" package.
+	FallbackGroupInverseTable = "groups"
+	// FallbackGroupColumn is the table column denoting the fallback_group relation/edge.
+	FallbackGroupColumn = "fallback_group_id"
 	// UsageLogsTable is the table that holds the usage_logs relation/edge.
 	UsageLogsTable = "usage_logs"
 	// UsageLogsInverseTable is the table name for the UsageLog entity.
@@ -102,6 +113,7 @@ var Columns = []string{
 	FieldKey,
 	FieldName,
 	FieldGroupID,
+	FieldFallbackGroupID,
 	FieldStatus,
 	FieldLastUsedAt,
 	FieldIPWhitelist,
@@ -213,6 +225,11 @@ func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldGroupID, opts...).ToFunc()
 }
 
+// ByFallbackGroupID orders the results by the fallback_group_id field.
+func ByFallbackGroupID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFallbackGroupID, opts...).ToFunc()
+}
+
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
@@ -297,6 +314,13 @@ func ByGroupField(field string, opts ...sql.OrderTermOption) OrderOption {
 	}
 }
 
+// ByFallbackGroupField orders the results by fallback_group field.
+func ByFallbackGroupField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newFallbackGroupStep(), sql.OrderByField(field, opts...))
+	}
+}
+
 // ByUsageLogsCount orders the results by usage_logs count.
 func ByUsageLogsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -322,6 +346,13 @@ func newGroupStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(GroupInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, GroupTable, GroupColumn),
+	)
+}
+func newFallbackGroupStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(FallbackGroupInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, true, FallbackGroupTable, FallbackGroupColumn),
 	)
 }
 func newUsageLogsStep() *sqlgraph.Step {

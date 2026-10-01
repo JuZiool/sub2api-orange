@@ -155,10 +155,11 @@
           </template>
 
           <template #cell-group="{ row }">
+            <div class="flex flex-col gap-1">
             <div class="group/dropdown relative">
               <button
-                :ref="(el) => setGroupButtonRef(row.id, el)"
-                @click="openGroupSelector(row)"
+                :ref="(el) => setGroupButtonRef(row.id, 'primary', el)"
+                @click="openGroupSelector(row, 'primary')"
                 class="-mx-2 -my-1 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 transition-all duration-200 hover:bg-gray-100 dark:hover:bg-dark-700"
                 :title="t('keys.clickToChangeGroup')"
               >
@@ -192,6 +193,59 @@
                   />
                 </svg>
               </button>
+            </div>
+
+            <div class="group/dropdown relative">
+              <button
+                :ref="(el) => setGroupButtonRef(row.id, 'fallback', el)"
+                data-test="fallback-group-trigger"
+                :disabled="!row.group_id"
+                @click="openGroupSelector(row, 'fallback')"
+                class="-mx-2 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 transition-all duration-200 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-dark-700"
+                :title="t('keys.clickToChangeFallbackGroup')"
+              >
+                <span
+                  class="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/25 dark:text-amber-300"
+                >
+                  {{ t('keys.fallbackGroupShortLabel') }}
+                </span>
+                <GroupBadge
+                  v-if="row.fallback_group"
+                  :name="row.fallback_group.name"
+                  :platform="row.fallback_group.platform"
+                  :subscription-type="row.fallback_group.subscription_type"
+                  :rate-multiplier="row.fallback_group.rate_multiplier"
+                  :user-rate-multiplier="userGroupRates[row.fallback_group.id]"
+                  :peak-rate-enabled="row.fallback_group.peak_rate_enabled"
+                  :peak-start="row.fallback_group.peak_start"
+                  :peak-end="row.fallback_group.peak_end"
+                  :peak-rate-multiplier="row.fallback_group.peak_rate_multiplier"
+                />
+                <span
+                  v-else-if="row.fallback_group_id"
+                  class="text-sm text-gray-500 dark:text-gray-400"
+                >
+                  #{{ row.fallback_group_id }}
+                </span>
+                <span v-else class="text-sm text-gray-400 dark:text-dark-500">
+                  {{ t('keys.noFallbackGroup') }}
+                </span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('keys.selectFallbackGroup') }}</span>
+                <svg
+                  class="h-3.5 w-3.5 text-gray-400 opacity-60 transition-opacity group-hover/dropdown:opacity-100"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  stroke-width="2"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"
+                  />
+                </svg>
+              </button>
+            </div>
             </div>
           </template>
 
@@ -578,6 +632,63 @@
               />
             </template>
           </Select>
+        </div>
+
+        <div>
+          <label class="input-label">{{ t('keys.fallbackGroupLabel') }}</label>
+          <Select
+            v-model="formData.fallback_group_id"
+            :options="fallbackGroupOptions"
+            :placeholder="t('keys.noFallbackGroup')"
+            :searchable="true"
+            :search-placeholder="t('keys.searchGroup')"
+            data-test="fallback-group-select"
+          >
+            <template #selected="{ option }">
+              <GroupBadge
+                v-if="option && (option as unknown as GroupOption).value !== null"
+                :name="(option as unknown as GroupOption).label"
+                :platform="(option as unknown as GroupOption).platform"
+                :subscription-type="(option as unknown as GroupOption).subscriptionType"
+                :rate-multiplier="(option as unknown as GroupOption).rate"
+                :user-rate-multiplier="(option as unknown as GroupOption).userRate"
+                :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
+                :peak-start="(option as unknown as GroupOption).peakStart"
+                :peak-end="(option as unknown as GroupOption).peakEnd"
+                :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
+              />
+              <span v-else class="text-gray-400">{{ t('keys.noFallbackGroup') }}</span>
+            </template>
+            <template #option="{ option, selected }">
+              <GroupOptionItem
+                v-if="(option as unknown as GroupOption).value !== null"
+                :name="(option as unknown as GroupOption).label"
+                :platform="(option as unknown as GroupOption).platform"
+                :subscription-type="(option as unknown as GroupOption).subscriptionType"
+                :rate-multiplier="(option as unknown as GroupOption).rate"
+                :user-rate-multiplier="(option as unknown as GroupOption).userRate"
+                :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
+                :peak-start="(option as unknown as GroupOption).peakStart"
+                :peak-end="(option as unknown as GroupOption).peakEnd"
+                :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
+                :description="(option as unknown as GroupOption).description"
+                :selected="selected"
+              />
+              <div v-else class="flex w-full items-center justify-between gap-3">
+                <span class="text-gray-600 dark:text-gray-300">{{ t('keys.noFallbackGroup') }}</span>
+                <Icon
+                  v-if="selected"
+                  name="check"
+                  size="sm"
+                  class="shrink-0 text-primary-500"
+                  :stroke-width="2"
+                />
+              </div>
+            </template>
+          </Select>
+          <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('keys.fallbackGroupHint') }}
+          </p>
         </div>
 
         <!-- Custom Key Section (only for create) -->
@@ -1164,14 +1275,14 @@
             :class="[
               'flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-colors',
               'border-b border-gray-100 last:border-0 dark:border-dark-700',
-              selectedKeyForGroup?.group_id === option.value ||
-              (!selectedKeyForGroup?.group_id && option.value === null)
+              currentSelectorGroupId(selectedKeyForGroup) === option.value
                 ? 'bg-primary-50 dark:bg-primary-900/20'
                 : 'hover:bg-gray-100 dark:hover:bg-dark-700'
             ]"
             :title="option.description || undefined"
           >
             <GroupOptionItem
+              v-if="option.value !== null"
               :name="option.label"
               :platform="option.platform"
               :subscription-type="option.subscriptionType"
@@ -1182,11 +1293,18 @@
               :peak-end="option.peakEnd"
               :peak-rate-multiplier="option.peakRateMultiplier"
               :description="option.description"
-              :selected="
-                selectedKeyForGroup?.group_id === option.value ||
-                (!selectedKeyForGroup?.group_id && option.value === null)
-              "
+              :selected="currentSelectorGroupId(selectedKeyForGroup) === option.value"
             />
+            <div v-else class="flex w-full items-center justify-between gap-3">
+              <span class="text-gray-600 dark:text-gray-300">{{ option.label }}</span>
+              <Icon
+                v-if="currentSelectorGroupId(selectedKeyForGroup) === option.value"
+                name="check"
+                size="sm"
+                class="shrink-0 text-primary-500"
+                :stroke-width="2"
+              />
+            </div>
           </button>
           <!-- Empty state when search has no results -->
           <div v-if="filteredGroupOptions.length === 0" class="py-4 text-center text-sm text-gray-400 dark:text-gray-500">
@@ -1245,7 +1363,7 @@ const formatDateTimeLocal = (isoDate: string): string => {
 }
 
 interface GroupOption {
-  value: number
+  value: number | null
   label: string
   description: string | null
   rate: number
@@ -1408,11 +1526,13 @@ const pendingCcsRow = ref<ApiKey | null>(null)
 const selectedKey = ref<ApiKey | null>(null)
 const copiedKeyId = ref<number | null>(null)
 const groupSelectorKeyId = ref<number | null>(null)
+type GroupSelectorTarget = 'primary' | 'fallback'
+const groupSelectorTarget = ref<GroupSelectorTarget>('primary')
 const publicSettings = ref<PublicSettings | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
 const columnDropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
-const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
+const groupButtonRefs = ref<Map<string, HTMLElement>>(new Map())
 let abortController: AbortController | null = null
 
 // Get the currently selected key for group change
@@ -1421,17 +1541,27 @@ const selectedKeyForGroup = computed(() => {
   return apiKeys.value.find((k) => k.id === groupSelectorKeyId.value) || null
 })
 
-const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance | null) => {
+const setGroupButtonRef = (keyId: number, target: GroupSelectorTarget, el: Element | ComponentPublicInstance | null) => {
+  const refKey = `${keyId}-${target}`
   if (el instanceof HTMLElement) {
-    groupButtonRefs.value.set(keyId, el)
+    groupButtonRefs.value.set(refKey, el)
   } else {
-    groupButtonRefs.value.delete(keyId)
+    groupButtonRefs.value.delete(refKey)
   }
+}
+
+// 当前浮层应高亮/判等的分组 ID（主分组或兜底分组）
+const currentSelectorGroupId = (key: ApiKey | null): number | null => {
+  if (!key) return null
+  return groupSelectorTarget.value === 'fallback'
+    ? (key.fallback_group_id ?? null)
+    : key.group_id
 }
 
 const formData = ref({
   name: '',
   group_id: null as number | null,
+  fallback_group_id: null as number | null,
   status: 'active' as 'active' | 'inactive',
   use_custom_key: false,
   custom_key: '',
@@ -1549,6 +1679,18 @@ const formGroupOptions = computed(() => showEditModal.value
   : groupOptions.value.filter((group) => getKeyGroupProvider(group.platform) === createProvider.value)
 )
 
+// 兜底分组选项：与所选主分组同平台、非主分组本身，另含"不设置兜底分组"
+const fallbackGroupOptions = computed(() => {
+  const primary = groups.value.find((group) => group.id === formData.value.group_id)
+  return [
+    { value: null, label: t('keys.noFallbackGroup'), description: '', rate: 0, userRate: null, peakRateEnabled: false, peakStart: '', peakEnd: '', peakRateMultiplier: 0, subscriptionType: '' as SubscriptionType, platform: '' as GroupPlatform },
+    ...groupOptions.value.filter((option) =>
+      option.value !== formData.value.group_id &&
+      (!primary || option.platform === primary.platform)
+    )
+  ]
+})
+
 const selectCreateProvider = (provider: KeyGroupProvider) => {
   if (createProvider.value === provider) return
   createProvider.value = provider
@@ -1569,9 +1711,25 @@ watch([showCreateModal, createProviderOptions], ([isOpen, providers], [wasOpen])
 // Group dropdown search
 const groupSearchQuery = ref('')
 const filteredGroupOptions = computed(() => {
+  const key = selectedKeyForGroup.value
+  let options: GroupOption[] = groupOptions.value
+
+  if (groupSelectorTarget.value === 'fallback' && key) {
+    // 兜底分组：与主分组同平台且不能是主分组本身
+    const primary = key.group || groups.value.find((group) => group.id === key.group_id)
+    options = options.filter((opt) =>
+      opt.value !== key.group_id && (!primary || opt.platform === primary.platform)
+    )
+    // 头部插入"不设置兜底分组"选项
+    options = [
+      { value: null, label: t('keys.noFallbackGroup'), description: '', rate: 0, userRate: null, peakRateEnabled: false, peakStart: '', peakEnd: '', peakRateMultiplier: 0, subscriptionType: '' as SubscriptionType, platform: '' as GroupPlatform },
+      ...options
+    ]
+  }
+
   const query = groupSearchQuery.value.trim().toLowerCase()
-  if (!query) return groupOptions.value
-  return groupOptions.value.filter((opt) => {
+  if (!query) return options
+  return options.filter((opt) => {
     return opt.label.toLowerCase().includes(query) ||
       (opt.description && opt.description.toLowerCase().includes(query))
   })
@@ -1710,6 +1868,7 @@ const editKey = (key: ApiKey) => {
   formData.value = {
     name: key.name,
     group_id: key.group_id,
+    fallback_group_id: key.fallback_group_id ?? null,
     status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
     use_custom_key: false,
     custom_key: '',
@@ -1742,12 +1901,12 @@ const toggleKeyStatus = async (key: ApiKey) => {
   }
 }
 
-const openGroupSelector = (key: ApiKey) => {
-  if (groupSelectorKeyId.value === key.id) {
+const openGroupSelector = (key: ApiKey, target: GroupSelectorTarget = 'primary') => {
+  if (groupSelectorKeyId.value === key.id && groupSelectorTarget.value === target) {
     groupSelectorKeyId.value = null
     dropdownPosition.value = null
   } else {
-    const buttonEl = groupButtonRefs.value.get(key.id)
+    const buttonEl = groupButtonRefs.value.get(`${key.id}-${target}`)
     if (buttonEl) {
       const rect = buttonEl.getBoundingClientRect()
       const dropdownEstHeight = 400 // estimated max dropdown height
@@ -1771,19 +1930,52 @@ const openGroupSelector = (key: ApiKey) => {
         }
       }
     }
+    groupSelectorTarget.value = target
     groupSelectorKeyId.value = key.id
     groupSearchQuery.value = ''
   }
 }
 
 const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
+  const target = groupSelectorTarget.value
   groupSelectorKeyId.value = null
   dropdownPosition.value = null
+
+  if (target === 'fallback') {
+    if ((key.fallback_group_id ?? null) === newGroupId) return
+    try {
+      await keysAPI.update(key.id, { fallback_group_id: newGroupId })
+      appStore.showSuccess(t('keys.fallbackGroupChangedSuccess'))
+      loadApiKeys()
+    } catch (error) {
+      appStore.showError(t('keys.failedToChangeFallbackGroup'))
+    }
+    return
+  }
+
   if (key.group_id === newGroupId) return
 
+  // 更换主分组时，若原兜底分组与新主分组不同平台，则一并清空
+  const updates: UpdateApiKeyRequest = { group_id: newGroupId }
+  let fallbackCleared = false
+  if (key.fallback_group_id !== null) {
+    const primary = groups.value.find((group) => group.id === newGroupId)
+    const fallback =
+      key.fallback_group ||
+      groups.value.find((group) => group.id === key.fallback_group_id)
+    if (
+      !fallback ||
+      primary?.id === fallback.id ||
+      (primary && primary.platform !== fallback.platform)
+    ) {
+      updates.fallback_group_id = null
+      fallbackCleared = true
+    }
+  }
+
   try {
-    await keysAPI.update(key.id, { group_id: newGroupId })
-    appStore.showSuccess(t('keys.groupChangedSuccess'))
+    await keysAPI.update(key.id, updates)
+    appStore.showSuccess(t(fallbackCleared ? 'keys.groupChangedFallbackClearedSuccess' : 'keys.groupChangedSuccess'))
     loadApiKeys()
   } catch (error) {
     appStore.showError(t('keys.failedToChangeGroup'))
@@ -1861,12 +2053,28 @@ const handleSubmit = async () => {
     rate_limit_7d: formData.value.rate_limit_7d && formData.value.rate_limit_7d > 0 ? formData.value.rate_limit_7d : 0,
   } : { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 }
 
+  // 校验兜底分组：必须与主分组不同且同平台
+  if (formData.value.fallback_group_id !== null) {
+    const primary = groups.value.find((group) => group.id === formData.value.group_id)
+    const fallback = groups.value.find((group) => group.id === formData.value.fallback_group_id)
+    if (
+      !primary ||
+      !fallback ||
+      primary.id === fallback.id ||
+      primary.platform !== fallback.platform
+    ) {
+      appStore.showError(t('keys.fallbackGroupInvalid'))
+      return
+    }
+  }
+
   submitting.value = true
   try {
     if (showEditModal.value && selectedKey.value) {
       const updates: UpdateApiKeyRequest = {
         name: formData.value.name,
         group_id: formData.value.group_id,
+        fallback_group_id: formData.value.fallback_group_id,
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: quota,
@@ -1885,6 +2093,7 @@ const handleSubmit = async () => {
       await keysAPI.create(
         formData.value.name,
         formData.value.group_id,
+        formData.value.fallback_group_id,
         customKey,
         ipWhitelist,
         ipBlacklist,
@@ -1936,6 +2145,7 @@ const closeModals = () => {
   formData.value = {
     name: '',
     group_id: null,
+    fallback_group_id: null,
     status: 'active',
     use_custom_key: false,
     custom_key: '',

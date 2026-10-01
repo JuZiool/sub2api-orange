@@ -40,9 +40,14 @@ type LiveCallRequest struct {
 }
 
 type LiveCallIdentity struct {
-	APIKeyID        int64
-	UserID          int64
-	GroupID         *int64
+	APIKeyID int64
+	UserID   int64
+	GroupID  *int64
+	// FallbackGroupID is retained for sideband identity checks. A sideband
+	// request authenticates the API key again and therefore starts with the
+	// primary GroupID, while the original Live call may have been created in
+	// this fallback group.
+	FallbackGroupID *int64
 	SubscriptionID  *int64
 	UserAgent       string
 	IPAddress       string

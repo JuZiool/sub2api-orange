@@ -99,6 +99,20 @@ func (_c *APIKeyCreate) SetNillableGroupID(v *int64) *APIKeyCreate {
 	return _c
 }
 
+// SetFallbackGroupID sets the "fallback_group_id" field.
+func (_c *APIKeyCreate) SetFallbackGroupID(v int64) *APIKeyCreate {
+	_c.mutation.SetFallbackGroupID(v)
+	return _c
+}
+
+// SetNillableFallbackGroupID sets the "fallback_group_id" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableFallbackGroupID(v *int64) *APIKeyCreate {
+	if v != nil {
+		_c.SetFallbackGroupID(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *APIKeyCreate) SetStatus(v string) *APIKeyCreate {
 	_c.mutation.SetStatus(v)
@@ -315,6 +329,11 @@ func (_c *APIKeyCreate) SetUser(v *User) *APIKeyCreate {
 // SetGroup sets the "group" edge to the Group entity.
 func (_c *APIKeyCreate) SetGroup(v *Group) *APIKeyCreate {
 	return _c.SetGroupID(v.ID)
+}
+
+// SetFallbackGroup sets the "fallback_group" edge to the Group entity.
+func (_c *APIKeyCreate) SetFallbackGroup(v *Group) *APIKeyCreate {
+	return _c.SetFallbackGroupID(v.ID)
 }
 
 // AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
@@ -629,6 +648,23 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 		_node.GroupID = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := _c.mutation.FallbackGroupIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   apikey.FallbackGroupTable,
+			Columns: []string{apikey.FallbackGroupColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.FallbackGroupID = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	if nodes := _c.mutation.UsageLogsIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -778,6 +814,24 @@ func (u *APIKeyUpsert) UpdateGroupID() *APIKeyUpsert {
 // ClearGroupID clears the value of the "group_id" field.
 func (u *APIKeyUpsert) ClearGroupID() *APIKeyUpsert {
 	u.SetNull(apikey.FieldGroupID)
+	return u
+}
+
+// SetFallbackGroupID sets the "fallback_group_id" field.
+func (u *APIKeyUpsert) SetFallbackGroupID(v int64) *APIKeyUpsert {
+	u.Set(apikey.FieldFallbackGroupID, v)
+	return u
+}
+
+// UpdateFallbackGroupID sets the "fallback_group_id" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateFallbackGroupID() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldFallbackGroupID)
+	return u
+}
+
+// ClearFallbackGroupID clears the value of the "fallback_group_id" field.
+func (u *APIKeyUpsert) ClearFallbackGroupID() *APIKeyUpsert {
+	u.SetNull(apikey.FieldFallbackGroupID)
 	return u
 }
 
@@ -1203,6 +1257,27 @@ func (u *APIKeyUpsertOne) UpdateGroupID() *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) ClearGroupID() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetFallbackGroupID sets the "fallback_group_id" field.
+func (u *APIKeyUpsertOne) SetFallbackGroupID(v int64) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetFallbackGroupID(v)
+	})
+}
+
+// UpdateFallbackGroupID sets the "fallback_group_id" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateFallbackGroupID() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateFallbackGroupID()
+	})
+}
+
+// ClearFallbackGroupID clears the value of the "fallback_group_id" field.
+func (u *APIKeyUpsertOne) ClearFallbackGroupID() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearFallbackGroupID()
 	})
 }
 
@@ -1841,6 +1916,27 @@ func (u *APIKeyUpsertBulk) UpdateGroupID() *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) ClearGroupID() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.ClearGroupID()
+	})
+}
+
+// SetFallbackGroupID sets the "fallback_group_id" field.
+func (u *APIKeyUpsertBulk) SetFallbackGroupID(v int64) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetFallbackGroupID(v)
+	})
+}
+
+// UpdateFallbackGroupID sets the "fallback_group_id" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateFallbackGroupID() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateFallbackGroupID()
+	})
+}
+
+// ClearFallbackGroupID clears the value of the "fallback_group_id" field.
+func (u *APIKeyUpsertBulk) ClearFallbackGroupID() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearFallbackGroupID()
 	})
 }
 

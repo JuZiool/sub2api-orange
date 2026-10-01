@@ -49,6 +49,7 @@ export async function getById(id: number): Promise<ApiKey> {
  * Create new API key
  * @param name - Key name
  * @param groupId - Optional group ID
+ * @param fallbackGroupId - Optional fallback group ID
  * @param customKey - Optional custom key value
  * @param ipWhitelist - Optional IP whitelist
  * @param ipBlacklist - Optional IP blacklist
@@ -60,6 +61,7 @@ export async function getById(id: number): Promise<ApiKey> {
 export async function create(
   name: string,
   groupId?: number | null,
+  fallbackGroupId?: number | null,
   customKey?: string,
   ipWhitelist?: string[],
   ipBlacklist?: string[],
@@ -70,6 +72,9 @@ export async function create(
   const payload: CreateApiKeyRequest = { name }
   if (groupId !== undefined) {
     payload.group_id = groupId
+  }
+  if (fallbackGroupId !== undefined) {
+    payload.fallback_group_id = fallbackGroupId
   }
   if (customKey) {
     payload.custom_key = customKey

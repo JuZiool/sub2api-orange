@@ -3,11 +3,28 @@
 package handler
 
 import (
+	"encoding/json"
 	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestOptionalInt64DistinguishesMissingNullAndValue(t *testing.T) {
+	var missing UpdateAPIKeyRequest
+	require.NoError(t, json.Unmarshal([]byte("{}"), &missing))
+	require.False(t, missing.FallbackGroupID.Set)
+
+	var cleared UpdateAPIKeyRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"fallback_group_id":null}`), &cleared))
+	require.True(t, cleared.FallbackGroupID.Set)
+	require.Nil(t, cleared.FallbackGroupID.Value)
+
+	var selected UpdateAPIKeyRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"fallback_group_id":42}`), &selected))
+	require.True(t, selected.FallbackGroupID.Set)
+	require.Equal(t, int64(42), *selected.FallbackGroupID.Value)
+}
 
 func TestValidateAPIKeyCreateRequest(t *testing.T) {
 	zero, large, negative, nan, inf := 0.0, 1e100, -1.0, math.NaN(), math.Inf(1)

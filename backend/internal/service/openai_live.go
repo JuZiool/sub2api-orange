@@ -479,13 +479,28 @@ func (s *OpenAIGatewayService) GetLiveCallForIdentity(
 	if record.CallID != callID ||
 		record.APIKeyID != identity.APIKeyID ||
 		record.UserID != identity.UserID ||
-		record.GroupID != liveGroupID(identity.GroupID) {
+		!liveIdentityGroupMatches(record.GroupID, identity) {
 		return nil, ErrLiveIdentityMismatch
 	}
 	if record.Controller == LiveControllerClosed {
 		return nil, ErrLiveCallNotFound
 	}
 	return record, nil
+}
+
+// liveIdentityGroupMatches accepts the primary group and the API key's
+// configured fallback group. The sideband request is authenticated after the
+// initial Live call, so its freshly materialized API key still points at the
+// primary group even when the stored call was created after fallback routing.
+// APIKeyID and UserID are checked by the caller, so permitting this second
+// group does not broaden access to another key or user.
+func liveIdentityGroupMatches(recordGroupID int64, identity LiveCallIdentity) bool {
+	primaryGroupID := liveGroupID(identity.GroupID)
+	if recordGroupID == primaryGroupID {
+		return true
+	}
+	fallbackGroupID := liveGroupID(identity.FallbackGroupID)
+	return fallbackGroupID > 0 && fallbackGroupID != primaryGroupID && recordGroupID == fallbackGroupID
 }
 
 // ProxyLiveSideband 让认证后的客户端接管控制连接；媒体始终不经过这里。

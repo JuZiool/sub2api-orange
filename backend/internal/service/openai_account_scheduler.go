@@ -2115,7 +2115,7 @@ func (s *OpenAIGatewayService) SelectAccountWithScheduler(
 	requiredTransport OpenAIUpstreamTransport,
 	requireCompact bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
-	return s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, "", "", requireCompact, PlatformOpenAI, false, true)
+	return s.selectAccountWithSchedulerAndAPIKeyFallback(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, "", "", requireCompact, PlatformOpenAI, false, true)
 }
 
 // SelectAccountWithSchedulerForCapability 按能力要求调度账号。
@@ -2139,10 +2139,32 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForCapability(
 	if len(platformOverride) > 0 {
 		platform = platformOverride[0]
 	}
-	return s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, "", requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	return s.selectAccountWithSchedulerAndAPIKeyFallback(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, "", requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
 }
 
 func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requiredCapability OpenAIImagesCapability,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	selection, decision, err := s.selectAccountForImagesInGroup(ctx, groupID, sessionHash, requestedModel, excludedIDs, requiredCapability)
+	fallbackGroup, fallbackCtx, ok := apiKeyFallbackGroupForSelection(ctx, groupID, err)
+	if !ok {
+		return selection, decision, err
+	}
+	fallbackGroupID := fallbackGroup.ID
+	selection, decision, err = s.selectAccountForImagesInGroup(fallbackCtx, &fallbackGroupID, sessionHash, requestedModel, excludedIDs, requiredCapability)
+	if err == nil {
+		markAPIKeyFallbackSelection(ctx, selection, fallbackGroupID)
+		s.logAPIKeyGroupFallbackSelected(groupID, fallbackGroupID, requestedModel, selection)
+	}
+	return selection, decision, err
+}
+
+func (s *OpenAIGatewayService) selectAccountForImagesInGroup(
 	ctx context.Context,
 	groupID *int64,
 	sessionHash string,
@@ -2159,6 +2181,51 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 		return s.selectAccountWithScheduler(ctx, groupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", OpenAIImagesCapabilityBasic, false, PlatformOpenAI, false, false)
 	}
 	return selection, decision, err
+}
+
+func (s *OpenAIGatewayService) selectAccountWithSchedulerAndAPIKeyFallback(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requiredTransport OpenAIUpstreamTransport,
+	requiredCapability OpenAIEndpointCapability,
+	requiredImageCapability OpenAIImagesCapability,
+	requireCompact bool,
+	platform string,
+	previousResponseCanMove bool,
+	useUpstreamTokenCost bool,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	selection, decision, err := s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	fallbackGroup, fallbackCtx, ok := apiKeyFallbackGroupForSelection(ctx, groupID, err)
+	if !ok {
+		return selection, decision, err
+	}
+	fallbackGroupID := fallbackGroup.ID
+	slog.Info("api_key_group_fallback_attempt",
+		"primary_group_id", derefGroupID(groupID),
+		"fallback_group_id", fallbackGroupID,
+		"model", requestedModel)
+	selection, decision, err = s.selectAccountWithScheduler(fallbackCtx, &fallbackGroupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	if err == nil {
+		markAPIKeyFallbackSelection(ctx, selection, fallbackGroupID)
+		s.logAPIKeyGroupFallbackSelected(groupID, fallbackGroupID, requestedModel, selection)
+	}
+	return selection, decision, err
+}
+
+func (s *OpenAIGatewayService) logAPIKeyGroupFallbackSelected(primaryGroupID *int64, fallbackGroupID int64, requestedModel string, selection *AccountSelectionResult) {
+	accountID := int64(0)
+	if selection != nil && selection.Account != nil {
+		accountID = selection.Account.ID
+	}
+	slog.Info("api_key_group_fallback_selected",
+		"primary_group_id", derefGroupID(primaryGroupID),
+		"fallback_group_id", fallbackGroupID,
+		"account_id", accountID,
+		"model", requestedModel)
 }
 
 // selectAccountWithScheduler wraps selectAccountWithSchedulerOnce with a

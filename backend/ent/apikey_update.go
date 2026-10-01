@@ -120,6 +120,26 @@ func (_u *APIKeyUpdate) ClearGroupID() *APIKeyUpdate {
 	return _u
 }
 
+// SetFallbackGroupID sets the "fallback_group_id" field.
+func (_u *APIKeyUpdate) SetFallbackGroupID(v int64) *APIKeyUpdate {
+	_u.mutation.SetFallbackGroupID(v)
+	return _u
+}
+
+// SetNillableFallbackGroupID sets the "fallback_group_id" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableFallbackGroupID(v *int64) *APIKeyUpdate {
+	if v != nil {
+		_u.SetFallbackGroupID(*v)
+	}
+	return _u
+}
+
+// ClearFallbackGroupID clears the value of the "fallback_group_id" field.
+func (_u *APIKeyUpdate) ClearFallbackGroupID() *APIKeyUpdate {
+	_u.mutation.ClearFallbackGroupID()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *APIKeyUpdate) SetStatus(v string) *APIKeyUpdate {
 	_u.mutation.SetStatus(v)
@@ -448,6 +468,11 @@ func (_u *APIKeyUpdate) SetGroup(v *Group) *APIKeyUpdate {
 	return _u.SetGroupID(v.ID)
 }
 
+// SetFallbackGroup sets the "fallback_group" edge to the Group entity.
+func (_u *APIKeyUpdate) SetFallbackGroup(v *Group) *APIKeyUpdate {
+	return _u.SetFallbackGroupID(v.ID)
+}
+
 // AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
 func (_u *APIKeyUpdate) AddUsageLogIDs(ids ...int64) *APIKeyUpdate {
 	_u.mutation.AddUsageLogIDs(ids...)
@@ -477,6 +502,12 @@ func (_u *APIKeyUpdate) ClearUser() *APIKeyUpdate {
 // ClearGroup clears the "group" edge to the Group entity.
 func (_u *APIKeyUpdate) ClearGroup() *APIKeyUpdate {
 	_u.mutation.ClearGroup()
+	return _u
+}
+
+// ClearFallbackGroup clears the "fallback_group" edge to the Group entity.
+func (_u *APIKeyUpdate) ClearFallbackGroup() *APIKeyUpdate {
+	_u.mutation.ClearFallbackGroup()
 	return _u
 }
 
@@ -754,6 +785,35 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.FallbackGroupCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   apikey.FallbackGroupTable,
+			Columns: []string{apikey.FallbackGroupColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.FallbackGroupIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   apikey.FallbackGroupTable,
+			Columns: []string{apikey.FallbackGroupColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.UsageLogsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -904,6 +964,26 @@ func (_u *APIKeyUpdateOne) SetNillableGroupID(v *int64) *APIKeyUpdateOne {
 // ClearGroupID clears the value of the "group_id" field.
 func (_u *APIKeyUpdateOne) ClearGroupID() *APIKeyUpdateOne {
 	_u.mutation.ClearGroupID()
+	return _u
+}
+
+// SetFallbackGroupID sets the "fallback_group_id" field.
+func (_u *APIKeyUpdateOne) SetFallbackGroupID(v int64) *APIKeyUpdateOne {
+	_u.mutation.SetFallbackGroupID(v)
+	return _u
+}
+
+// SetNillableFallbackGroupID sets the "fallback_group_id" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableFallbackGroupID(v *int64) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetFallbackGroupID(*v)
+	}
+	return _u
+}
+
+// ClearFallbackGroupID clears the value of the "fallback_group_id" field.
+func (_u *APIKeyUpdateOne) ClearFallbackGroupID() *APIKeyUpdateOne {
+	_u.mutation.ClearFallbackGroupID()
 	return _u
 }
 
@@ -1235,6 +1315,11 @@ func (_u *APIKeyUpdateOne) SetGroup(v *Group) *APIKeyUpdateOne {
 	return _u.SetGroupID(v.ID)
 }
 
+// SetFallbackGroup sets the "fallback_group" edge to the Group entity.
+func (_u *APIKeyUpdateOne) SetFallbackGroup(v *Group) *APIKeyUpdateOne {
+	return _u.SetFallbackGroupID(v.ID)
+}
+
 // AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
 func (_u *APIKeyUpdateOne) AddUsageLogIDs(ids ...int64) *APIKeyUpdateOne {
 	_u.mutation.AddUsageLogIDs(ids...)
@@ -1264,6 +1349,12 @@ func (_u *APIKeyUpdateOne) ClearUser() *APIKeyUpdateOne {
 // ClearGroup clears the "group" edge to the Group entity.
 func (_u *APIKeyUpdateOne) ClearGroup() *APIKeyUpdateOne {
 	_u.mutation.ClearGroup()
+	return _u
+}
+
+// ClearFallbackGroup clears the "fallback_group" edge to the Group entity.
+func (_u *APIKeyUpdateOne) ClearFallbackGroup() *APIKeyUpdateOne {
+	_u.mutation.ClearFallbackGroup()
 	return _u
 }
 
@@ -1561,6 +1652,35 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 			Inverse: true,
 			Table:   apikey.GroupTable,
 			Columns: []string{apikey.GroupColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.FallbackGroupCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   apikey.FallbackGroupTable,
+			Columns: []string{apikey.FallbackGroupColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.FallbackGroupIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   apikey.FallbackGroupTable,
+			Columns: []string{apikey.FallbackGroupColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),

@@ -679,6 +679,22 @@ func (c *APIKeyClient) QueryGroup(_m *APIKey) *GroupQuery {
 	return query
 }
 
+// QueryFallbackGroup queries the fallback_group edge of a APIKey.
+func (c *APIKeyClient) QueryFallbackGroup(_m *APIKey) *GroupQuery {
+	query := (&GroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(apikey.Table, apikey.FieldID, id),
+			sqlgraph.To(group.Table, group.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, apikey.FallbackGroupTable, apikey.FallbackGroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // QueryUsageLogs queries the usage_logs edge of a APIKey.
 func (c *APIKeyClient) QueryUsageLogs(_m *APIKey) *UsageLogQuery {
 	query := (&UsageLogClient{config: c.config}).Query()
@@ -3289,6 +3305,22 @@ func (c *GroupClient) QueryAPIKeys(_m *Group) *APIKeyQuery {
 			sqlgraph.From(group.Table, group.FieldID, id),
 			sqlgraph.To(apikey.Table, apikey.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, group.APIKeysTable, group.APIKeysColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryFallbackAPIKeys queries the fallback_api_keys edge of a Group.
+func (c *GroupClient) QueryFallbackAPIKeys(_m *Group) *APIKeyQuery {
+	query := (&APIKeyClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(group.Table, group.FieldID, id),
+			sqlgraph.To(apikey.Table, apikey.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, group.FallbackAPIKeysTable, group.FallbackAPIKeysColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil

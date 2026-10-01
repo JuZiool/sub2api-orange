@@ -90,6 +90,11 @@ func GroupID(v int64) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldGroupID, v))
 }
 
+// FallbackGroupID applies equality check predicate on the "fallback_group_id" field. It's identical to FallbackGroupIDEQ.
+func FallbackGroupID(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldFallbackGroupID, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldStatus, v))
@@ -468,6 +473,36 @@ func GroupIDIsNil() predicate.APIKey {
 // GroupIDNotNil applies the NotNil predicate on the "group_id" field.
 func GroupIDNotNil() predicate.APIKey {
 	return predicate.APIKey(sql.FieldNotNull(FieldGroupID))
+}
+
+// FallbackGroupIDEQ applies the EQ predicate on the "fallback_group_id" field.
+func FallbackGroupIDEQ(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldFallbackGroupID, v))
+}
+
+// FallbackGroupIDNEQ applies the NEQ predicate on the "fallback_group_id" field.
+func FallbackGroupIDNEQ(v int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldFallbackGroupID, v))
+}
+
+// FallbackGroupIDIn applies the In predicate on the "fallback_group_id" field.
+func FallbackGroupIDIn(vs ...int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldFallbackGroupID, vs...))
+}
+
+// FallbackGroupIDNotIn applies the NotIn predicate on the "fallback_group_id" field.
+func FallbackGroupIDNotIn(vs ...int64) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldFallbackGroupID, vs...))
+}
+
+// FallbackGroupIDIsNil applies the IsNil predicate on the "fallback_group_id" field.
+func FallbackGroupIDIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldFallbackGroupID))
+}
+
+// FallbackGroupIDNotNil applies the NotNil predicate on the "fallback_group_id" field.
+func FallbackGroupIDNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldFallbackGroupID))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.
@@ -1163,6 +1198,29 @@ func HasGroup() predicate.APIKey {
 func HasGroupWith(preds ...predicate.Group) predicate.APIKey {
 	return predicate.APIKey(func(s *sql.Selector) {
 		step := newGroupStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasFallbackGroup applies the HasEdge predicate on the "fallback_group" edge.
+func HasFallbackGroup() predicate.APIKey {
+	return predicate.APIKey(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, FallbackGroupTable, FallbackGroupColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasFallbackGroupWith applies the HasEdge predicate on the "fallback_group" edge with a given conditions (other predicates).
+func HasFallbackGroupWith(preds ...predicate.Group) predicate.APIKey {
+	return predicate.APIKey(func(s *sql.Selector) {
+		step := newFallbackGroupStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

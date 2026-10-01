@@ -927,6 +927,21 @@ func (_c *GroupCreate) AddAPIKeys(v ...*APIKey) *GroupCreate {
 	return _c.AddAPIKeyIDs(ids...)
 }
 
+// AddFallbackAPIKeyIDs adds the "fallback_api_keys" edge to the APIKey entity by IDs.
+func (_c *GroupCreate) AddFallbackAPIKeyIDs(ids ...int64) *GroupCreate {
+	_c.mutation.AddFallbackAPIKeyIDs(ids...)
+	return _c
+}
+
+// AddFallbackAPIKeys adds the "fallback_api_keys" edges to the APIKey entity.
+func (_c *GroupCreate) AddFallbackAPIKeys(v ...*APIKey) *GroupCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddFallbackAPIKeyIDs(ids...)
+}
+
 // AddRedeemCodeIDs adds the "redeem_codes" edge to the RedeemCode entity by IDs.
 func (_c *GroupCreate) AddRedeemCodeIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddRedeemCodeIDs(ids...)
@@ -1732,6 +1747,22 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 			Inverse: false,
 			Table:   group.APIKeysTable,
 			Columns: []string{group.APIKeysColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(apikey.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.FallbackAPIKeysIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   group.FallbackAPIKeysTable,
+			Columns: []string{group.FallbackAPIKeysColumn},
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(apikey.FieldID, field.TypeInt64),

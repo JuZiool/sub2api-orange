@@ -34,6 +34,7 @@ var (
 		{Name: "window_1d_start", Type: field.TypeTime, Nullable: true},
 		{Name: "window_7d_start", Type: field.TypeTime, Nullable: true},
 		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "fallback_group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "user_id", Type: field.TypeInt64},
 	}
 	// APIKeysTable holds the schema information for the "api_keys" table.
@@ -49,8 +50,14 @@ var (
 				OnDelete:   schema.SetNull,
 			},
 			{
-				Symbol:     "api_keys_users_api_keys",
+				Symbol:     "api_keys_groups_fallback_api_keys",
 				Columns:    []*schema.Column{APIKeysColumns[23]},
+				RefColumns: []*schema.Column{GroupsColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "api_keys_users_api_keys",
+				Columns:    []*schema.Column{APIKeysColumns[24]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -59,12 +66,17 @@ var (
 			{
 				Name:    "apikey_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{APIKeysColumns[23]},
+				Columns: []*schema.Column{APIKeysColumns[24]},
 			},
 			{
 				Name:    "apikey_group_id",
 				Unique:  false,
 				Columns: []*schema.Column{APIKeysColumns[22]},
+			},
+			{
+				Name:    "apikey_fallback_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{APIKeysColumns[23]},
 			},
 			{
 				Name:    "apikey_status",
@@ -2173,7 +2185,8 @@ var (
 
 func init() {
 	APIKeysTable.ForeignKeys[0].RefTable = GroupsTable
-	APIKeysTable.ForeignKeys[1].RefTable = UsersTable
+	APIKeysTable.ForeignKeys[1].RefTable = GroupsTable
+	APIKeysTable.ForeignKeys[2].RefTable = UsersTable
 	APIKeysTable.Annotation = &entsql.Annotation{
 		Table: "api_keys",
 	}
