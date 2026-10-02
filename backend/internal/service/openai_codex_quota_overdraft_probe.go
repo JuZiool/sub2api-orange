@@ -34,8 +34,9 @@ const (
 	codexQuotaOverdraftPauseSource         = "codex_quota_overdraft"
 	codexQuotaOverdraftPersistAttempts     = 3
 
-	codexQuotaOverdraftFallbackModel      = "gpt-5.5"
-	codexQuotaOverdraftCompatibilityModel = "gpt-5.4-mini"
+	codexQuotaOverdraftPrimaryModel       = "gpt-reserve"
+	codexQuotaOverdraftFallbackModel      = "gpt-5.6-luna"
+	codexQuotaOverdraftCompatibilityModel = "gpt-6-luna"
 )
 
 // CodexQuotaOverdraftProbeState is persisted in accounts.extra so quota-cycle
@@ -887,11 +888,12 @@ func (c *CodexQuotaOverdraftCoordinator) currentTime() time.Time {
 	return time.Now().UTC()
 }
 
+// codexQuotaOverdraftProbeModels 返回透支探测链：gpt-reserve 优先（5h/7d 主额度
+// 耗尽后上游大概率仍放行该模型），不可用时依次回退 gpt-5.6-luna、gpt-6-luna。
+// 业务请求模型不参与组链——它自身的可用性由 ObserveBusinessSuccess 的真实请求
+// 结果单独确认；preferred 参数仅为兼容调用方签名而保留。
 func codexQuotaOverdraftProbeModels(preferred string) []string {
-	models := []string{strings.TrimSpace(preferred), codexQuotaOverdraftFallbackModel, codexQuotaOverdraftCompatibilityModel}
-	if models[0] == "" {
-		models[0] = openai.DefaultTestModel
-	}
+	models := []string{codexQuotaOverdraftPrimaryModel, codexQuotaOverdraftFallbackModel, codexQuotaOverdraftCompatibilityModel}
 	out := make([]string, 0, len(models))
 	seen := make(map[string]struct{}, len(models))
 	for _, model := range models {

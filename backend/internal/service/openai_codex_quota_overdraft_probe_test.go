@@ -99,13 +99,13 @@ func newCodexOverdraftProbeTestAccount(now time.Time) *Account {
 
 func TestCodexQuotaOverdraftProbeUsesPreferredModels(t *testing.T) {
 	models := codexQuotaOverdraftProbeModels("gpt-5.4")
-	require.Equal(t, []string{"gpt-5.4", "gpt-5.5", "gpt-5.4-mini"}, models)
+	require.Equal(t, []string{"gpt-reserve", "gpt-5.6-luna", "gpt-6-luna"}, models)
 
 	got := make([]string, 0, codexQuotaOverdraftProbeAttemptLimit)
 	for attempt := 0; attempt < codexQuotaOverdraftProbeAttemptLimit; attempt++ {
 		got = append(got, models[attempt%len(models)])
 	}
-	require.Equal(t, []string{"gpt-5.4", "gpt-5.5", "gpt-5.4-mini"}, got)
+	require.Equal(t, []string{"gpt-reserve", "gpt-5.6-luna", "gpt-6-luna"}, got)
 }
 
 func TestCodexQuotaOverdraftSignalsKeepFiveHourAndSevenDayCyclesSeparate(t *testing.T) {
@@ -148,7 +148,7 @@ func TestCodexQuotaOverdraftProbePassesOnFirstAvailableModel(t *testing.T) {
 
 	require.Equal(t, codexQuotaOverdraftProbePassed, state.Status)
 	require.Equal(t, 1, state.Attempts)
-	require.Equal(t, []string{"gpt-5.4"}, models)
+	require.Equal(t, []string{"gpt-reserve"}, models)
 	require.NotNil(t, state.FiveHourStartedAt)
 	require.Zero(t, repo.tempPauseCalls)
 }
@@ -373,7 +373,7 @@ func TestCodexQuotaOverdraftModelNotFoundIsInconclusiveAfterAllAttempts(t *testi
 	require.Equal(t, codexQuotaOverdraftProbeAttemptLimit, state.Attempts)
 	require.Zero(t, state.RetryCount)
 	require.Nil(t, state.RetryAt)
-	require.Equal(t, []string{"gpt-5.4", "gpt-5.5", "gpt-5.4-mini"}, models)
+	require.Equal(t, []string{"gpt-reserve", "gpt-5.6-luna", "gpt-6-luna"}, models)
 	require.Zero(t, repo.tempPauseCalls)
 }
 
