@@ -219,9 +219,6 @@
           <template #cell-select="{ row }">
             <input type="checkbox" :checked="isSelected(row.id)" @change="toggleSel(row.id)" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
           </template>
-          <template #cell-id="{ value }">
-            <span class="font-mono text-xs text-gray-500 dark:text-gray-400">#{{ value }}</span>
-          </template>
           <template #cell-name="{ row, value }">
             <div class="flex w-full min-w-0 max-w-full flex-col items-start gap-1 whitespace-normal text-left md:w-56 md:max-w-[240px]">
               <HelpTooltip
@@ -283,6 +280,10 @@
           </template>
           <template #cell-account_runtime="{ row }">
             <div class="flex min-w-0 flex-col items-start gap-1.5 whitespace-normal text-left md:max-w-[360px]">
+              <div v-if="isColumnVisible('id')" class="flex items-center gap-2 text-left">
+                <span class="shrink-0 text-xs leading-5 text-gray-600 dark:text-gray-300">{{ t('admin.accounts.columns.id') }}:</span>
+                <span class="font-mono text-xs text-gray-500 dark:text-gray-400">#{{ row.id }}</span>
+              </div>
               <div v-if="isColumnVisible('capacity')" class="flex w-full min-w-0 items-start gap-2 text-left">
                 <span class="shrink-0 text-xs leading-5 text-gray-600 dark:text-gray-300">{{ t('admin.accounts.columns.capacity') }}:</span>
                 <AccountCapacityCell :account="row" class="min-w-0 items-start" />
@@ -686,7 +687,8 @@ const ACCOUNT_SORTABLE_KEYS = new Set([
 const isAccountSortVisible = (key: string) =>
   (key !== 'status' || !hiddenColumns.has('status')) &&
   (key !== 'schedulable' || !hiddenColumns.has('schedulable')) &&
-  (key !== 'priority' || !hiddenColumns.has('priority'))
+  (key !== 'priority' || !hiddenColumns.has('priority')) &&
+  (key !== 'id' || !hiddenColumns.has('id'))
 const loadInitialAccountSortState = (): AccountSortState => {
   const fallback: AccountSortState = { sort_by: 'name', sort_order: 'asc' }
   try {
@@ -1854,7 +1856,7 @@ const toggleableColumns = computed(() =>
 // Filtered columns based on visibility
 const cols = computed(() => {
   const logicalColumns = allColumns.value
-  const runtimeFields = ['capacity', 'status', 'schedulable', 'groups', 'priority']
+  const runtimeFields = ['id', 'capacity', 'status', 'schedulable', 'groups', 'priority']
   const runtimeVisible = runtimeFields.some(key => isColumnVisible(key) && (key !== 'groups' || !authStore.isSimpleMode))
   const columns: Column[] = []
   for (const col of logicalColumns) {
@@ -1866,6 +1868,7 @@ const cols = computed(() => {
           sortable: false,
           class: 'align-top',
           sortKeys: [
+            ...(!hiddenColumns.has('id') ? ['id'] : []),
             ...(!hiddenColumns.has('status') ? ['status'] : []),
             ...(!hiddenColumns.has('schedulable') ? ['schedulable'] : []),
             ...(!hiddenColumns.has('priority') ? ['priority'] : [])
