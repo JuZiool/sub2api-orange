@@ -303,6 +303,10 @@
                   <span class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out" :class="[row.schedulable ? 'translate-x-4' : 'translate-x-0']" />
                 </button>
               </div>
+              <div v-if="isColumnVisible('priority')" class="flex items-center gap-2 text-left">
+                <span class="shrink-0 text-xs leading-5 text-gray-600 dark:text-gray-300">{{ t('admin.accounts.columns.priority') }}:</span>
+                <span class="text-sm text-gray-700 dark:text-gray-300">{{ row.priority }}</span>
+              </div>
               <div v-if="isColumnVisible('status')" class="flex w-full min-w-0 items-start gap-2 text-left">
                 <span class="shrink-0 text-xs leading-5 text-gray-600 dark:text-gray-300">{{ t('admin.accounts.columns.status') }}:</span>
                 <AccountStatusIndicator :account="row" @show-temp-unsched="handleShowTempUnsched" />
@@ -1853,7 +1857,7 @@ const toggleableColumns = computed(() =>
 const cols = computed(() => {
   const logicalColumns = allColumns.value
   const runtimeFields = ['capacity', 'status', 'schedulable', 'groups']
-  const runtimeVisible = runtimeFields.some(key => isColumnVisible(key) && (key !== 'groups' || !authStore.isSimpleMode))
+  const runtimeVisible = runtimeFields.some(key => isColumnVisible(key) && (key !== 'groups' || !authStore.isSimpleMode)) || isColumnVisible('priority')
   const columns: Column[] = []
   for (const col of logicalColumns) {
     if (col.key === 'capacity') {
