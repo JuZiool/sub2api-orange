@@ -223,14 +223,15 @@ describe('admin AccountsView lite account list', () => {
     wrapper.unmount()
   })
 
-  it('renders the two merged physical columns while preserving the ID column', async () => {
+  it('renders the merged runtime column and folds id/platform into it', async () => {
     const wrapper = mountView()
     await flushPromises()
 
     const keys = wrapper.getComponent(DataTableStub).props('columns').map((column: any) => column.key)
     expect(keys).toContain('name')
-    expect(keys).toContain('id')
     expect(keys).toContain('account_runtime')
+    // Orange 特有：账号 ID 与优先级并入「相关信息」合并列，不再单独成列
+    expect(keys).not.toContain('id')
     expect(keys).not.toEqual(expect.arrayContaining(['platform_type', 'capacity', 'status', 'schedulable', 'groups']))
     wrapper.unmount()
   })
@@ -241,12 +242,12 @@ describe('admin AccountsView lite account list', () => {
     await flushPromises()
 
     const runtime = wrapper.getComponent(DataTableStub).props('columns').find((column: any) => column.key === 'account_runtime')
-    expect(runtime.sortKeys).toEqual(['status', 'schedulable'])
+    expect(runtime.sortKeys).toEqual(['id', 'status', 'schedulable', 'priority'])
     wrapper.unmount()
   })
 
-  it('hides the runtime column only when all four child fields are hidden', async () => {
-    localStorage.setItem('account-hidden-columns', JSON.stringify(['capacity', 'status', 'schedulable', 'groups']))
+  it('hides the runtime column only when every merged child field is hidden', async () => {
+    localStorage.setItem('account-hidden-columns', JSON.stringify(['id', 'capacity', 'status', 'schedulable', 'groups', 'priority']))
     const wrapper = mountView()
     await flushPromises()
 

@@ -317,6 +317,7 @@ export default {
         deepseek: 'DeepSeek',
         minimax: 'MiniMax',
         opencode_go: 'OpenCode',
+        typesafe: 'TypeSafe / Jev',
       },
       cnProviders: {
         accountMode: {
@@ -959,7 +960,8 @@ export default {
       poolModeRetryStatusCodesHint: '仅在池模式下生效。以英文逗号分隔的 HTTP 状态码（100-599），命中时触发同账号重试。留空使用默认值（{default}）。',
       customErrorCodes: '自定义错误码',
       customErrorCodesHint: '仅对选中的错误码停止调度',
-      customErrorCodesWarning: '仅选中的错误码会停止调度，其他错误将返回 500。',
+      customErrorCodesWarning:
+        '自定义错误码仅用于筛选常规的账号错误处理（如停止调度、限流标记），不决定请求是否重试或切换账号。未选中的错误仍可能触发重试或切换账号，最终返回给客户端的状态码取决于网关路径和错误透传规则，并非统一返回 500。列表为空时不做筛选。',
       customErrorCodes429Warning:
         '429 已有内置的限流处理机制。添加到自定义错误码后，将直接停止调度而非临时限流。确定要添加吗？',
       customErrorCodes529Warning:

@@ -106,11 +106,13 @@ describe('admin AccountsView priority column preferences', () => {
     })
   })
 
-  it('shows priority as a sortable column for fresh preferences', async () => {
+  it('exposes priority sorting through the merged runtime column for fresh preferences', async () => {
     const wrapper = mountView()
     await flushPromises()
 
-    expect(wrapper.get('[data-column="priority"]').text()).toBe('sortable')
+    // Orange 特有：优先级并入「相关信息」合并列，通过 sortKeys 暴露排序能力
+    const runtime = wrapper.getComponent(DataTableStub).props('columns').find((column: any) => column.key === 'account_runtime')
+    expect(runtime.sortKeys).toContain('priority')
 
     await wrapper.get('[data-test="sort-priority"]').trigger('click')
     await flushPromises()
@@ -130,7 +132,8 @@ describe('admin AccountsView priority column preferences', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    expect(wrapper.find('[data-column="priority"]').exists()).toBe(false)
+    const runtime = wrapper.getComponent(DataTableStub).props('columns').find((column: any) => column.key === 'account_runtime')
+    expect(runtime.sortKeys).not.toContain('priority')
     expect(JSON.parse(localStorage.getItem('account-hidden-columns') || '[]')).toEqual([
       'priority',
       'today_stats'
@@ -143,7 +146,8 @@ describe('admin AccountsView priority column preferences', () => {
     const wrapper = mountView()
     await flushPromises()
 
-    expect(wrapper.get('[data-column="priority"]').text()).toBe('sortable')
+    const runtime = wrapper.getComponent(DataTableStub).props('columns').find((column: any) => column.key === 'account_runtime')
+    expect(runtime.sortKeys).toContain('priority')
     expect(JSON.parse(localStorage.getItem('account-hidden-columns') || '[]')).toEqual(
       expect.arrayContaining(['today_stats', 'scheduler_score'])
     )
