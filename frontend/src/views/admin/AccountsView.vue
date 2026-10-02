@@ -396,9 +396,6 @@
               @probe="handleProbeUpstreamBilling(row)"
             />
           </template>
-          <template #cell-priority="{ value }">
-            <span class="text-sm text-gray-700 dark:text-gray-300">{{ value }}</span>
-          </template>
           <template #header-scheduler_score="{ column }">
             <div class="flex items-center">
               <span>{{ column.label }}</span>
@@ -688,7 +685,8 @@ const ACCOUNT_SORTABLE_KEYS = new Set([
 ])
 const isAccountSortVisible = (key: string) =>
   (key !== 'status' || !hiddenColumns.has('status')) &&
-  (key !== 'schedulable' || !hiddenColumns.has('schedulable'))
+  (key !== 'schedulable' || !hiddenColumns.has('schedulable')) &&
+  (key !== 'priority' || !hiddenColumns.has('priority'))
 const loadInitialAccountSortState = (): AccountSortState => {
   const fallback: AccountSortState = { sort_by: 'name', sort_order: 'asc' }
   try {
@@ -1856,8 +1854,8 @@ const toggleableColumns = computed(() =>
 // Filtered columns based on visibility
 const cols = computed(() => {
   const logicalColumns = allColumns.value
-  const runtimeFields = ['capacity', 'status', 'schedulable', 'groups']
-  const runtimeVisible = runtimeFields.some(key => isColumnVisible(key) && (key !== 'groups' || !authStore.isSimpleMode)) || isColumnVisible('priority')
+  const runtimeFields = ['capacity', 'status', 'schedulable', 'groups', 'priority']
+  const runtimeVisible = runtimeFields.some(key => isColumnVisible(key) && (key !== 'groups' || !authStore.isSimpleMode))
   const columns: Column[] = []
   for (const col of logicalColumns) {
     if (col.key === 'capacity') {
@@ -1869,7 +1867,8 @@ const cols = computed(() => {
           class: 'align-top',
           sortKeys: [
             ...(!hiddenColumns.has('status') ? ['status'] : []),
-            ...(!hiddenColumns.has('schedulable') ? ['schedulable'] : [])
+            ...(!hiddenColumns.has('schedulable') ? ['schedulable'] : []),
+            ...(!hiddenColumns.has('priority') ? ['priority'] : [])
           ]
         })
       }
