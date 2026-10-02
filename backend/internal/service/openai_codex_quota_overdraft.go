@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"strconv"
 	"strings"
@@ -15,7 +14,12 @@ import (
 )
 
 const (
-	codexQuotaOverdraftCallIDPrefix  = "call_sub2api_overdraft_"
+	// codexQuotaOverdraftExecInputMarker 是防重复注入的内部特征：取 exec 输入
+	// 开头的固定参数组合。形似正常工具参数，不构成可被上游统计的中转指纹，
+	// 且仅出现在注入对中。调整 codexQuotaOverdraftExecInput 时必须同步。
+	codexQuotaOverdraftExecInputMarker = `{"cmd":"true","yield_time_ms":1000`
+	// codexQuotaOverdraftCallIDAlphabet 用于生成与服务端同形态的 call_id。
+	codexQuotaOverdraftCallIDAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 	codexQuotaOverdraftExecInput     = `const r = await tools.exec_command({"cmd":"true","yield_time_ms":1000,"max_output_tokens":1000}); text(r.output);`
 	codexQuotaOverdraftMaxBodyBytes  = 32 << 20
 	codexQuotaOverdraftPrearmPercent = 95
@@ -272,6 +276,8 @@ type codexQuotaOverdraftInputItem struct {
 	Type   string `json:"type"`
 	Role   string `json:"role"`
 	CallID string `json:"call_id"`
+	Name   string `json:"name"`
+	Input  string `json:"input"`
 }
 
 func codexQuotaOverdraftBodyHasInjection(body []byte) bool {
@@ -287,15 +293,18 @@ func codexQuotaOverdraftInputHasInjection(input []json.RawMessage) bool {
 		var item codexQuotaOverdraftInputItem
 		if err := json.Unmarshal(raw, &item); err == nil &&
 			item.Type == "custom_tool_call" &&
-			strings.HasPrefix(item.CallID, codexQuotaOverdraftCallIDPrefix) {
+			item.Name == "exec" &&
+			strings.Contains(item.Input, codexQuotaOverdraftExecInputMarker) {
 			return true
 		}
 	}
 	return false
 }
 
-// injectCodexQuotaOverdraft appends the same no-op custom tool call pair used by
-// cpa-account-config-manager. Unsupported request shapes fail open unchanged.
+// injectCodexQuotaOverdraft appends a no-op custom tool call pair to the input.
+// call_id uses the server-side shape (call_ + 22 base62 chars) so the injected
+// pair carries no relay-identifiable marker. Unsupported request shapes fail
+// open unchanged.
 func injectCodexQuotaOverdraft(body []byte) ([]byte, bool, error) {
 	if len(body) == 0 || len(body) > codexQuotaOverdraftMaxBodyBytes {
 		return body, false, nil
@@ -381,10 +390,16 @@ func normalizeCodexQuotaOverdraftAccountsForScheduling(ctx context.Context, acco
 	return accounts
 }
 
+// newCodexQuotaOverdraftCallID 生成与 OpenAI 服务端同形态的 call_id
+// （call_ + 22 位 base62），避免固定中转前缀被上游统计识别。
 func newCodexQuotaOverdraftCallID() (string, bool) {
-	var random [12]byte
+	var random [22]byte
 	if _, err := rand.Read(random[:]); err != nil {
 		return "", false
 	}
-	return codexQuotaOverdraftCallIDPrefix + hex.EncodeToString(random[:]), true
+	id := make([]byte, len(random))
+	for i, value := range random {
+		id[i] = codexQuotaOverdraftCallIDAlphabet[int(value)%len(codexQuotaOverdraftCallIDAlphabet)]
+	}
+	return "call_" + string(id), true
 }

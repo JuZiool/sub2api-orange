@@ -41,7 +41,8 @@ func TestCodexQuotaOverdraftInjection(t *testing.T) {
 	require.NoError(t, json.Unmarshal(document.Input[2], &output))
 	require.Equal(t, "custom_tool_call", call.Type)
 	require.Equal(t, "custom_tool_call_output", output.Type)
-	require.True(t, strings.HasPrefix(call.CallID, codexQuotaOverdraftCallIDPrefix))
+	require.True(t, strings.HasPrefix(call.CallID, "call_"), "call_id 必须保持服务端同形态前缀")
+	require.Len(t, call.CallID, 27)
 	require.Equal(t, call.CallID, output.CallID)
 
 	again := svc.prepareCodexQuotaOverdraftBody(ctx, oauth, false, updated)
