@@ -5,10 +5,12 @@
 //! - PostgreSQL schema 不变（复用 `../backend/migrations/*.sql`）
 //! - 前端零改动
 //!
-//! 本期（期 0）仅实现工程骨架与健康检查，用于验证构建与部署链路。
+//! 期 0 实现工程骨架与健康检查；期 1 增加中间件与标准响应信封。
 
 mod config;
+mod middleware;
 mod migrate;
+mod response;
 mod routes;
 
 use std::net::SocketAddr;

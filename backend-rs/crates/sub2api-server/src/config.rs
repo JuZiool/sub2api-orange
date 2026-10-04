@@ -22,6 +22,33 @@ pub struct Config {
     pub database: DatabaseConfig,
     #[serde(default)]
     pub log: LogConfig,
+    #[serde(default)]
+    pub cors: CorsConfig,
+}
+
+/// CORS 配置，字段名对齐 Go 版 `config.CORSConfig` 的 mapstructure tag。
+#[derive(Debug, Clone, Deserialize)]
+pub struct CorsConfig {
+    /// 允许的来源列表；留空表示禁用跨域。含 `*` 表示通配。
+    #[serde(default)]
+    pub allowed_origins: Vec<String>,
+    /// 是否允许携带凭证；与 `*` 互斥（通配时强制关闭）。
+    #[serde(default = "default_allow_credentials")]
+    pub allow_credentials: bool,
+}
+
+impl Default for CorsConfig {
+    fn default() -> Self {
+        Self {
+            allowed_origins: Vec::new(),
+            // 与 config.example.yaml 的默认值一致。
+            allow_credentials: default_allow_credentials(),
+        }
+    }
+}
+
+fn default_allow_credentials() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -36,6 +36,12 @@ sqlx = { version = "0.8", default-features = false, features = [
 # 迁移运行器需要（对齐 Go 版 SHA256 checksum）
 sha2 = "0.10"
 
+# 请求 ID 生成（对齐 Go 版 google/uuid）
+uuid = { version = "1", features = ["v4"] }
+
+# 中间件需要 FutureExt::catch_unwind 做 panic 恢复
+futures = "0.3"
+
 [profile.release]
 lto = true
 codegen-units = 1
