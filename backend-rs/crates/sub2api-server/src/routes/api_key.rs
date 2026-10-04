@@ -20,9 +20,11 @@ use sub2api_auth::jwt_auth::AuthUser;
 
 use crate::handler::api_key::{build_api_key_dto, parse_pagination, ApiKeyDto};
 use crate::handler::api_key_write::{
-    can_bind_group, escape_html_name, generate_key, is_subscription_type, tombstone_key,
-    validate_create_request, validate_custom_key, validate_fallback_group, CreateApiKeyRequest,
-    CreateValidationError, DeleteApiKeyResponse,
+    can_bind_group, compute_update_plan, escape_html_name, fallback_group_invalid_error,
+    generate_key, group_not_allowed_error, group_not_found_error, is_subscription_type,
+    tombstone_key, validate_create_request, validate_custom_key, validate_fallback_group,
+    validate_update_request, CreateApiKeyRequest, CreateValidationError, DeleteApiKeyResponse,
+    UpdateApiKeyRequest,
 };
 use crate::repository::api_key_repo::{ApiKeyListFilters, ApiKeyRepository};
 use crate::response::{self, ApiResponse, PaginatedData};
@@ -160,10 +162,12 @@ async fn check_bindable_group(
     let attrs = match repo.get_group_bind_attrs(group_id).await {
         Ok(Some(a)) => a,
         Ok(None) => {
-            return Err(Box::new(response::forbidden_with_reason(
-                "GROUP_NOT_ALLOWED",
-                "user is not allowed to bind this group",
-            )))
+            // 分组不存在 → 对齐 Go 的 ErrGroupNotFound（404 GROUP_NOT_FOUND），
+            // 而非 ErrGroupNotAllowed（403）。这是两条不同的错误路径：
+            // Go 的 groupRepo.GetByIDLite 会把 ent 的 NotFoundError 翻译成
+            // service.ErrGroupNotFound，loadBindableAPIKeyGroup 再原样上抛。
+            let (_, reason, msg) = group_not_found_error();
+            return Err(Box::new(response::not_found_with_reason(reason, msg)));
         }
         Err(e) => {
             tracing::error!(error = %e, group_id, "查询分组失败");
@@ -177,10 +181,8 @@ async fn check_bindable_group(
         match repo.has_active_subscription(user_id, group_id).await {
             Ok(true) => return Ok(Some(attrs.platform)),
             Ok(false) => {
-                return Err(Box::new(response::forbidden_with_reason(
-                    "GROUP_NOT_ALLOWED",
-                    "user is not allowed to bind this group",
-                )))
+                let (_, reason, msg) = group_not_allowed_error();
+                return Err(Box::new(response::forbidden_with_reason(reason, msg)));
             }
             Err(e) => {
                 tracing::error!(error = %e, "查询订阅失败");
@@ -202,10 +204,8 @@ async fn check_bindable_group(
     };
 
     if !can_bind_group(&allowed, restrict, attrs.id, attrs.is_exclusive) {
-        return Err(Box::new(response::forbidden_with_reason(
-            "GROUP_NOT_ALLOWED",
-            "user is not allowed to bind this group",
-        )));
+        let (_, reason, msg) = group_not_allowed_error();
+        return Err(Box::new(response::forbidden_with_reason(reason, msg)));
     }
     Ok(Some(attrs.platform))
 }
@@ -299,10 +299,8 @@ pub async fn create_api_key(
         fallback_platform.as_deref(),
         fallback_active,
     ) {
-        return response::bad_request_with_reason(
-            "FALLBACK_GROUP_INVALID",
-            "fallback group must differ from the primary group and use the same platform",
-        );
+        let (_, reason, msg) = fallback_group_invalid_error();
+        return response::bad_request_with_reason(reason, msg);
     }
 
     // 4) 名称入库前做 HTML 转义（对齐 Go 的 html.EscapeString）。
@@ -478,6 +476,202 @@ pub async fn delete_api_key(
         .into_response()
 }
 
+/// `PUT /api/v1/keys/:id`
+///
+/// 对应 Go 版 `APIKeyHandler.Update` → `APIKeyService.Update`。
+///
+/// 关键语义：
+/// - **部分更新**：未提供的字段不改；`fallback_group_id` 显式 `null` 才清空。
+/// - **自动复活**：扩容配额/重置配额会复活 `quota_exhausted`；
+///   清除或延长有效期会复活 `expired`。
+/// - 名称入库前 HTML 转义；非本人拥有 → 403（对齐 Go 的 `ErrInsufficientPerms`）。
+pub async fn update_api_key(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthUser>,
+    Path(id): Path<i64>,
+    Json(req): Json<UpdateApiKeyRequest>,
+) -> Response {
+    // 1) 请求体校验。
+    if let Err(e) = validate_update_request(&req) {
+        return response::bad_request(e.message());
+    }
+
+    let Some(pool) = state.pool.clone() else {
+        return response::internal_error("Failed to update API key");
+    };
+    let repo = ApiKeyRepository::new(pool);
+
+    // 2) 载入现有记录。
+    let current = match repo.get_by_id(id).await {
+        Ok(Some(k)) => k,
+        Ok(None) => {
+            return response::not_found_with_reason("API_KEY_NOT_FOUND", "api key not found")
+        }
+        Err(e) => {
+            tracing::error!(error = %e, id, "查询 API Key 失败");
+            return response::internal_error("Failed to update API key");
+        }
+    };
+
+    // 3) 所有权校验（Go 返回 403，与单查的 404 不同）。
+    if current.user_id != auth.user_id {
+        return response::abort_with_status(
+            StatusCode::FORBIDDEN,
+            "INSUFFICIENT_PERMISSIONS",
+            "insufficient permissions",
+        );
+    }
+
+    // 4) IP 规则格式校验（仅非空数组需要校验）。
+    for list in [&req.ip_whitelist, &req.ip_blacklist].into_iter().flatten() {
+        if !list.is_empty() {
+            let invalid: Vec<&String> = list.iter().filter(|p| !is_valid_ip_pattern(p)).collect();
+            if !invalid.is_empty() {
+                return response::bad_request_with_reason(
+                    "INVALID_IP_PATTERN",
+                    format!("invalid IP or CIDR pattern: {invalid:?}"),
+                );
+            }
+        }
+    }
+
+    // 5) 分组解析与权限校验（仅在请求涉及分组时执行）。
+    let mut new_group_id: Option<Option<i64>> = None;
+    let mut new_fallback_group_id: Option<Option<i64>> = None;
+    let resolved_primary_platform;
+    let mut resolved_fallback_platform = None;
+    let mut fallback_active = false;
+
+    if req.group_id.is_some() || req.fallback_group_id.is_some() {
+        if let Some(gid) = req.group_id {
+            match check_bindable_group(&repo, auth.user_id, gid).await {
+                Ok(p) => {
+                    resolved_primary_platform = p;
+                    new_group_id = Some(Some(gid));
+                }
+                Err(resp) => return *resp,
+            }
+        } else {
+            // 未改主分组：以现有分组平台为基准做 fallback 校验。
+            resolved_primary_platform = match current.group_id {
+                Some(gid) => match repo.get_group_bind_attrs(gid).await {
+                    Ok(Some(a)) => Some(a.platform),
+                    _ => None,
+                },
+                None => None,
+            };
+        }
+
+        if let Some(fb) = req.fallback_group_id {
+            match fb {
+                Some(gid) => match check_bindable_group(&repo, auth.user_id, gid).await {
+                    Ok(p) => {
+                        resolved_fallback_platform = p;
+                        new_fallback_group_id = Some(Some(gid));
+                        fallback_active = match repo.get_group_bind_attrs(gid).await {
+                            Ok(Some(a)) => a.status == "active",
+                            _ => false,
+                        };
+                    }
+                    Err(resp) => return *resp,
+                },
+                None => {
+                    // 显式 null → 清空兜底分组。
+                    new_fallback_group_id = Some(None);
+                }
+            }
+        }
+
+        // fallback 校验（未提供 fallback 时直接通过）。
+        let effective_primary = new_group_id.flatten().or(current.group_id);
+        let effective_fallback = match new_fallback_group_id {
+            Some(v) => v,
+            None => current.fallback_group_id,
+        };
+        if effective_fallback.is_some()
+            && !validate_fallback_group(
+                effective_primary,
+                resolved_primary_platform.as_deref(),
+                effective_fallback,
+                resolved_fallback_platform.as_deref(),
+                fallback_active,
+            )
+        {
+            let (_, reason, msg) = fallback_group_invalid_error();
+            return response::bad_request_with_reason(reason, msg);
+        }
+    }
+
+    // 6) 计算更新计划。
+    let plan = compute_update_plan(
+        &current,
+        &req,
+        new_group_id,
+        new_fallback_group_id,
+        chrono::Utc::now(),
+    );
+
+    // 7) 写库。
+    match repo.apply_update(id, &plan).await {
+        Ok(0) => {
+            // 并发删除等竞态。
+            return response::not_found_with_reason("API_KEY_NOT_FOUND", "api key not found");
+        }
+        Ok(_) => {}
+        Err(e) => {
+            tracing::error!(error = %e, id, "更新 API Key 失败");
+            return response::internal_error("Failed to update API key");
+        }
+    }
+
+    tracing::info!(id, user_id = auth.user_id, "用户已更新 API Key");
+
+    // 8) 回读并返回完整 DTO（与 Go 的 dto.APIKeyFromService 一致）。
+    let updated = match repo.get_by_id(id).await {
+        Ok(Some(k)) => k,
+        _ => {
+            tracing::error!(id, "更新后回读 API Key 失败");
+            return response::internal_error("Failed to update API key");
+        }
+    };
+    let groups = load_groups_for(&repo, &updated).await;
+    let dto = build_api_key_dto(
+        &updated,
+        find_group(&groups, updated.group_id),
+        find_group(&groups, updated.fallback_group_id),
+        chrono::Utc::now(),
+    );
+
+    (
+        StatusCode::OK,
+        Json(ApiResponse::success(Some(
+            serde_json::to_value(dto).unwrap_or(serde_json::Value::Null),
+        ))),
+    )
+        .into_response()
+}
+
+/// 校验单个 IP / CIDR pattern，对应 Go 版 `ip.ValidateIPPattern`。
+///
+/// 含 `/` 时按 CIDR 解析，否则按纯 IP 解析。
+pub fn is_valid_ip_pattern(pattern: &str) -> bool {
+    if pattern.contains('/') {
+        let Some((addr, prefix)) = pattern.split_once('/') else {
+            return false;
+        };
+        let Ok(len) = prefix.parse::<u8>() else {
+            return false;
+        };
+        match addr.parse::<std::net::IpAddr>() {
+            Ok(std::net::IpAddr::V4(_)) => len <= 32,
+            Ok(std::net::IpAddr::V6(_)) => len <= 128,
+            Err(_) => false,
+        }
+    } else {
+        pattern.parse::<std::net::IpAddr>().is_ok()
+    }
+}
+
 /// 加载某条 key 的 group / fallback_group（用于回填 DTO）。
 async fn load_groups_for(
     repo: &ApiKeyRepository,
@@ -536,5 +730,51 @@ mod tests {
         let out = truncate_search(&s);
         assert!(out.len() <= 100);
         assert_eq!(out.chars().count(), 33); // 99 字节
+    }
+
+    // ── IP pattern 校验（对齐 Go 的 ip.ValidateIPPattern）──
+
+    #[test]
+    fn valid_ipv4_accepted() {
+        assert!(is_valid_ip_pattern("1.2.3.4"));
+        assert!(is_valid_ip_pattern("255.255.255.255"));
+        assert!(is_valid_ip_pattern("0.0.0.0"));
+    }
+
+    #[test]
+    fn invalid_ipv4_rejected() {
+        assert!(!is_valid_ip_pattern("256.1.1.1"));
+        assert!(!is_valid_ip_pattern("1.2.3"));
+        assert!(!is_valid_ip_pattern("not-an-ip"));
+        assert!(!is_valid_ip_pattern(""));
+    }
+
+    #[test]
+    fn valid_cidr_accepted() {
+        assert!(is_valid_ip_pattern("10.0.0.0/8"));
+        assert!(is_valid_ip_pattern("192.168.1.0/24"));
+        assert!(is_valid_ip_pattern("0.0.0.0/0"));
+        assert!(is_valid_ip_pattern("2001:db8::/32"));
+    }
+
+    #[test]
+    fn cidr_prefix_out_of_range_rejected() {
+        // IPv4 前缀上限 32。
+        assert!(!is_valid_ip_pattern("10.0.0.0/33"));
+        // IPv6 前缀上限 128。
+        assert!(!is_valid_ip_pattern("2001:db8::/129"));
+    }
+
+    #[test]
+    fn cidr_with_bad_address_rejected() {
+        assert!(!is_valid_ip_pattern("999.0.0.0/8"));
+        assert!(!is_valid_ip_pattern("abc/8"));
+        assert!(!is_valid_ip_pattern("10.0.0.0/xx"));
+    }
+
+    #[test]
+    fn valid_ipv6_accepted() {
+        assert!(is_valid_ip_pattern("::1"));
+        assert!(is_valid_ip_pattern("2001:db8::1"));
     }
 }

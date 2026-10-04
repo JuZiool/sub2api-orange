@@ -454,6 +454,126 @@ impl ApiKeyRepository {
         Ok(exists)
     }
 
+    /// 按更新计划写库，对应 Go 版 `apiKeyRepository.Update`。
+    ///
+    /// 只写计划中非 `None` 的列；`updated_at` 恒更新；带 `deleted_at IS NULL` 条件
+    /// （与 Go 一致，避免竞态下更新到已软删除记录）。
+    ///
+    /// 返回受影响行数：0 表示记录不存在或已被软删除。
+    ///
+    /// 实现说明：用 `QueryBuilder` 动态拼装。列名是本函数内的**字面量**，
+    /// 值一律走绑定参数，因此不存在注入面。
+    pub async fn apply_update(
+        &self,
+        id: i64,
+        plan: &crate::handler::api_key_write::UpdatePlan,
+    ) -> anyhow::Result<u64> {
+        use sqlx::QueryBuilder;
+
+        // 空计划代表不改任何列（对应 Go 的 fields.IsEmpty()），直接返回成功。
+        if plan.is_empty() {
+            return Ok(1);
+        }
+
+        let mut qb: QueryBuilder<sqlx::Postgres> =
+            QueryBuilder::new("UPDATE api_keys SET updated_at = NOW()");
+
+        if let Some(v) = &plan.name {
+            qb.push(", name = ").push_bind(v.clone());
+        }
+        if let Some(v) = &plan.status {
+            qb.push(", status = ").push_bind(v.clone());
+        }
+        if let Some(v) = plan.quota {
+            qb.push(", quota = ").push_bind(v);
+        }
+        if let Some(v) = plan.quota_used {
+            qb.push(", quota_used = ").push_bind(v);
+        }
+
+        // 限流阈值：逐字段按需写入。
+        if let Some(v) = plan.rate_limit_5h {
+            qb.push(", rate_limit_5h = ").push_bind(v);
+        }
+        if let Some(v) = plan.rate_limit_1d {
+            qb.push(", rate_limit_1d = ").push_bind(v);
+        }
+        if let Some(v) = plan.rate_limit_7d {
+            qb.push(", rate_limit_7d = ").push_bind(v);
+        }
+
+        // 重置限流用量：用量归零 + 窗口起点置 NULL。
+        if plan.reset_rate_limit_usage {
+            qb.push(
+                ", usage_5h = 0, usage_1d = 0, usage_7d = 0, \
+                 window_5h_start = NULL, window_1d_start = NULL, window_7d_start = NULL",
+            );
+        }
+
+        // 分组 / 兜底分组：Some(None) 表示清空（写 NULL）。
+        if let Some(g) = &plan.group_id {
+            match g {
+                Some(v) => {
+                    qb.push(", group_id = ").push_bind(*v);
+                }
+                None => {
+                    qb.push(", group_id = NULL");
+                }
+            }
+        }
+        if let Some(f) = &plan.fallback_group_id {
+            match f {
+                Some(v) => {
+                    qb.push(", fallback_group_id = ").push_bind(*v);
+                }
+                None => {
+                    qb.push(", fallback_group_id = NULL");
+                }
+            }
+        }
+
+        // 过期时间：Some(None) 表示清除。
+        if let Some(e) = &plan.expires_at {
+            match e {
+                Some(v) => {
+                    qb.push(", expires_at = ").push_bind(*v);
+                }
+                None => {
+                    qb.push(", expires_at = NULL");
+                }
+            }
+        }
+
+        // IP 规则：空数组写 NULL（与 Go 的 ClearIPWhitelist 一致）。
+        if let Some(wl) = &plan.ip_whitelist {
+            if wl.is_empty() {
+                qb.push(", ip_whitelist = NULL");
+            } else {
+                qb.push(", ip_whitelist = ")
+                    .push_bind(serde_json::to_value(wl).unwrap_or(serde_json::Value::Null));
+            }
+        }
+        if let Some(bl) = &plan.ip_blacklist {
+            if bl.is_empty() {
+                qb.push(", ip_blacklist = NULL");
+            } else {
+                qb.push(", ip_blacklist = ")
+                    .push_bind(serde_json::to_value(bl).unwrap_or(serde_json::Value::Null));
+            }
+        }
+
+        qb.push(" WHERE id = ").push_bind(id);
+        qb.push(" AND deleted_at IS NULL");
+
+        let result = qb
+            .build()
+            .execute(&self.pool)
+            .await
+            .with_context(|| format!("更新 API Key 失败: id={id}"))?;
+
+        Ok(result.rows_affected())
+    }
+
     /// 按 ID 批量加载分组 DTO（公开入口，供单查/创建后回填使用）。
     pub async fn load_groups_by_ids(&self, ids: &[i64]) -> anyhow::Result<Vec<GroupDto>> {
         self.load_groups(ids).await
