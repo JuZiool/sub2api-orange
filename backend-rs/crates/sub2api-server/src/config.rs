@@ -24,6 +24,40 @@ pub struct Config {
     pub log: LogConfig,
     #[serde(default)]
     pub cors: CorsConfig,
+    #[serde(default)]
+    pub security: SecurityConfig,
+}
+
+/// 安全相关配置。目前仅含 CSP，字段名对齐 Go 版 `config.CSPConfig`。
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct SecurityConfig {
+    #[serde(default)]
+    pub csp: CspConfig,
+}
+
+/// CSP 配置，对齐 Go 版 `config.CSPConfig`。
+#[derive(Debug, Clone, Deserialize)]
+pub struct CspConfig {
+    /// 是否下发 CSP 头。
+    #[serde(default = "default_csp_enabled")]
+    pub enabled: bool,
+    /// 自定义策略；为空则使用默认策略。
+    #[serde(default)]
+    pub policy: String,
+}
+
+impl Default for CspConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_csp_enabled(),
+            policy: String::new(),
+        }
+    }
+}
+
+/// 与 config.example.yaml 的 `security.csp.enabled` 默认值一致。
+fn default_csp_enabled() -> bool {
+    true
 }
 
 /// CORS 配置，字段名对齐 Go 版 `config.CORSConfig` 的 mapstructure tag。

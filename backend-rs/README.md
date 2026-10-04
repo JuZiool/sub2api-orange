@@ -103,10 +103,20 @@ cargo test --all
 - [x] 健康检查端点（响应与 Go 版逐字节一致）
 - [x] 配置加载（字段对齐 `config.yaml`，支持 `DATABASE_URL` 覆盖）
 - [x] 迁移运行器（复刻 Go 版语义，296 个迁移实测通过 + 幂等性验证）
-- [x] 单元测试（9 个，覆盖语句拆分/注释剥离/执行模式校验/checksum）
 - [x] CI 骨架（`rust-backend-ci.yml`，与 Go CI 并存）
 - [x] 多阶段 Dockerfile（`rust:1.99-slim-bookworm` → `debian:bookworm-slim`）
 
-**下一步**：期 1 基础设施层（配置补全、Redis、中间件）。
+**期 1：基础设施层** —— 契约核心与全局中间件已完成
+
+- [x] 标准响应信封 `response.rs`（字段与省略行为对齐 Go 版）
+- [x] CORS 中间件（含 `x-stainless-*` 放行）
+- [x] 安全头 + CSP 中间件（验证码/支付必需域名补全、nonce 生成）
+- [x] 请求日志 `X-Request-ID` + 访问日志（跳过探针路径）
+- [x] panic 恢复中间件
+- [x] 单元测试 62 个
+- [x] wslc 镜像构建 + 端到端部署验证（容器 healthy）
+
+**待续**：`Server-Timing`、`SessionBinding`、审计日志、Redis 连接、
+前端产物嵌入（`rust-embed`）、其余配置分组。
 
 完整分期计划见 `文档/方案/2026-10-04-Orange-全面Rust化迁移方案-正式实施.md`。

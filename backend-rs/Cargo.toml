@@ -42,6 +42,10 @@ uuid = { version = "1", features = ["v4"] }
 # 中间件需要 FutureExt::catch_unwind 做 panic 恢复
 futures = "0.3"
 
+# CSP nonce 生成（对齐 Go 版 crypto/rand + base64.StdEncoding）
+getrandom = "0.2"
+base64 = "0.22"
+
 [profile.release]
 lto = true
 codegen-units = 1

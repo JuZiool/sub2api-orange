@@ -6,6 +6,13 @@
 //! - 若请求已带该头且合法（trim 后非空且长度 ≤ 64 字节），复用之；
 //!   否则生成新的 UUID v4。
 //! - 请求 ID 写入 tracing span，供后续处理器与日志做端到端关联。
+//!
+//! ## 挂载范围（重要）
+//!
+//! Go 版把该中间件**只挂在网关路由组**（`internal/server/routes/gateway.go`），
+//! 而非全局。因此 `/health` 等通用端点**不会**返回 `X-Client-Request-ID`。
+//! Rust 侧保持同样范围：本模块由期 5 的网关路由组挂载，
+//! **不要**加到全局中间件链上，否则会多出 Go 没有的响应头。
 
 use axum::extract::Request;
 use axum::http::{HeaderName, HeaderValue};
