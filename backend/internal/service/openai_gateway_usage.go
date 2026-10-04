@@ -68,7 +68,9 @@ func (s *OpenAIGatewayService) ResolveRateResolution(ctx context.Context, userID
 		resolution.MatchedModel = model
 		resolution.Source = "model_exact"
 	}
-	return resolution
+	return withAPIKeyFallbackRateResolution(ctx, group, resolution, func(fallback *Group) *RateResolution {
+		return s.ResolveRateResolution(ctx, userID, fallback, requestedModel)
+	})
 }
 
 // CyberPolicyUsageInput 是 cyber 拒绝、未走正常 RecordUsage 的请求记录用量的入参。

@@ -40,6 +40,10 @@ type RateResolution struct {
 	Multiplier     float64
 	MatchedModel   string
 	Source         string
+
+	// Freeze both routes before selection; billing chooses without mutating either snapshot.
+	fallbackGroupID int64
+	fallback        *RateResolution
 }
 
 func ResolveModelRateMultiplier(model string, rules []ModelRateMultiplierRule) (float64, string, bool) {

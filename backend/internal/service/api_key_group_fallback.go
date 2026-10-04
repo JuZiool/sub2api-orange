@@ -174,3 +174,27 @@ func selectAccountWithAPIKeyGroupFallback(
 	}
 	return account, err
 }
+
+// withAPIKeyFallbackRateResolution freezes the configured fallback's rates at
+// the same request boundary as the primary snapshot. Resolving the fallback
+// does not recurse because its ID differs from primaryGroupID.
+func withAPIKeyFallbackRateResolution(ctx context.Context, group *Group, resolution *RateResolution, resolve func(*Group) *RateResolution) *RateResolution {
+	if ctx == nil || group == nil {
+		return resolution
+	}
+	routing, ok := ctx.Value(apiKeyGroupFallbackContextKey{}).(apiKeyGroupFallbackRouting)
+	if ok && group.ID == routing.primaryGroupID && routing.fallbackGroup != nil {
+		resolution.fallbackGroupID = routing.fallbackGroup.ID
+		resolution.fallback = resolve(routing.fallbackGroup)
+	}
+	return resolution
+}
+
+// forAPIKey selects the frozen rate of the actual route, including when an
+// asynchronous usage task no longer carries the request's routing context.
+func (r *RateResolution) forAPIKey(apiKey *APIKey) *RateResolution {
+	if r != nil && r.fallback != nil && apiKey != nil && apiKey.GroupID != nil && *apiKey.GroupID == r.fallbackGroupID {
+		return r.fallback
+	}
+	return r
+}

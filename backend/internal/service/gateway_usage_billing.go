@@ -57,7 +57,9 @@ func (s *GatewayService) ResolveRateResolution(ctx context.Context, userID int64
 		resolution.MatchedModel = model
 		resolution.Source = "model_exact"
 	}
-	return resolution
+	return withAPIKeyFallbackRateResolution(ctx, group, resolution, func(fallback *Group) *RateResolution {
+		return s.ResolveRateResolution(ctx, userID, fallback, requestedModel)
+	})
 }
 
 // RecordUsageInput 记录使用量的输入参数。
@@ -825,7 +827,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		requestedModelForRate = strings.TrimSpace(result.Model)
 	}
 	if input.RateResolution != nil {
-		multiplier = input.RateResolution.Multiplier
+		multiplier = input.RateResolution.forAPIKey(apiKey).Multiplier
 	} else if apiKey.GroupID != nil && apiKey.Group != nil {
 		groupDefault := apiKey.Group.RateMultiplier
 		multiplier = s.ResolveUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)

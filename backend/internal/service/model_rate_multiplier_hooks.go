@@ -25,7 +25,7 @@ func (s *OpenAIGatewayService) SetRateMultiplierOverride(fn func(ctx context.Con
 // 请求开始时刻冻结的快照 > 模型专属倍率 > 用户分组倍率 > 分组倍率 > 系统默认。
 func resolveModelRateMultiplierOverride(_ context.Context, in rateMultiplierInput) float64 {
 	if in.Input != nil && in.Input.RateResolution != nil {
-		return in.Input.RateResolution.Multiplier
+		return in.Input.RateResolution.forAPIKey(in.APIKey).Multiplier
 	}
 	multiplier := in.Current
 	if in.APIKey == nil || in.APIKey.Group == nil {
