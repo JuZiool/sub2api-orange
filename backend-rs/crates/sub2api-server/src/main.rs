@@ -8,8 +8,10 @@
 //! 期 0 实现工程骨架与健康检查；期 1 增加中间件与标准响应信封。
 
 mod config;
+mod handler;
 mod middleware;
 mod migrate;
+mod repository;
 mod response;
 mod routes;
 

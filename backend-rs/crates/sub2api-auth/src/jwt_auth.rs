@@ -177,12 +177,15 @@ pub async fn jwt_auth(
     };
 
     // 5：载入用户。
-    let (user, user_token_version) = match state.users.load(claims.user_id).await {
+    let (mut user, user_token_version) = match state.users.load(claims.user_id).await {
         LoadOutcome::Found(user, token_version) => (user, token_version),
         LoadOutcome::NotFound => return AuthFailure::UserNotFound.to_response(),
         LoadOutcome::Failed => return AuthFailure::InternalError.to_response(),
         LoadOutcome::Inactive => return AuthFailure::UserInactive.to_response(),
     };
+
+    // 会话 ID 来自 claims（Go 版写入 context 的 ContextKeySessionID）。
+    user.session_id = claims.sid.clone();
 
     // 6：TokenVersion 校验（改密后旧 token 失效）。
     if claims.token_version != user_token_version {

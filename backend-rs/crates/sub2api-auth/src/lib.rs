@@ -13,11 +13,15 @@
 //!   （`code` 为字符串），业务 handler 用整数 `code`。见 [`errors`] 的说明。
 
 pub mod errors;
+pub mod identity;
 pub mod jwt;
 pub mod jwt_auth;
 pub mod token_version;
 
 pub use errors::{abort_with_error, codes, ErrorResponse};
+pub use identity::{
+    build_identity_summary_set, IdentityRecord, IdentitySummary, IdentitySummarySet,
+};
 pub use jwt::{access_token_expiry, encode_access_token, validate_token, JwtClaims, TokenError};
 pub use jwt_auth::{AuthFailure, AuthUser, JwtAuthState, LoadOutcome, UserDirectory};
 pub use token_version::resolved_token_version;

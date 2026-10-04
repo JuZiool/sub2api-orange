@@ -26,6 +26,27 @@ pub struct Config {
     pub cors: CorsConfig,
     #[serde(default)]
     pub security: SecurityConfig,
+    #[serde(default)]
+    pub jwt: JwtConfig,
+}
+
+/// JWT 配置，字段名对齐 Go 版 `config.JWTConfig` 的 mapstructure tag。
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct JwtConfig {
+    /// 签名密钥。为空时拒绝对外提供认证端点（与 Go 版校验行为一致）。
+    #[serde(default)]
+    pub secret: String,
+    /// 旧的过期时间配置（小时），在 `access_token_expire_minutes` 为 0 时生效。
+    #[serde(default = "default_expire_hour")]
+    pub expire_hour: i64,
+    /// access token 有效期（分钟）；>0 时优先于 `expire_hour`。
+    #[serde(default)]
+    pub access_token_expire_minutes: i64,
+}
+
+/// 与 Go 版 `viper.SetDefault("jwt.expire_hour", 24)` 一致。
+fn default_expire_hour() -> i64 {
+    24
 }
 
 /// 安全相关配置。目前仅含 CSP，字段名对齐 Go 版 `config.CSPConfig`。

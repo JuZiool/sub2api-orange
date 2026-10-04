@@ -49,6 +49,9 @@ base64 = "0.22"
 # JWT 签发与校验（对齐 Go 版 golang-jwt/jwt v5）
 jsonwebtoken = "9"
 
+# 时间类型（对齐 Go 版 time.Time 的 RFC3339 序列化）
+chrono = { version = "0.4", features = ["serde"] }
+
 [profile.release]
 lto = true
 codegen-units = 1

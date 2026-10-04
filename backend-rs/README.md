@@ -138,18 +138,20 @@ cargo test --all
 **待续**：`Server-Timing`、`SessionBinding`、审计日志、Redis 连接、
 前端产物嵌入（`rust-embed`）、其余配置分组。
 
-**期 2：认证与用户面** —— 认证核心已完成
+**期 2：认证与用户面** —— 认证核心 + 首个业务端点已完成
 
 - [x] JWT HS256 签发与校验（允许 HS256/384/512，防算法混淆）
 - [x] **Go↔Rust 交叉验证**：Go 签发的 token 可被 Rust 校验通过
 - [x] TokenVersion 派生指纹（`email + password_hash`，改密即撤销旧 token）
 - [x] 认证中间件（7 步判定顺序与错误码逐字对齐 Go）
 - [x] 认证错误信封（`code` 为字符串，区别于业务信封）
+- [x] 身份摘要构建（邮箱/linuxdo/oidc/wechat/dingtalk 绑定状态与可解绑判定）
+- [x] 用户仓储（真实 DB 查询，`numeric` 转换、`user_allowed_groups` 关联表）
+- [x] **`GET /api/v1/user/profile` 端到端打通**（第一个可用业务端点）
 - [x] 重构为独立 lib crate `sub2api-auth`
-- [x] 单元测试 91 个（29 auth + 62 server）
-- [x] wslc 镜像构建 + 端到端部署验证（容器 healthy）
+- [x] 单元测试 121 个（49 auth + 72 server）
+- [x] wslc 镜像构建 + 端到端部署验证（容器 healthy，9 条认证路径实测）
 
-**待续**：用户仓储（DB 查询）、`/api/v1/user/profile` 等用户端点、
-API Key 认证、OAuth 流程。
+**待续**：改密、通知邮箱、TOTP、Passkey、API Key 管理、OAuth 流程。
 
 完整分期计划见 `文档/方案/2026-10-04-Orange-全面Rust化迁移方案-正式实施.md`。
