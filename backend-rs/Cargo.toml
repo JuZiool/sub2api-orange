@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/sub2api-server"]
+members = ["crates/sub2api-auth", "crates/sub2api-server"]
 
 [workspace.package]
 version = "0.1.0"
@@ -45,6 +45,9 @@ futures = "0.3"
 # CSP nonce 生成（对齐 Go 版 crypto/rand + base64.StdEncoding）
 getrandom = "0.2"
 base64 = "0.22"
+
+# JWT 签发与校验（对齐 Go 版 golang-jwt/jwt v5）
+jsonwebtoken = "9"
 
 [profile.release]
 lto = true

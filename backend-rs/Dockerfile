@@ -29,18 +29,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # 先复制清单文件以复用依赖层缓存。
-# Cargo.lock 可能尚未生成（首次构建会生成），因此不强制要求存在。
-COPY backend-rs/Cargo.toml ./
+# 注意：workspace 内每个成员的 Cargo.toml 都必须复制，否则 cargo 无法解析 workspace。
+# Cargo.lock 由仓库提供（保证可复现构建）。
+COPY backend-rs/Cargo.toml backend-rs/Cargo.lock ./
+COPY backend-rs/crates/sub2api-auth/Cargo.toml ./crates/sub2api-auth/
 COPY backend-rs/crates/sub2api-server/Cargo.toml ./crates/sub2api-server/
 COPY backend-rs/rust-toolchain.toml ./
 
 # 复制源码
 COPY backend-rs/crates/ ./crates/
 
-# 构建 release 产物（缓存挂载避免每次重编依赖）
+# 构建 release 产物。
+# 缓存挂载避免每次重编依赖；Cargo.lock 已提交，故直接用 --locked。
 RUN --mount=type=cache,id=sub2api-rs-cargo-registry,target=/usr/local/cargo/registry \
     --mount=type=cache,id=sub2api-rs-target,target=/app/target \
-    cargo build --release --locked 2>/dev/null || cargo build --release \
+    cargo build --release --locked \
     && cp /app/target/release/sub2api-server /app/sub2api
 
 # -----------------------------------------------------------------------------

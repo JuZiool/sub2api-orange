@@ -24,15 +24,34 @@ backend-rs/
 ├── Cargo.toml                    # workspace
 ├── rust-toolchain.toml           # 工具链锁定
 └── crates/
+    ├── sub2api-auth/             # 认证：JWT、TokenVersion 指纹、认证中间件
+    │   └── src/
+    │       ├── lib.rs
+    │       ├── jwt.rs            # HS256 签发与校验
+    │       ├── jwt_auth.rs       # 认证中间件
+    │       ├── token_version.rs  # 派生指纹（改密撤销 token）
+    │       └── errors.rs         # 中间件错误信封（code 为字符串）
     └── sub2api-server/           # 服务二进制
         └── src/
             ├── main.rs           # 入口
             ├── config.rs         # 配置加载
             ├── migrate.rs        # 迁移运行器（复刻 Go 语义）
+            ├── response.rs       # 业务响应信封（code 为整数）
+            ├── middleware/       # 全局中间件
             └── routes/
                 ├── mod.rs
                 └── common.rs     # /health 等
 ```
+
+## ⚠️ 两个信封不要混淆
+
+| | `sub2api_server::response` | `sub2api_auth::errors` |
+|---|---|---|
+| `code` 类型 | **整数**（HTTP 状态码 / 0） | **字符串**（如 `"UNAUTHORIZED"`） |
+| 使用方 | 业务 handler 与 `sub2api-server` | 认证中间件 |
+
+来源分别是 Go 版的 `internal/pkg/response` 与 `internal/server/middleware`，
+两者本就不同，混用会让前端错误分支判断失效。
 
 ## 迁移运行器的重要说明 ⚠️
 
@@ -118,5 +137,19 @@ cargo test --all
 
 **待续**：`Server-Timing`、`SessionBinding`、审计日志、Redis 连接、
 前端产物嵌入（`rust-embed`）、其余配置分组。
+
+**期 2：认证与用户面** —— 认证核心已完成
+
+- [x] JWT HS256 签发与校验（允许 HS256/384/512，防算法混淆）
+- [x] **Go↔Rust 交叉验证**：Go 签发的 token 可被 Rust 校验通过
+- [x] TokenVersion 派生指纹（`email + password_hash`，改密即撤销旧 token）
+- [x] 认证中间件（7 步判定顺序与错误码逐字对齐 Go）
+- [x] 认证错误信封（`code` 为字符串，区别于业务信封）
+- [x] 重构为独立 lib crate `sub2api-auth`
+- [x] 单元测试 91 个（29 auth + 62 server）
+- [x] wslc 镜像构建 + 端到端部署验证（容器 healthy）
+
+**待续**：用户仓储（DB 查询）、`/api/v1/user/profile` 等用户端点、
+API Key 认证、OAuth 流程。
 
 完整分期计划见 `文档/方案/2026-10-04-Orange-全面Rust化迁移方案-正式实施.md`。
