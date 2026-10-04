@@ -64,8 +64,15 @@ pub struct DatabaseConfig {
 }
 
 impl DatabaseConfig {
+    /// 解析数据库连接串。
+    ///
+    /// 优先级：环境变量 `DATABASE_URL` > 配置文件 `database.url`。
+    /// 环境变量优先是 Rust/sqlx 生态惯例，也便于容器化部署时注入密钥。
     pub fn url(&self) -> Option<String> {
-        self.url.clone()
+        std::env::var("DATABASE_URL")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .or_else(|| self.url.clone())
     }
 }
 
@@ -101,7 +108,6 @@ impl Config {
             });
 
         let Some(path) = path else {
-            tracing::warn!("未找到 config.yaml，使用默认配置（骨架验证模式）");
             return Ok(Self::default());
         };
 
@@ -110,7 +116,14 @@ impl Config {
         let cfg: Config = serde_yaml::from_str(&raw)
             .with_context(|| format!("解析配置文件失败: {}", path.display()))?;
 
-        tracing::info!(path = %path.display(), "已加载配置");
         Ok(cfg)
+    }
+
+    /// 配置文件路径，仅用于日志输出。
+    pub fn loaded_from() -> Option<String> {
+        std::env::var("SUB2API_CONFIG").ok().or_else(|| {
+            let p = PathBuf::from("config.yaml");
+            p.exists().then(|| p.display().to_string())
+        })
     }
 }

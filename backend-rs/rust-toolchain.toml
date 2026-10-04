@@ -1,4 +1,9 @@
 [toolchain]
-channel = "1.83.0"
+# 与 backend-rs/Dockerfile 使用的 rust:1.99 镜像保持一致，避免容器构建时重复下载工具链。
+#
+# 为何是 1.99 而非更旧的版本：
+# 当前 crates.io 生态（sqlx 0.8、uuid 1.x、icu 2.x 等）普遍要求 Rust >= 1.85，
+# 部分要求 >= 1.88/1.89。早期尝试锁定 1.83 会因 `edition2024` 特性缺失而无法解析依赖清单。
+channel = "1.99"
 components = ["rustfmt", "clippy"]
 profile = "minimal"

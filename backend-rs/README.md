@@ -48,17 +48,22 @@ Go 版使用的是**自研迁移运行器**，不是 `sqlx::migrate!` 的默认�
 
 ## 工具链
 
-本机当前**未安装** Rust 工具链。安装：
+本机已安装（`rustup` 1.29.1）：
 
-```bash
-# Windows (winget)
+```powershell
 winget install Rustlang.Rustup
-
-# 或 WSL / Linux
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
-安装后 `rust-toolchain.toml` 会自动拉取锁定的 1.83.0。
+`rust-toolchain.toml` 锁定 **1.99**。注意不要往下调：当前 crates.io 生态
+（sqlx 0.8、uuid 1.x、icu 2.x 等）普遍要求 Rust >= 1.85，部分要求 >= 1.88/1.89；
+锁定 1.83 会因 `edition2024` 特性缺失而无法解析依赖清单。
+
+构建产物在 `target/`（已 gitignore）。若 `cargo build` 报
+`failed to remove ... sub2api-server.exe: 拒绝访问`，说明上一次运行的进程未退出：
+
+```powershell
+Get-Process sub2api-server -ErrorAction SilentlyContinue | Stop-Process -Force
+```
 
 ## 构建与运行
 
@@ -70,15 +75,38 @@ cargo run -p sub2api-server
 
 构建后访问 `http://localhost:8080/health`，应返回 `{"status":"ok"}`。
 
+带数据库运行（迁移会自动执行）：
+
+```bash
+$env:DATABASE_URL="postgres://user:pass@127.0.0.1:5432/sub2api"
+$env:SUB2API_MIGRATIONS_DIR="../backend/migrations"
+cargo run -p sub2api-server
+```
+
+> 端口固定 **8080**（规则 9）。若被占用，先处理占用服务，不得擅自换端口。
+
+## 质量门禁
+
+与 CI（`.github/workflows/rust-backend-ci.yml`）保持一致，提交前应全部通过：
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --all-targets -- -D warnings
+cargo test --all
+```
+
 ## 当前进度
 
-**期 0：工程骨架**（进行中）
+**期 0：工程骨架** —— 已完成并通过验证
 
 - [x] workspace 结构
-- [x] 健康检查端点
-- [x] 配置加载骨架
-- [x] 迁移运行器骨架（表结构与锁 ID 已对齐）
-- [ ] 工具链安装后首次编译验证
-- [ ] CI 骨架
+- [x] 健康检查端点（响应与 Go 版逐字节一致）
+- [x] 配置加载（字段对齐 `config.yaml`，支持 `DATABASE_URL` 覆盖）
+- [x] 迁移运行器（复刻 Go 版语义，296 个迁移实测通过 + 幂等性验证）
+- [x] 单元测试（9 个，覆盖语句拆分/注释剥离/执行模式校验/checksum）
+- [x] CI 骨架（`rust-backend-ci.yml`，与 Go CI 并存）
+- [x] 多阶段 Dockerfile（`rust:1.99-slim-bookworm` → `debian:bookworm-slim`）
 
-后续分期见 `文档/方案/2026-10-04-Orange-全面Rust化迁移方案-正式实施.md`。
+**下一步**：期 1 基础设施层（配置补全、Redis、中间件）。
+
+完整分期计划见 `文档/方案/2026-10-04-Orange-全面Rust化迁移方案-正式实施.md`。

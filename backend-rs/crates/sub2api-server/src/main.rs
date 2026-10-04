@@ -18,14 +18,21 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // 先加载配置，再用配置中的日志级别初始化日志（对齐 Go 版 log.level 语义）。
+    let cfg = config::Config::load().context("加载配置失败")?;
+    let default_level = cfg.log.level.clone().unwrap_or_else(|| "info".to_string());
+
     // 初始化日志。对齐 Go 版 zap 的输出风格（结构化、带级别）。
+    // 环境变量 RUST_LOG 优先于配置文件，便于本地调试。
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level)))
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // 加载配置。默认读取与 Go 版同名的 config.yaml，保持运维兼容。
-    let cfg = config::Config::load().context("加载配置失败")?;
+    match config::Config::loaded_from() {
+        Some(path) => tracing::info!(path = %path, "已加载配置"),
+        None => tracing::warn!("未找到 config.yaml，使用默认配置（骨架验证模式）"),
+    }
 
     // 注意：规则 9 要求端口固定 8080，不得擅自修改。
     // 这里默认值即 8080，配置可覆盖但不应被随意改动。

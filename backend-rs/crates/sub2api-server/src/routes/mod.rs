@@ -15,7 +15,9 @@ use crate::config::Config;
 
 /// 应用共享状态，对应 Go 版 `handler.Handlers` + 各 Service 的组合。
 ///
-/// 后续期次会在这里挂载 config、各类 service 与 repository。
+/// 后续期次会在这里挂载各类 service 与 repository；当前期次尚无 handler
+/// 读取这些字段，故暂时允许未使用，避免 `clippy -D warnings` 失败。
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
@@ -29,7 +31,5 @@ pub fn router(config: Config, pool: Option<PgPool>) -> Router {
         pool,
     };
 
-    Router::new()
-        .merge(common::routes())
-        .with_state(state)
+    Router::new().merge(common::routes()).with_state(state)
 }

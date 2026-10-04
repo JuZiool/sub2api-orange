@@ -3,7 +3,11 @@
 //! 与 Go 版 `internal/server/routes/common.go` 的响应**逐字节对齐**。
 //! 这些端点被部署脚本与前端用于健康探测，契约不能变。
 
-use axum::{http::StatusCode, routing::{get, post}, Json, Router};
+use axum::{
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
 use serde_json::{json, Value};
 
 use super::AppState;

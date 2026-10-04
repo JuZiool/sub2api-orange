@@ -1,0 +1,123 @@
+name: Rust Backend CI
+
+# Orange 特有：Rust 后端的持续集成。
+# 与既有的 backend-ci.yml（Go）并存，互不影响：
+#   - backend-ci.yml  → Go 后端（迁移期内继续使用）
+#   - rust-backend-ci.yml → Rust 后端（本文件）
+#
+# 迁移完成后可移除 Go 侧的 workflow。
+
+on:
+  push:
+    branches:
+      - sub2api-orange-rust
+    paths:
+      - 'backend-rs/**'
+      - '.github/workflows/rust-backend-ci.yml'
+  pull_request:
+    paths:
+      - 'backend-rs/**'
+      - '.github/workflows/rust-backend-ci.yml'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+defaults:
+  run:
+    working-directory: backend-rs
+
+jobs:
+  # 代码质量检查
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # rust-toolchain.toml 已锁定版本与组件，rustup 会自动安装。
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend-rs/target
+          key: ${{ runner.os }}-cargo-lint-${{ hashFiles('backend-rs/**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-lint-
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+  # 构建与测试
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: rustup show
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend-rs/target
+          key: ${{ runner.os }}-cargo-test-${{ hashFiles('backend-rs/**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-test-
+
+      - name: Build
+        run: cargo build --all-targets
+
+      - name: Test
+        run: cargo test --all
+
+  # 镜像构建验证：确认 Dockerfile 可用
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          # 构建上下文必须为仓库根目录：Dockerfile 需同时访问
+          # backend-rs/（Rust 源码）与 backend/migrations/（迁移 SQL）。
+          context: .
+          file: backend-rs/Dockerfile
+          push: false
+          load: true
+          tags: sub2api-orange-rust:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test /health
+        run: |
+          docker run -d --name rust-smoke -p 8080:8080 sub2api-orange-rust:ci
+          # 等待服务就绪
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/health > /dev/null 2>&1; then
+              echo "健康检查通过"
+              curl -fsS http://localhost:8080/health
+              docker rm -f rust-smoke
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "健康检查失败，输出容器日志："
+          docker logs rust-smoke
+          docker rm -f rust-smoke
+          exit 1
