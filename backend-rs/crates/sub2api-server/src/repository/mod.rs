@@ -2,4 +2,5 @@
 //!
 //! 表结构由 Go 版迁移统一维护，本层**只读 schema、不做迁移**。
 
+pub mod api_key_repo;
 pub mod user_repo;

@@ -5,6 +5,7 @@
 //! 后续期次按 Go 版 `internal/server/routes/` 逐个模块补齐，
 //! 目标是最终覆盖 658 条路由。
 
+pub mod api_key;
 pub mod common;
 pub mod user;
 
@@ -126,6 +127,7 @@ fn authenticated_routes(config: &Config, pool: &Option<PgPool>) -> Router<AppSta
             "/api/v1/user/password",
             axum::routing::put(user::change_password),
         )
+        .route("/api/v1/keys", axum::routing::get(api_key::list_api_keys))
         .route_layer(axum::middleware::from_fn_with_state(
             auth_state,
             sub2api_auth::jwt_auth::jwt_auth,

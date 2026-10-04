@@ -56,6 +56,24 @@ pub struct PaginatedData {
     pub pages: i64,
 }
 
+impl PaginatedData {
+    /// 构造分页体，`pages` 计算与 Go 版 `Paginated` 一致（向上取整，最小 1）。
+    pub fn new(items: Value, total: i64, page: i64, page_size: i64) -> Self {
+        let pages = if page_size > 0 {
+            ((total + page_size - 1) / page_size).max(1)
+        } else {
+            1
+        };
+        Self {
+            items,
+            total,
+            page,
+            page_size,
+            pages,
+        }
+    }
+}
+
 impl ApiResponse {
     /// 成功响应（HTTP 200，code 0，message `success`）。
     pub fn success(data: Option<Value>) -> Self {

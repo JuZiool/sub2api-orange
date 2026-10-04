@@ -135,6 +135,7 @@ cargo test --all
 | POST | `/api/event_logging/batch` | Claude Code 遥测（忽略请求体） |
 | GET | `/api/v1/user/profile` | 用户资料（JWT 认证） |
 | PUT | `/api/v1/user/password` | 修改密码（JWT 认证） |
+| GET | `/api/v1/keys` | API Key 列表（JWT 认证，支持分页/排序/过滤） |
 
 ## 当前进度
 
@@ -158,21 +159,22 @@ cargo test --all
 **待续**：`Server-Timing`、`SessionBinding`、审计日志、Redis 连接、
 前端产物嵌入（`rust-embed`）、其余配置分组。
 
-**期 2：认证与用户面** —— 认证核心 + 两个业务端点已完成
+**期 2：认证与用户面** —— 认证核心 + 三个业务端点已完成
 
 - [x] JWT HS256 签发与校验（允许 HS256/384/512，防算法混淆）
 - [x] **Go↔Rust 交叉验证**：Go 签发的 token 可被 Rust 校验通过
 - [x] TokenVersion 派生指纹（`email + password_hash`，改密即撤销旧 token）
 - [x] 认证中间件（7 步判定顺序与错误码逐字对齐 Go）
 - [x] 认证错误信封（`code` 为字符串，区别于业务信封）
-- [x] 密码哈希 bcrypt（**与 Go 双向互通**，`$2a$` / `$2b$` 前缀互认）
+- [x] 密码哈希 bcrypt（**与 Go 双向互通**，双向前缀互认）
 - [x] 身份摘要构建（邮箱/linuxdo/oidc/wechat/dingtalk 绑定状态与可解绑判定）
 - [x] 用户仓储（真实 DB 查询，`numeric` 转换、`user_allowed_groups` 关联表）
 - [x] **`GET /api/v1/user/profile` 端到端打通**（第一个可用业务端点）
 - [x] **`PUT /api/v1/user/password`**（改密 → 旧 token 立即失效）
+- [x] **`GET /api/v1/keys`**（分页/排序/过滤，限流窗口语义，分组预加载）
 - [x] 重构为独立 lib crate `sub2api-auth`
-- [x] 单元测试 140 个（56 auth + 84 server）
+- [x] 单元测试 168 个（56 auth + 112 server）
 
-**待续**：通知邮箱、TOTP、Passkey、API Key 管理、OAuth 流程。
+**待续**：API Key 的创建/更新/删除、通知邮箱、TOTP、Passkey、OAuth 流程。
 
 完整分期计划见 `文档/方案/2026-10-04-Orange-全面Rust化迁移方案-正式实施.md`。
