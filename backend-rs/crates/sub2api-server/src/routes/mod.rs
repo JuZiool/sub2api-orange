@@ -122,6 +122,10 @@ fn authenticated_routes(config: &Config, pool: &Option<PgPool>) -> Router<AppSta
             "/api/v1/user/profile",
             axum::routing::get(user::get_profile),
         )
+        .route(
+            "/api/v1/user/password",
+            axum::routing::put(user::change_password),
+        )
         .route_layer(axum::middleware::from_fn_with_state(
             auth_state,
             sub2api_auth::jwt_auth::jwt_auth,

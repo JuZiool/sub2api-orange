@@ -36,6 +36,8 @@ pub struct AuthUser {
     pub email: String,
     /// 会话 ID，来自 claims 的 `sid`。
     pub session_id: Option<String>,
+    /// 并发数（Go 版 `AuthSubject.Concurrency`），供后续限流/并发控制使用。
+    pub concurrency: i32,
 }
 
 /// 用户载入结果。

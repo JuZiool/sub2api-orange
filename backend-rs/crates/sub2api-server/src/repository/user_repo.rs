@@ -181,6 +181,34 @@ impl UserRepository {
             })
             .collect())
     }
+    /// 更新用户的密码哈希。
+    ///
+    /// 对应 Go 版 `UserService.ChangePassword` 中的
+    /// `userRepo.Update(ctx, user, UserUpdateFields{PasswordHash: true})`。
+    ///
+    /// ⚠️ `users` 表**没有** `token_version` 列（见 [`User::resolved_token_version`]）：
+    /// 旧 token 的失效**不需要**额外写库，只要 `password_hash` 变化，
+    /// 派生的 TokenVersion 指纹就随之变化。因此本方法只更新哈希一项。
+    ///
+    /// 返回受影响行数：0 表示用户不存在或已被软删除。
+    pub async fn update_password_hash(
+        &self,
+        user_id: i64,
+        password_hash: &str,
+    ) -> anyhow::Result<u64> {
+        let result = sqlx::query(
+            "UPDATE users SET password_hash = $1, updated_at = NOW() \
+             WHERE id = $2 AND deleted_at IS NULL",
+        )
+        .bind(password_hash)
+        .bind(user_id)
+        .execute(&self.pool)
+        .await
+        .with_context(|| format!("更新密码哈希失败: user_id={user_id}"))?;
+
+        Ok(result.rows_affected())
+    }
+
     /// 读取 `balance_notify_extra_emails` 列的原始文本。
     ///
     /// 该列为 `TEXT`，内容是 JSON 数组字符串；解析交给调用方，
@@ -225,6 +253,7 @@ impl UserDirectory for UserRepository {
                         email: user.email.clone(),
                         // 会话 ID 由 claims 提供，这里不重复携带。
                         session_id: None,
+                        concurrency: user.concurrency,
                     };
                     LoadOutcome::Found(auth_user, user.resolved_token_version())
                 }

@@ -178,6 +178,68 @@ pub fn internal_error(message: impl Into<String>) -> Response {
     error(StatusCode::INTERNAL_SERVER_ERROR, message)
 }
 
+/// 业务错误体，对应 Go 版 `infraerrors.Status`。
+///
+/// ⚠️ 注意与 [`ApiResponse`] 的差别：这里是 **`code` = HTTP 状态码**、
+/// **`reason` = 机器可读错误码**（如 `PASSWORD_INCORRECT`）。
+/// 而 [`ApiResponse`] 在成功时 `code` 为 0。
+///
+/// 字段顺序遵循 Go 的 `Status` 结构体：`code` / `reason` / `message` / `metadata`。
+#[derive(Debug, Clone, Serialize)]
+pub struct BusinessError {
+    pub code: i32,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub reason: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<std::collections::BTreeMap<String, String>>,
+}
+
+impl BusinessError {
+    /// 构造业务错误，对应 Go 版 `infraerrors.New(code, reason, message)`。
+    pub fn new(status: StatusCode, reason: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            code: status.as_u16() as i32,
+            reason: reason.into(),
+            message: message.into(),
+            metadata: None,
+        }
+    }
+
+    /// 转成完整响应，对应 Go 版 `response.ErrorFrom` 的输出。
+    pub fn into_response_with_status(self, status: StatusCode) -> Response {
+        (status, Json(self)).into_response()
+    }
+}
+
+/// 对应 Go 版 `infraerrors.BadRequest(reason, message)`（HTTP 400）。
+pub fn bad_request_with_reason(reason: impl Into<String>, message: impl Into<String>) -> Response {
+    BusinessError::new(StatusCode::BAD_REQUEST, reason, message)
+        .into_response_with_status(StatusCode::BAD_REQUEST)
+}
+
+/// 对应 Go 版 `infraerrors.Unauthorized(reason, message)`（HTTP 401）。
+pub fn unauthorized_with_reason(reason: impl Into<String>, message: impl Into<String>) -> Response {
+    BusinessError::new(StatusCode::UNAUTHORIZED, reason, message)
+        .into_response_with_status(StatusCode::UNAUTHORIZED)
+}
+
+/// 对应 Go 版 `infraerrors.NotFound(reason, message)`（HTTP 404）。
+pub fn not_found_with_reason(reason: impl Into<String>, message: impl Into<String>) -> Response {
+    BusinessError::new(StatusCode::NOT_FOUND, reason, message)
+        .into_response_with_status(StatusCode::NOT_FOUND)
+}
+
+/// 业务错误码常量，取值与 Go 版逐字一致。
+pub mod business_codes {
+    /// 当前密码不正确（HTTP 400）。
+    pub const PASSWORD_INCORRECT: &str = "PASSWORD_INCORRECT";
+    /// 用户不存在（HTTP 404）。
+    pub const USER_NOT_FOUND: &str = "USER_NOT_FOUND";
+    /// token 已过期（HTTP 401）。
+    pub const TOKEN_EXPIRED: &str = "TOKEN_EXPIRED";
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,5 +306,42 @@ mod tests {
         let resp = ApiResponse::paginated(json!([]), 0, 1, 20);
         let v = serde_json::to_value(&resp).unwrap();
         assert_eq!(v["data"]["pages"], json!(1));
+    }
+
+    /// 业务错误：`code` 为 HTTP 状态码，`reason` 为机器码，空字段省略。
+    /// 对应 Go 版 `infraerrors.BadRequest("PASSWORD_INCORRECT", "...")` 的输出。
+    #[test]
+    fn business_error_matches_go_status_shape() {
+        let e = BusinessError::new(
+            StatusCode::BAD_REQUEST,
+            business_codes::PASSWORD_INCORRECT,
+            "current password is incorrect",
+        );
+        let v = serde_json::to_value(&e).unwrap();
+        assert_eq!(
+            v,
+            json!({
+                "code": 400,
+                "reason": "PASSWORD_INCORRECT",
+                "message": "current password is incorrect"
+            })
+        );
+        // 关键差异：业务错误的 code 是 HTTP 状态码（400），不是 0。
+        assert_eq!(v["code"], 400);
+        assert!(v.get("metadata").is_none(), "metadata 为空时应省略");
+    }
+
+    /// 业务错误与成功信封是不同的结构，不能混用。
+    #[test]
+    fn business_error_differs_from_api_response() {
+        let success = serde_json::to_value(ApiResponse::success(None)).unwrap();
+        let failure =
+            serde_json::to_value(BusinessError::new(StatusCode::BAD_REQUEST, "REASON", "msg"))
+                .unwrap();
+
+        assert_eq!(success["code"], 0);
+        assert_eq!(failure["code"], 400);
+        assert!(success.get("reason").is_none());
+        assert_eq!(failure["reason"], "REASON");
     }
 }

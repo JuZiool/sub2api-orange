@@ -24,12 +24,14 @@ backend-rs/
 ├── Cargo.toml                    # workspace
 ├── rust-toolchain.toml           # 工具链锁定
 └── crates/
-    ├── sub2api-auth/             # 认证：JWT、TokenVersion 指纹、认证中间件
+    ├── sub2api-auth/             # 认证：JWT、TokenVersion 指纹、密码、身份摘要
     │   └── src/
     │       ├── lib.rs
     │       ├── jwt.rs            # HS256 签发与校验
-    │       ├── jwt_auth.rs       # 认证中间件
+    │       ├── jwt_auth.rs       # 认证中间件（7 步判定）
     │       ├── token_version.rs  # 派生指纹（改密撤销 token）
+    │       ├── password.rs       # bcrypt 哈希与校验
+    │       ├── identity.rs       # 身份摘要（绑定状态/可解绑判定）
     │       └── errors.rs         # 中间件错误信封（code 为字符串）
     └── sub2api-server/           # 服务二进制
         └── src/
@@ -38,9 +40,12 @@ backend-rs/
             ├── migrate.rs        # 迁移运行器（复刻 Go 语义）
             ├── response.rs       # 业务响应信封（code 为整数）
             ├── middleware/       # 全局中间件
-            └── routes/
+            ├── handler/          # 请求/响应类型与校验
+            ├── repository/       # 数据访问（只读 schema）
+            └── routes/           # 路由注册
                 ├── mod.rs
-                └── common.rs     # /health 等
+                ├── common.rs     # /health 等
+                └── user.rs       # /api/v1/user/**
 ```
 
 ## ⚠️ 两个信封不要混淆
@@ -53,6 +58,9 @@ backend-rs/
 来源分别是 Go 版的 `internal/pkg/response` 与 `internal/server/middleware`，
 两者本就不同，混用会让前端错误分支判断失效。
 
+另注意 `response::BusinessError`（对应 `infraerrors.Status`）是第三种形态：
+`code` 为 HTTP 状态码，`reason` 才是机器码（如 `PASSWORD_INCORRECT`）。
+
 ## 迁移运行器的重要说明 ⚠️
 
 Go 版使用的是**自研迁移运行器**，不是 `sqlx::migrate!` 的默认约定：
@@ -60,14 +68,18 @@ Go 版使用的是**自研迁移运行器**，不是 `sqlx::migrate!` 的默认�
 - 跟踪表：`schema_migrations(filename PK, checksum, applied_at)`
 - **不是** sqlx 默认的 `_sqlx_migrations`
 - Advisory Lock ID：`694208311321144027`
-- 非事务迁移后缀：`_notx.sql`
+- 非事务迁移后缀：`_notx.sql`（必须**逐条语句**执行，见下）
 
-因此 Rust 侧**必须复刻这套语义**，否则会在现网库上建出并行表并重跑全部 300 个迁移。
+因此 Rust 侧**必须复刻这套语义**，否则会在现网库上建出并行表并重跑全部迁移。
 详见 `src/migrate.rs`。
 
-## 工具链
+## 密码哈希的重要说明 ⚠️
 
-本机已安装（`rustup` 1.29.1）：
+- 算法 bcrypt，成本 **10**（对齐 Go 的 `bcrypt.DefaultCost`）。
+- Go 输出 `$2a$` 前缀，Rust 输出 `$2b$`，**两者互相兼容**（已双向实测）。
+  因此灰度或回退到 Go 不会导致用户无法登录。
+
+## 工具链
 
 ```powershell
 winget install Rustlang.Rustup
@@ -114,6 +126,16 @@ cargo clippy --all-targets -- -D warnings
 cargo test --all
 ```
 
+## 已实现端点
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/health` | 健康检查 |
+| GET | `/setup/status` | 初始化状态 |
+| POST | `/api/event_logging/batch` | Claude Code 遥测（忽略请求体） |
+| GET | `/api/v1/user/profile` | 用户资料（JWT 认证） |
+| PUT | `/api/v1/user/password` | 修改密码（JWT 认证） |
+
 ## 当前进度
 
 **期 0：工程骨架** —— 已完成并通过验证
@@ -132,26 +154,25 @@ cargo test --all
 - [x] 安全头 + CSP 中间件（验证码/支付必需域名补全、nonce 生成）
 - [x] 请求日志 `X-Request-ID` + 访问日志（跳过探针路径）
 - [x] panic 恢复中间件
-- [x] 单元测试 62 个
-- [x] wslc 镜像构建 + 端到端部署验证（容器 healthy）
 
 **待续**：`Server-Timing`、`SessionBinding`、审计日志、Redis 连接、
 前端产物嵌入（`rust-embed`）、其余配置分组。
 
-**期 2：认证与用户面** —— 认证核心 + 首个业务端点已完成
+**期 2：认证与用户面** —— 认证核心 + 两个业务端点已完成
 
 - [x] JWT HS256 签发与校验（允许 HS256/384/512，防算法混淆）
 - [x] **Go↔Rust 交叉验证**：Go 签发的 token 可被 Rust 校验通过
 - [x] TokenVersion 派生指纹（`email + password_hash`，改密即撤销旧 token）
 - [x] 认证中间件（7 步判定顺序与错误码逐字对齐 Go）
 - [x] 认证错误信封（`code` 为字符串，区别于业务信封）
+- [x] 密码哈希 bcrypt（**与 Go 双向互通**，`$2a$` / `$2b$` 前缀互认）
 - [x] 身份摘要构建（邮箱/linuxdo/oidc/wechat/dingtalk 绑定状态与可解绑判定）
 - [x] 用户仓储（真实 DB 查询，`numeric` 转换、`user_allowed_groups` 关联表）
 - [x] **`GET /api/v1/user/profile` 端到端打通**（第一个可用业务端点）
+- [x] **`PUT /api/v1/user/password`**（改密 → 旧 token 立即失效）
 - [x] 重构为独立 lib crate `sub2api-auth`
-- [x] 单元测试 121 个（49 auth + 72 server）
-- [x] wslc 镜像构建 + 端到端部署验证（容器 healthy，9 条认证路径实测）
+- [x] 单元测试 140 个（56 auth + 84 server）
 
-**待续**：改密、通知邮箱、TOTP、Passkey、API Key 管理、OAuth 流程。
+**待续**：通知邮箱、TOTP、Passkey、API Key 管理、OAuth 流程。
 
 完整分期计划见 `文档/方案/2026-10-04-Orange-全面Rust化迁移方案-正式实施.md`。

@@ -16,6 +16,7 @@ pub mod errors;
 pub mod identity;
 pub mod jwt;
 pub mod jwt_auth;
+pub mod password;
 pub mod token_version;
 
 pub use errors::{abort_with_error, codes, ErrorResponse};
@@ -24,4 +25,5 @@ pub use identity::{
 };
 pub use jwt::{access_token_expiry, encode_access_token, validate_token, JwtClaims, TokenError};
 pub use jwt_auth::{AuthFailure, AuthUser, JwtAuthState, LoadOutcome, UserDirectory};
+pub use password::{hash_password, verify_password, BCRYPT_COST};
 pub use token_version::resolved_token_version;

@@ -52,6 +52,9 @@ jsonwebtoken = "9"
 # 时间类型（对齐 Go 版 time.Time 的 RFC3339 序列化）
 chrono = { version = "0.4", features = ["serde"] }
 
+# 密码哈希（对齐 Go 版 golang.org/x/crypto/bcrypt，成本 10，$2a$ 格式）
+bcrypt = "0.15"
+
 [profile.release]
 lto = true
 codegen-units = 1
