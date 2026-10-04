@@ -248,6 +248,22 @@ pub fn not_found_with_reason(reason: impl Into<String>, message: impl Into<Strin
         .into_response_with_status(StatusCode::NOT_FOUND)
 }
 
+/// 对应 Go 版 `infraerrors.Forbidden(reason, message)`（HTTP 403）。
+pub fn forbidden_with_reason(reason: impl Into<String>, message: impl Into<String>) -> Response {
+    BusinessError::new(StatusCode::FORBIDDEN, reason, message)
+        .into_response_with_status(StatusCode::FORBIDDEN)
+}
+
+/// 任意状态码的业务错误响应（对应 Go 版 `infraerrors.Conflict` /
+/// `Forbidden` / `TooManyRequests` 等）。
+pub fn abort_with_status(
+    status: StatusCode,
+    reason: impl Into<String>,
+    message: impl Into<String>,
+) -> Response {
+    BusinessError::new(status, reason, message).into_response_with_status(status)
+}
+
 /// 业务错误码常量，取值与 Go 版逐字一致。
 pub mod business_codes {
     /// 当前密码不正确（HTTP 400）。

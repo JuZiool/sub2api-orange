@@ -136,6 +136,12 @@ cargo test --all
 | GET | `/api/v1/user/profile` | 用户资料（JWT 认证） |
 | PUT | `/api/v1/user/password` | 修改密码（JWT 认证） |
 | GET | `/api/v1/keys` | API Key 列表（JWT 认证，支持分页/排序/过滤） |
+| POST | `/api/v1/keys` | 创建 API Key（JWT 认证） |
+| GET | `/api/v1/keys/:id` | API Key 单查（JWT 认证） |
+| DELETE | `/api/v1/keys/:id` | 删除 API Key（JWT 认证，tombstone 软删除） |
+
+> ⚠️ **路由路径参数使用 axum 0.7 语法 `:id`**，不要写成 0.8 的 `{id}`——
+> 后者不会报编译错误，但路由静默不匹配（表现为 404）。
 
 ## 当前进度
 
@@ -172,9 +178,12 @@ cargo test --all
 - [x] **`GET /api/v1/user/profile` 端到端打通**（第一个可用业务端点）
 - [x] **`PUT /api/v1/user/password`**（改密 → 旧 token 立即失效）
 - [x] **`GET /api/v1/keys`**（分页/排序/过滤，限流窗口语义，分组预加载）
+- [x] **`POST /api/v1/keys`**（创建：key 生成/自定义 key 校验/分组权限/fallback 校验/名称 HTML 转义）
+- [x] **`GET` / `DELETE /api/v1/keys/:id`**（单查/删除，tombstone 软删除）
 - [x] 重构为独立 lib crate `sub2api-auth`
-- [x] 单元测试 168 个（56 auth + 112 server）
+- [x] 单元测试 197 个（56 auth + 141 server）
 
-**待续**：API Key 的创建/更新/删除、通知邮箱、TOTP、Passkey、OAuth 流程。
+**待续**：API Key 更新（PUT，含字段 set/unset 与配额重置）、通知邮箱、TOTP、
+Passkey、OAuth 流程。
 
 完整分期计划见 `文档/方案/2026-10-04-Orange-全面Rust化迁移方案-正式实施.md`。

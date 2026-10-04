@@ -247,6 +247,218 @@ impl ApiKeyRepository {
         Ok((keys, groups, total))
     }
 
+    /// 按 ID 载入单个 API Key（含软删除过滤），对应 Go 版 `GetByID`。
+    pub async fn get_by_id(&self, id: i64) -> anyhow::Result<Option<ApiKeyRecord>> {
+        let row = sqlx::query(
+            r#"
+            SELECT id, user_id, key, name, group_id, fallback_group_id, status,
+                   ip_whitelist, ip_blacklist, last_used_at,
+                   quota::double precision AS quota,
+                   quota_used::double precision AS quota_used,
+                   expires_at, created_at, updated_at,
+                   rate_limit_5h::double precision AS rate_limit_5h,
+                   rate_limit_1d::double precision AS rate_limit_1d,
+                   rate_limit_7d::double precision AS rate_limit_7d,
+                   usage_5h::double precision AS usage_5h,
+                   usage_1d::double precision AS usage_1d,
+                   usage_7d::double precision AS usage_7d,
+                   window_5h_start, window_1d_start, window_7d_start
+            FROM api_keys
+            WHERE id = $1 AND deleted_at IS NULL
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .with_context(|| format!("查询 API Key 失败: id={id}"))?;
+
+        Ok(row.map(row_to_api_key_record))
+    }
+
+    /// 查询 key 是否存在（任意用户），对应 Go 版 `ExistsByKey`。
+    ///
+    /// 不加 `deleted_at` 过滤：tombstone 已改写 key 列，正常不会与已删除记录冲突。
+    pub async fn exists_by_key(&self, key: &str) -> anyhow::Result<bool> {
+        let exists: bool =
+            sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM api_keys WHERE key = $1)")
+                .bind(key)
+                .fetch_one(&self.pool)
+                .await
+                .context("查询 API Key 是否存在失败")?;
+        Ok(exists)
+    }
+
+    /// 创建 API Key，对应 Go 版 `Create`。
+    ///
+    /// `ip_whitelist` / `ip_blacklist` 为空时写 NULL（与 Go 的 `if len(...) > 0` 一致）。
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create(
+        &self,
+        user_id: i64,
+        key: &str,
+        name: &str,
+        group_id: Option<i64>,
+        fallback_group_id: Option<i64>,
+        ip_whitelist: &[String],
+        ip_blacklist: &[String],
+        quota: f64,
+        expires_at: Option<chrono::DateTime<chrono::Utc>>,
+        rate_limit_5h: f64,
+        rate_limit_1d: f64,
+        rate_limit_7d: f64,
+    ) -> anyhow::Result<i64> {
+        let wl = (!ip_whitelist.is_empty())
+            .then(|| serde_json::to_value(ip_whitelist).unwrap_or(serde_json::Value::Null));
+        let bl = (!ip_blacklist.is_empty())
+            .then(|| serde_json::to_value(ip_blacklist).unwrap_or(serde_json::Value::Null));
+
+        let id: i64 = sqlx::query_scalar(
+            r#"
+            INSERT INTO api_keys
+                (user_id, key, name, group_id, fallback_group_id, status,
+                 ip_whitelist, ip_blacklist, quota, quota_used,
+                 expires_at, rate_limit_5h, rate_limit_1d, rate_limit_7d,
+                 usage_5h, usage_1d, usage_7d)
+            VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $8, 0, $9, $10, $11, $12, 0, 0, 0)
+            RETURNING id
+            "#,
+        )
+        .bind(user_id)
+        .bind(key)
+        .bind(name)
+        .bind(group_id)
+        .bind(fallback_group_id)
+        .bind(wl)
+        .bind(bl)
+        .bind(quota)
+        .bind(expires_at)
+        .bind(rate_limit_5h)
+        .bind(rate_limit_1d)
+        .bind(rate_limit_7d)
+        .fetch_one(&self.pool)
+        .await
+        .context("创建 API Key 失败")?;
+
+        Ok(id)
+    }
+
+    /// 软删除 API Key（tombstone），对应 Go 版 `DeleteWithAudit` / `deleteWithTombstone`。
+    ///
+    /// 把 `key` 改写为 tombstone 以释放唯一键，同时设置 `deleted_at`。
+    ///
+    /// 返回受影响行数：0 表示目标不存在或已被删除。
+    pub async fn delete_with_tombstone(&self, id: i64, tombstone: &str) -> anyhow::Result<u64> {
+        let result = sqlx::query(
+            "UPDATE api_keys SET key = $1, deleted_at = NOW(), updated_at = NOW() \
+             WHERE id = $2 AND deleted_at IS NULL",
+        )
+        .bind(tombstone)
+        .bind(id)
+        .execute(&self.pool)
+        .await
+        .with_context(|| format!("删除 API Key 失败: id={id}"))?;
+
+        Ok(result.rows_affected())
+    }
+
+    /// 查询 key 的 id 与所有者（**包含已软删除**），用于删除前鉴权。
+    ///
+    /// 对应 Go 版 `GetKeyAndOwnerID`。
+    pub async fn get_key_and_owner_id(&self, id: i64) -> anyhow::Result<Option<(String, i64)>> {
+        let row = sqlx::query("SELECT key, user_id FROM api_keys WHERE id = $1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
+            .with_context(|| format!("查询 API Key 归属失败: id={id}"))?;
+
+        Ok(row.map(|r| {
+            (
+                r.try_get::<String, _>("key").unwrap_or_default(),
+                r.try_get::<i64, _>("user_id").unwrap_or_default(),
+            )
+        }))
+    }
+
+    /// 读取用户的分组绑定信息与限制开关，用于分组绑定权限校验。
+    ///
+    /// 返回 `(allowed_groups, restrict_public_groups)`。
+    pub async fn get_user_group_bind_info(&self, user_id: i64) -> anyhow::Result<(Vec<i64>, bool)> {
+        let row = sqlx::query(
+            "SELECT restrict_public_groups FROM users WHERE id = $1 AND deleted_at IS NULL",
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .context("查询用户分组绑定信息失败")?;
+
+        let restrict = row
+            .as_ref()
+            .and_then(|r| r.try_get::<bool, _>("restrict_public_groups").ok())
+            .unwrap_or(false);
+
+        let groups: Vec<i64> =
+            sqlx::query_scalar("SELECT group_id FROM user_allowed_groups WHERE user_id = $1")
+                .bind(user_id)
+                .fetch_all(&self.pool)
+                .await
+                .context("查询用户可用分组失败")?;
+
+        Ok((groups, restrict))
+    }
+
+    /// 读取分组的关键属性，用于绑定校验与 fallback 校验。
+    pub async fn get_group_bind_attrs(
+        &self,
+        group_id: i64,
+    ) -> anyhow::Result<Option<GroupBindAttrs>> {
+        let row = sqlx::query(
+            r#"
+            SELECT id, platform, is_exclusive, status, subscription_type
+            FROM groups WHERE id = $1 AND deleted_at IS NULL
+            "#,
+        )
+        .bind(group_id)
+        .fetch_optional(&self.pool)
+        .await
+        .context("查询分组属性失败")?;
+
+        Ok(row.map(|r| GroupBindAttrs {
+            id: r.try_get("id").unwrap_or_default(),
+            platform: r.try_get("platform").unwrap_or_default(),
+            is_exclusive: r.try_get("is_exclusive").unwrap_or(false),
+            status: r.try_get("status").unwrap_or_default(),
+            subscription_type: r.try_get("subscription_type").unwrap_or_default(),
+        }))
+    }
+
+    /// 用户在某分组下是否有有效订阅（订阅型分组的绑定前置条件）。
+    pub async fn has_active_subscription(
+        &self,
+        user_id: i64,
+        group_id: i64,
+    ) -> anyhow::Result<bool> {
+        let exists: bool = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM user_subscriptions
+                WHERE user_id = $1 AND group_id = $2
+                  AND status = 'active' AND deleted_at IS NULL
+            )
+            "#,
+        )
+        .bind(user_id)
+        .bind(group_id)
+        .fetch_one(&self.pool)
+        .await
+        .context("查询订阅状态失败")?;
+        Ok(exists)
+    }
+
+    /// 按 ID 批量加载分组 DTO（公开入口，供单查/创建后回填使用）。
+    pub async fn load_groups_by_ids(&self, ids: &[i64]) -> anyhow::Result<Vec<GroupDto>> {
+        self.load_groups(ids).await
+    }
+
     /// 按 ID 批量加载分组 DTO，对应 Go 的 `WithGroup()` / `WithFallbackGroup()` 预加载。
     async fn load_groups(&self, ids: &[i64]) -> anyhow::Result<Vec<GroupDto>> {
         let rows = sqlx::query(
@@ -293,6 +505,49 @@ impl ApiKeyRepository {
         .context("加载分组失败")?;
 
         Ok(rows.into_iter().map(row_to_group_dto).collect())
+    }
+}
+
+/// 分组绑定校验所需的属性子集。
+#[derive(Debug, Clone)]
+pub struct GroupBindAttrs {
+    pub id: i64,
+    pub platform: String,
+    pub is_exclusive: bool,
+    pub status: String,
+    pub subscription_type: String,
+}
+
+/// 把一行 `api_keys` 记录转为实体（列表与单查共用）。
+fn row_to_api_key_record(row: sqlx::postgres::PgRow) -> ApiKeyRecord {
+    use chrono::Utc;
+    ApiKeyRecord {
+        id: row.try_get("id").unwrap_or_default(),
+        user_id: row.try_get("user_id").unwrap_or_default(),
+        key: row.try_get("key").unwrap_or_default(),
+        name: row.try_get("name").unwrap_or_default(),
+        group_id: row.try_get("group_id").ok().flatten(),
+        fallback_group_id: row.try_get("fallback_group_id").ok().flatten(),
+        status: row.try_get("status").unwrap_or_default(),
+        ip_whitelist: decode_string_array(&row, "ip_whitelist"),
+        ip_blacklist: decode_string_array(&row, "ip_blacklist"),
+        last_used_at: row.try_get("last_used_at").ok().flatten(),
+        // last_used_ip 来自 usage_logs 聚合（Go 版 attachLastUsedIPs），待后续接入。
+        last_used_ip: None,
+        quota: row.try_get("quota").unwrap_or(0.0),
+        quota_used: row.try_get("quota_used").unwrap_or(0.0),
+        expires_at: row.try_get("expires_at").ok().flatten(),
+        created_at: row.try_get("created_at").unwrap_or_else(|_| Utc::now()),
+        updated_at: row.try_get("updated_at").unwrap_or_else(|_| Utc::now()),
+        rate_limit_5h: row.try_get("rate_limit_5h").unwrap_or(0.0),
+        rate_limit_1d: row.try_get("rate_limit_1d").unwrap_or(0.0),
+        rate_limit_7d: row.try_get("rate_limit_7d").unwrap_or(0.0),
+        usage_5h: row.try_get("usage_5h").unwrap_or(0.0),
+        usage_1d: row.try_get("usage_1d").unwrap_or(0.0),
+        usage_7d: row.try_get("usage_7d").unwrap_or(0.0),
+        window_5h_start: row.try_get("window_5h_start").ok().flatten(),
+        window_1d_start: row.try_get("window_1d_start").ok().flatten(),
+        window_7d_start: row.try_get("window_7d_start").ok().flatten(),
     }
 }
 

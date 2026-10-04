@@ -127,7 +127,16 @@ fn authenticated_routes(config: &Config, pool: &Option<PgPool>) -> Router<AppSta
             "/api/v1/user/password",
             axum::routing::put(user::change_password),
         )
-        .route("/api/v1/keys", axum::routing::get(api_key::list_api_keys))
+        .route(
+            "/api/v1/keys",
+            axum::routing::get(api_key::list_api_keys).post(api_key::create_api_key),
+        )
+        .route(
+            // 注意：axum 0.7 的路径参数语法是 `:id`；`{id}` 是 0.8 才引入的写法。
+            // 写错会导致路由静默不匹配（表现为 404），且不会报编译错误。
+            "/api/v1/keys/:id",
+            axum::routing::get(api_key::get_api_key).delete(api_key::delete_api_key),
+        )
         .route_layer(axum::middleware::from_fn_with_state(
             auth_state,
             sub2api_auth::jwt_auth::jwt_auth,
