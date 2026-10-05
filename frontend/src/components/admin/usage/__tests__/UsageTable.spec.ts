@@ -57,6 +57,8 @@ const messages: Record<string, string> = {
   'usage.imageTotalPrice': 'Image total price',
   'usage.stream': 'Stream',
   'usage.sync': 'Sync',
+  'usage.latencyAvgTps': 'Avg TPS',
+  'usage.latencyAvgTpsHint': 'Text output tokens / (total duration - first-token time)',
   'usage.nativeCompactionV2': 'Compaction',
   'admin.usage.billingModeToken': 'Token',
   'admin.usage.billingModePerRequest': 'Per request',
@@ -95,6 +97,7 @@ const DataTableStub = {
         <slot name="cell-cost" :row="row" />
         <slot name="cell-request_id" :row="row" />
         <slot name="cell-upstream_request_id" :row="row" />
+        <slot name="cell-latency" :row="row" />
       </div>
     </div>
   `,
@@ -894,5 +897,44 @@ describe('admin UsageTable deleted-user badge', () => {
 
     expect(wrapper.text()).not.toContain('Deleted')
     expect(wrapper.text()).toContain('active@test.com')
+  })
+})
+
+
+describe('UsageTable average TPS', () => {
+  it.each([true, false])('renders average TPS with showAccountBilling=%s', (showAccountBilling) => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ ...baseImageRow, image_count: 0, billing_mode: 'token', stream: true,
+          output_tokens: 131, first_token_ms: 3380, duration_ms: 4890 }],
+        loading: false,
+        columns: [{ key: 'latency', label: 'Latency' }],
+        showAccountBilling,
+      },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    expect(wrapper.text()).toContain('Avg TPS')
+    const value = wrapper.get('[data-testid="usage-average-tps"]')
+    expect(value.text()).toBe('86.8 t/s')
+    expect(value.classes()).toContain('text-emerald-600')
+    expect(value.attributes('title')).toContain('total duration - first-token time')
+    expect(wrapper.text()).toContain('3.38s')
+    expect(wrapper.text()).toContain('4.89s')
+  })
+  it('renders a muted placeholder when first-token timing is missing', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ ...baseImageRow, image_count: 0, billing_mode: 'token', stream: true,
+          output_tokens: 131, first_token_ms: null, duration_ms: 4890 }],
+        loading: false,
+        columns: [{ key: 'latency', label: 'Latency' }],
+      },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    const value = wrapper.get('[data-testid="usage-average-tps"]')
+    expect(value.text()).toBe('-')
+    expect(value.classes()).toContain('text-gray-400')
+    expect(wrapper.text()).not.toContain('NaN')
+    expect(wrapper.text()).not.toContain('Infinity')
   })
 })

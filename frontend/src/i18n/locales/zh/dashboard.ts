@@ -433,6 +433,8 @@ export default {
     latency: '延迟',
     latencyFirstToken: '首字',
     latencyDuration: '总耗时',
+    latencyAvgTps: '平均 TPS',
+    latencyAvgTpsHint: '首字后平均文字输出速度：文字输出 Token ÷（总耗时 − 首字耗时）。仅计算计时有效的流式请求；非流式、图片/视频或数据不足时显示 -。',
     time: '时间',
     ws: 'WS',
     stream: '流式',

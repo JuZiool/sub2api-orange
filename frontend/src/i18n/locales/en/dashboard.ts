@@ -428,6 +428,8 @@ export default {
     latency: 'Latency',
     latencyFirstToken: 'First',
     latencyDuration: 'Total',
+    latencyAvgTps: 'Avg TPS',
+    latencyAvgTpsHint: 'Estimated text output speed after the first token: text output tokens ÷ (total duration − first-token time). Only streaming requests with valid timing are calculated; non-streaming, image/video, or insufficient data shows -.',
     time: 'Time',
     ws: 'WS',
     stream: 'Stream',
