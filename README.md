@@ -58,6 +58,12 @@ curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/
 
 首次安装不会在终端打印完整密钥。请妥善保存部署目录中的 `.env`。
 
+管理员邮箱或密码留空时，将在首次启动时随机生成，不再使用固定默认管理员邮箱。显式设置的密码必须为 8–72 字节。仅在本机查看首次启动日志中的凭据，不要公开分享：
+
+```bash
+docker compose --env-file .env -f docker-compose.local.yml -f docker-compose.ghcr.yml logs sub2api | grep "Generated admin"
+```
+
 ### 已有部署迁移
 
 将以下内容从旧服务器复制到新服务器：
