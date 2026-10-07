@@ -44,6 +44,13 @@ try {
     Assert-Equal $app.JWT_SECRET 'existing-jwt' '保留 JWT'
     Assert-Equal $app.ContainsKey('TOTP_ENCRYPTION_KEY') $false '空密钥不覆盖旧配置'
     Assert-Equal $app.AUTO_SETUP 'false' '禁止重新初始化'
+    Assert-Equal $app.ADMIN_EMAIL '' '缺省邮箱交由后端生成，不使用固定默认值'
+    $configuredAdmin = Get-OrangeAppEnvironment -ComposePath (Join-Path $PSScriptRoot '../docker-compose.local.yml') -Environment @{
+        POSTGRES_PASSWORD='test-password'; ADMIN_EMAIL='existing@example.com'; ADMIN_PASSWORD='existing-password'
+    }
+    Assert-Equal $configuredAdmin.ADMIN_EMAIL 'existing@example.com' '保留显式管理员邮箱'
+    Assert-Equal $configuredAdmin.ADMIN_PASSWORD 'existing-password' '保留显式管理员密码'
+    Assert-Equal $configuredAdmin.AUTO_SETUP 'false' '有管理员配置时仍禁止重新初始化'
     Assert-Equal $app.SERVER_PORT '8080' '固定容器端口'
     Assert-Equal $app.DATABASE_HOST 'postgres' '数据库别名'
     Assert-Equal $app.REDIS_HOST 'redis' 'Redis 别名'

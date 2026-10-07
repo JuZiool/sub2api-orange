@@ -344,12 +344,17 @@ dotenv_quote() {
   printf "'%s'" "$value"
 }
 
+validate_admin_password() {
+  local LC_ALL=C
+  [[ -z "$1" ]] || ((${#1} >= 8 && ${#1} <= 72))
+}
+
 prompt_fresh_values() {
   SERVER_PORT="8080"
   BIND_HOST="0.0.0.0"
-  ADMIN_EMAIL="admin@sub2api.local"
+  ADMIN_EMAIL=""
   ADMIN_PASSWORD=""
-  if [[ -t 0 || -r /dev/tty ]]; then
+  if { : </dev/tty; } 2>/dev/null; then
     local value confirm_value
     while true; do
       read -r -p "服务端口 [8080]: " value </dev/tty
@@ -358,12 +363,12 @@ prompt_fresh_values() {
       warn "请输入 1 到 65535 之间的端口。"
     done
     SERVER_PORT="$value"
-    read -r -p "管理员邮箱 [admin@sub2api.local]: " value </dev/tty
+    read -r -p "管理员邮箱（留空则首次启动时随机生成，见启动日志）: " value </dev/tty
     ADMIN_EMAIL="${value:-$ADMIN_EMAIL}"
-    read -r -s -p "管理员初始密码（留空则首次启动时生成）: " value </dev/tty
+    read -r -s -p "管理员初始密码（8–72 字节，留空则首次启动时生成）: " value </dev/tty
     printf '\n'
     if [[ -n "$value" ]]; then
-      ((${#value} >= 8)) || die "管理员密码至少需要 8 个字符。"
+      validate_admin_password "$value" || die "管理员密码必须为 8–72 字节。"
       read -r -s -p "再次输入管理员初始密码: " confirm_value </dev/tty
       printf '\n'
       [[ "$value" == "$confirm_value" ]] || die "两次输入的密码不一致。"
@@ -553,6 +558,10 @@ fresh_install() {
   compose up -d --remove-orphans
   wait_for_health || die "全新安装未通过健康检查。"
   log "Docker 全新安装完成。"
+  if [[ -z "$ADMIN_EMAIL" || -z "$ADMIN_PASSWORD" ]]; then
+    log '管理员邮箱或密码已由应用随机生成，请在部署目录查看本机首次启动日志（不要公开分享凭据）：'
+    log 'docker compose --env-file .env -f docker-compose.local.yml -f docker-compose.ghcr.yml logs sub2api | grep "Generated admin"'
+  fi
 }
 
 migration_install() {
