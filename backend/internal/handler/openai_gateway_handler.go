@@ -2189,7 +2189,7 @@ type openAIWSTurnAPIKeyLookup interface {
 // 在客户端重连前一直按旧价计费、按旧售价过利润门，而 HTTP 请求每次都经认证缓存
 // 取快照，缓存失效后即生效。
 //
-// 因此后续 turn 在 BeforeTurn（与 HTTP 请求进入认证中间件同位）经同一认证缓存
+// 因此后续 turn 在 BeforeRequest/BeforeTurn 首次进入时经同一认证缓存
 // 重取快照，只采用其中的分组，作为该 turn 利润门准入与用量计费共同的分组；用户、
 // Key 限额、订阅仍沿用建连快照。只在同一把 Key、同一分组且平台与订阅类型未变时
 // 采用：Key 换组或分组改平台/订阅类型不是调价，该连接按建连分组调度，继续按建连
@@ -2203,9 +2203,16 @@ type openAIWSTurnBillingAPIKeys struct {
 	keys map[int]*service.APIKey
 }
 
-// begin 在 BeforeTurn 重装利润门前调用：后续 turn 重取计费分组并按 turn 记下，
+// begin 由 BeforeRequest/BeforeTurn 调用：后续 turn 首次进入时重取计费分组，
 // 返回换入该分组的上下文供本 turn 的利润门使用。
 func (k *openAIWSTurnBillingAPIKeys) begin(ctx context.Context, apiKeyService *service.APIKeyService, turn int, conn *service.APIKey) context.Context {
+	// Orange 特有：BeforeRequest 与 BeforeTurn、同轮重试共用已经冻结的分组。
+	k.mu.Lock()
+	cached := k.keys[turn]
+	k.mu.Unlock()
+	if cached != nil {
+		return withOpenAIWSTurnBillingGroup(ctx, cached)
+	}
 	turnKey := conn
 	if turn > 1 && apiKeyService != nil {
 		turnKey = refreshOpenAIWSTurnBillingAPIKey(ctx, apiKeyService, conn)
@@ -3000,13 +3007,14 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			turnStartsMu.Unlock()
 			return startedAt
 		}
+		var turnBillingAPIKeys openAIWSTurnBillingAPIKeys
 		turnRateSnapshots := newOpenAIWSTurnRateSnapshots(initialRateResolution)
 		captureTurnRateResolution := func(turn int, model string) {
 			if turn <= 0 {
 				return
 			}
 			turnRateSnapshots.capture(turn, func() *service.RateResolution {
-				return openAIRateSnapshot(ctx, h.gatewayService, apiKey, model)
+				return openAIRateSnapshot(ctx, h.gatewayService, turnBillingAPIKeys.forTurn(turn, apiKey), model)
 			})
 		}
 		// Passthrough rejects overlapping response.create frames, so one immutable
@@ -3018,7 +3026,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		var turnPricing openAIWSTurnPricing
 		// 后续 turn 的计费分组同样在 BeforeTurn 经认证缓存重取，使分组调价对
 		// 已打开的连接生效。
-		var turnBillingAPIKeys openAIWSTurnBillingAPIKeys
 		// Passthrough ingress does not invoke BeforeTurn for the first frame.
 		if err := checkSimpleModeTurnBilling(); err != nil {
 			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed")
@@ -3055,7 +3062,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if model == "" {
 					model = reqModel
 				}
-				captureTurnRateResolution(turn, model)
 				// 分组级模型白名单：后续 turn 同样校验客户端模型（省略 model 时
 				// 沿用会话实际生效模型，含 session.update 轮换后的模型），不通过
 				// 则关闭整条连接，与推理强度 deny 一致。实际生效模型始终参与校验；
@@ -3071,6 +3077,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					writeSecurityAuditWSError(ctx, wsConn, decision)
 					return service.NewOpenAIWSClientCloseError(securityAuditWSCloseStatus(decision), securityAuditWSCloseReason(decision), nil)
 				}
+				// Orange 特有：安全校验后刷新本轮分组，倍率与利润门复用同一快照。
+				turnBillingAPIKeys.begin(ctx, h.apiKeyService, turn, apiKey)
+				captureTurnRateResolution(turn, model)
 				return nil
 			},
 			MapRequestModel: func(turn int, originalModel string) (string, error) {

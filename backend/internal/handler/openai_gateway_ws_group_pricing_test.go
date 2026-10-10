@@ -291,3 +291,43 @@ func TestOpenAIWSTurnBillingAPIKeysKeepPreviousTurnUntilItIsRecorded(t *testing.
 	require.Same(t, conn, keys.forTurn(2, conn), "only the current and previous turn are kept")
 	require.Len(t, keys.keys, 2)
 }
+
+// Orange 特有：两种 WS 链路的模型倍率随分组快照逐轮更新。
+func TestOpenAIResponsesWebSocket_ModelRateChangeAppliesToNextTurn(t *testing.T) {
+	for _, mode := range []string{service.OpenAIWSIngressModePassthrough, service.OpenAIWSIngressModeCtxPool} {
+		t.Run(mode, func(t *testing.T) {
+			repo := newWSGroupPricingAPIKeyRepoStub(3)
+			repo.group.ModelRateMultipliers = []service.ModelRateMultiplierRule{{Model: "gpt-5.6-sol", Multiplier: 2}}
+			apiKeyService := newWSGroupPricingAPIKeyService(repo)
+			got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+				firstPayload: wsGroupPricingFirst, secondPayload: wsGroupPricingSecond,
+				ingressMode: mode, apiKeyService: apiKeyService, apiKeyCredential: wsGroupPricingKey,
+				afterFirstUpstreamRequest: func(*service.ChannelService) error {
+					return repo.adminUpdate(apiKeyService, func(_ *service.APIKey, group *service.Group) {
+						group.ModelRateMultipliers = []service.ModelRateMultiplierRule{{Model: "gpt-5.6-sol", Multiplier: 0.5}}
+					})
+				},
+			})
+			require.Len(t, got.logs, 2)
+			require.InDelta(t, 2.0, got.logs[0].RateMultiplier, 1e-12)
+			require.InDelta(t, 0.5, got.logs[1].RateMultiplier, 1e-12)
+			require.InDelta(t, got.logs[0].ActualCost/4, got.logs[1].ActualCost, 1e-15)
+		})
+	}
+}
+
+func TestOpenAIWSTurnBillingAPIKeysReuseSnapshotOnRetry(t *testing.T) {
+	repo := newWSGroupPricingAPIKeyRepoStub(3)
+	apiKeyService := newWSGroupPricingAPIKeyService(repo)
+	conn, err := apiKeyService.GetByKey(context.Background(), wsGroupPricingKey)
+	require.NoError(t, err)
+	var keys openAIWSTurnBillingAPIKeys
+	keys.begin(context.Background(), apiKeyService, 2, conn)
+	frozen := keys.forTurn(2, conn)
+	require.NoError(t, repo.adminUpdate(apiKeyService, func(_ *service.APIKey, group *service.Group) { group.RateMultiplier = 0.3 }))
+	keys.begin(context.Background(), apiKeyService, 2, conn)
+	require.Same(t, frozen, keys.forTurn(2, conn))
+	keys.begin(context.Background(), apiKeyService, 3, conn)
+	require.InDelta(t, 0.3, keys.forTurn(3, conn).Group.RateMultiplier, 1e-12)
+	require.InDelta(t, 3.0, frozen.Group.RateMultiplier, 1e-12)
+}
