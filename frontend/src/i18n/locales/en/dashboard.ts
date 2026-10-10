@@ -430,6 +430,8 @@ export default {
     latencyDuration: 'Total',
     latencyAvgTps: 'Avg TPS',
     latencyAvgTpsHint: 'Estimated text output speed after the first token: text output tokens ÷ (total duration − first-token time). Only streaming requests with valid timing are calculated; non-streaming, image/video, or insufficient data shows -.',
+    outputTps: 'Output TPS',
+    outputTpsHint: 'Output tokens divided by total duration, including first-token wait, in tok/s. Output tokens may include reasoning tokens.',
     time: 'Time',
     ws: 'WS',
     stream: 'Stream',
