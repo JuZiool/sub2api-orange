@@ -42,7 +42,7 @@ func TestCodexFingerprintTransportPreservesConfiguredConcurrency(t *testing.T) {
 					response, err = (&AccountTestService{httpUpstream: upstream}).doOpenAIAccountTestUpstream(req, "", account, false)
 				}
 				require.NoError(t, err)
-				defer response.Body.Close()
+				defer func() { require.NoError(t, response.Body.Close()) }()
 				require.Equal(t, 47, upstream.concurrency, "fingerprint must not impose a concurrency cap")
 				if mode == "off" {
 					require.Nil(t, upstream.profile)
@@ -66,7 +66,8 @@ func TestCodexFingerprintAccountTestBodyHeaderParity(t *testing.T) {
 	ids := stagedCodexFingerprintIDs(c, account)
 	require.NotNil(t, ids)
 	require.Equal(t, ids.installationID, headers.Get("x-codex-installation-id"))
-	metadata := payload["client_metadata"].(map[string]any)
+	metadata, ok := payload["client_metadata"].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, metadata["session_id"], headers.Get("session_id"))
 	require.Equal(t, metadata["thread_id"], headers.Get("thread-id"))
 	require.Equal(t, "keep-cache", payload["prompt_cache_key"])

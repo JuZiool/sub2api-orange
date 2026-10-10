@@ -20,9 +20,9 @@ const (
 	codexQuotaOverdraftExecInputMarker = `{"cmd":"true","yield_time_ms":1000`
 	// codexQuotaOverdraftCallIDAlphabet 用于生成与服务端同形态的 call_id。
 	codexQuotaOverdraftCallIDAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-	codexQuotaOverdraftExecInput     = `const r = await tools.exec_command({"cmd":"true","yield_time_ms":1000,"max_output_tokens":1000}); text(r.output);`
-	codexQuotaOverdraftMaxBodyBytes  = 32 << 20
-	codexQuotaOverdraftPrearmPercent = 95
+	codexQuotaOverdraftExecInput      = `const r = await tools.exec_command({"cmd":"true","yield_time_ms":1000,"max_output_tokens":1000}); text(r.output);`
+	codexQuotaOverdraftMaxBodyBytes   = 32 << 20
+	codexQuotaOverdraftPrearmPercent  = 95
 	// CodexQuotaOverdraftDisabledExtraKey 是 Orange 既有的账号级开关：仅显式 true 时
 	// 关闭当前账号透支，缺省继承全局开关。HTE 的 codex_quota_overdraft_enabled 仅作只读兼容。
 	CodexQuotaOverdraftDisabledExtraKey = "codex_quota_overdraft_disabled"
@@ -169,22 +169,6 @@ func markCodexQuotaOverdraftInjected(ctx context.Context, accountID int64) {
 	if state := codexQuotaOverdraftRequestStateFromContext(ctx); state != nil {
 		state.injectedAccounts.Store(accountID, time.Now().UTC())
 	}
-}
-
-func codexQuotaOverdraftInjectedAt(ctx context.Context, accountID int64) (time.Time, bool) {
-	if accountID <= 0 {
-		return time.Time{}, false
-	}
-	state := codexQuotaOverdraftRequestStateFromContext(ctx)
-	if state == nil {
-		return time.Time{}, false
-	}
-	value, ok := state.injectedAccounts.Load(accountID)
-	if !ok {
-		return time.Time{}, false
-	}
-	startedAt, ok := value.(time.Time)
-	return startedAt, ok && !startedAt.IsZero()
 }
 
 func codexQuotaOverdraftWasInjected(ctx context.Context, accountID int64) bool {

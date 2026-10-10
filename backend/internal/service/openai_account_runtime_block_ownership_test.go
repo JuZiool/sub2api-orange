@@ -57,3 +57,37 @@ func TestOpenAIRuntimeBlock_PersistedNotificationFallsBackToLegacyBlocker(t *tes
 	clearPersistedAccountSchedulingCooldown(blocker, account.ID, until)
 	require.Equal(t, []int64{account.ID}, blocker.clearedIDs)
 }
+
+// Orange 特有：兼容旧 blocker 的适配仅供本文件回归使用。
+type accountPersistedSchedulingCooldownBlocker interface {
+	BlockAccountSchedulingFromPersistedCooldown(account *Account, until time.Time, reason string)
+}
+
+type accountPersistedSchedulingCooldownClearer interface {
+	ClearAccountSchedulingBlockFromPersistedCooldown(accountID int64, expectedUntil time.Time)
+}
+
+// notifyPersistedAccountSchedulingCooldown distinguishes database cooldown
+// mirrors from independent request-owned blockers without changing legacy
+// implementations.
+func notifyPersistedAccountSchedulingCooldown(blocker AccountRuntimeBlocker, account *Account, until time.Time, reason string) {
+	if blocker == nil || account == nil {
+		return
+	}
+	if persisted, ok := blocker.(accountPersistedSchedulingCooldownBlocker); ok {
+		persisted.BlockAccountSchedulingFromPersistedCooldown(account, until, reason)
+		return
+	}
+	blocker.BlockAccountScheduling(account, until, reason)
+}
+
+func clearPersistedAccountSchedulingCooldown(blocker AccountRuntimeBlocker, accountID int64, expectedUntil time.Time) {
+	if blocker == nil || accountID <= 0 {
+		return
+	}
+	if persisted, ok := blocker.(accountPersistedSchedulingCooldownClearer); ok {
+		persisted.ClearAccountSchedulingBlockFromPersistedCooldown(accountID, expectedUntil)
+		return
+	}
+	blocker.ClearAccountSchedulingBlock(accountID)
+}

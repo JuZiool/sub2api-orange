@@ -95,13 +95,3 @@ func (s *OpenAIGatewayService) processCodexQuotaOverdraftUsageSnapshot(
 		}
 	}()
 }
-
-func (s *OpenAIGatewayService) observeCodexQuotaOverdraftScheduleSuccess(
-	accountID int64,
-	model string,
-	requestCtx []context.Context,
-) {
-	if len(requestCtx) > 0 && s.codexQuotaOverdraft != nil && codexQuotaOverdraftWasInjected(requestCtx[0], accountID) {
-		s.codexQuotaOverdraft.ObserveBusinessSuccessByID(accountID, model)
-	}
-}

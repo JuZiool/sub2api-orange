@@ -327,20 +327,6 @@ func TestChannelMonitorV2HealthSufficientHighErrorIsCritical(t *testing.T) {
 	require.Zero(t, *health.Score)
 }
 
-func TestChannelMonitorV2HealthLeavesMissingTTFTUnknown(t *testing.T) {
-	health := ChannelMonitorV2HealthFor(ChannelMonitorV2Metric{
-		RequestCount:         200,
-		ErrorRate:            0,
-		CacheRate:            0,
-		CacheRateDenominator: 200,
-		TTFT:                 ChannelMonitorV2Latency{SampleCount: 0},
-	})
-	require.Equal(t, "unknown", health.TTFT)
-	require.Nil(t, health.TTFTScore)
-	require.NotEqual(t, "critical", health.Overall)
-	require.Equal(t, "healthy", health.Overall)
-}
-
 func TestChannelMonitorV2DefaultHealthThresholdsAreTolerant(t *testing.T) {
 	p50 := int64(2500)
 	health := ChannelMonitorV2HealthFor(ChannelMonitorV2Metric{

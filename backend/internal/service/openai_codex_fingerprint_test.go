@@ -391,7 +391,9 @@ func TestSingleMachineMultiWindow_KeepsDistinctPromptCacheKeysAcrossWindows(t *t
 		mapBody, rawBody := applyMapAndRawFingerprintBodiesForTest(t, body, ids)
 		require.Equal(t, clientSession, mapBody["prompt_cache_key"])
 		require.Equal(t, clientSession, rawBody["prompt_cache_key"])
-		cacheKeys[mapBody["prompt_cache_key"].(string)] = struct{}{}
+		cacheKey, ok := mapBody["prompt_cache_key"].(string)
+		require.True(t, ok)
+		cacheKeys[cacheKey] = struct{}{}
 	}
 	assert.Len(t, cacheKeys, 12)
 	assert.LessOrEqual(t, len(sessions), singleMachineRootWindowCount)

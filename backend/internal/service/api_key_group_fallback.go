@@ -18,31 +18,6 @@ type apiKeyGroupFallbackRouting struct {
 	apiKey         *APIKey
 }
 
-func isAPIKeyFallbackActive(apiKey *APIKey) bool {
-	return apiKey != nil && apiKey.GroupID != nil && apiKey.FallbackGroupID != nil &&
-		*apiKey.GroupID > 0 && *apiKey.GroupID == *apiKey.FallbackGroupID
-}
-
-// apiKeyFallbackRoutingForGroup returns the request-local API-key fallback
-// routing state when the requested group has actually switched to the
-// fallback group.  Most billing code can inspect the APIKey directly; a few
-// long-lived flows (for example OpenAI Live) only carry a LiveCallIdentity and
-// therefore need the context marker to distinguish a real fallback from an
-// ordinary request that happens to use the same group ID.
-func apiKeyFallbackRoutingForGroup(ctx context.Context, groupID int64) (apiKeyGroupFallbackRouting, bool) {
-	if ctx == nil || groupID <= 0 {
-		return apiKeyGroupFallbackRouting{}, false
-	}
-	routing, ok := ctx.Value(apiKeyGroupFallbackContextKey{}).(apiKeyGroupFallbackRouting)
-	if !ok || routing.apiKey == nil || routing.fallbackGroup == nil {
-		return apiKeyGroupFallbackRouting{}, false
-	}
-	if !isAPIKeyFallbackActive(routing.apiKey) || routing.fallbackGroup.ID != groupID {
-		return apiKeyGroupFallbackRouting{}, false
-	}
-	return routing, true
-}
-
 // WithAPIKeyGroupFallbackRouting installs API-key-level fallback routing.
 // Once the fallback group is selected, the request-local API key is switched to
 // that group so downstream billing and usage attribution follow the actual route.

@@ -42,11 +42,3 @@ func (s *OpenAIGatewayService) codexQuotaOverdraftCoordinator(
 	})
 	return s.codexQuotaOverdraft
 }
-
-// installCodexQuotaOverdraftSchedulingHooks 说明：Orange 把透支的阈值旁路与阻塞通知
-// 直接内嵌到 RateLimitService（codexQuotaOverdraftBypassesSchedulingThreshold /
-// notifyCodexQuotaOverdraftAwareSchedulingBlock），不再需要往上游函数体注入可选扩展点。
-// 保留本函数作为显式接线入口，便于测试与后续维护时定位透支调度挂载点。
-func installCodexQuotaOverdraftSchedulingHooks(_ *RateLimitService) {
-	// Orange 特有：透支调度旁路已内嵌在 RateLimitService，无需额外注入。
-}

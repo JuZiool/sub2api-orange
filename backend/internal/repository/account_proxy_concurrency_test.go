@@ -15,7 +15,8 @@ func TestProxyPoolRoundRobinAndIndependentCapacity(t *testing.T) {
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
-	cache := NewConcurrencyCache(client, 15, 900).(*concurrencyCache)
+	cache, cacheOK := NewConcurrencyCache(client, 15, 900).(*concurrencyCache)
+	require.True(t, cacheOK)
 	ctx := context.Background()
 	pool := []int64{11, 22, 33}
 	for i := 0; i < 6; i++ {
@@ -47,7 +48,12 @@ func TestProxyPoolConcurrentInstances(t *testing.T) {
 	for _, c := range clients {
 		t.Cleanup(func() { _ = c.Close() })
 	}
-	caches := []*concurrencyCache{NewConcurrencyCache(clients[0], 15, 900).(*concurrencyCache), NewConcurrencyCache(clients[1], 15, 900).(*concurrencyCache)}
+	caches := make([]*concurrencyCache, len(clients))
+	for i, client := range clients {
+		cache, ok := NewConcurrencyCache(client, 15, 900).(*concurrencyCache)
+		require.True(t, ok)
+		caches[i] = cache
+	}
 	var wg sync.WaitGroup
 	results := make(chan int64, 100)
 	errs := make(chan error, 100)
@@ -79,7 +85,8 @@ func TestProxyPoolExpiryAndSingleProxyLegacy(t *testing.T) {
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
-	cache := NewConcurrencyCache(client, 15, 900).(*concurrencyCache)
+	cache, cacheOK := NewConcurrencyCache(client, 15, 900).(*concurrencyCache)
+	require.True(t, cacheOK)
 	ctx := context.Background()
 	ok, err := cache.AcquireAccountSlot(ctx, 9, 1, "legacy")
 	require.NoError(t, err)
@@ -102,7 +109,8 @@ func TestProxyPoolPinnedTurnDoesNotMoveToFreeProxy(t *testing.T) {
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
-	cache := NewConcurrencyCache(client, 15, 900).(*concurrencyCache)
+	cache, cacheOK := NewConcurrencyCache(client, 15, 900).(*concurrencyCache)
+	require.True(t, cacheOK)
 	ctx := context.Background()
 	id, err := cache.AcquireAccountProxyPoolSlot(ctx, 7, []int64{11, 22}, 1, "busy", 22)
 	require.NoError(t, err)

@@ -1161,14 +1161,6 @@ func codexQuotaOverdraftSchedulingAllowed(account *Account, now time.Time) bool 
 	return state.Status != codexQuotaOverdraftProbeFailed
 }
 
-func codexQuotaOverdraftSnapshotPrearmReached(updates map[string]any) bool {
-	if len(updates) == 0 {
-		return false
-	}
-	return parseExtraFloat64(updates["codex_5h_used_percent"]) >= codexQuotaOverdraftPrearmPercent ||
-		parseExtraFloat64(updates["codex_7d_used_percent"]) >= codexQuotaOverdraftPrearmPercent
-}
-
 func applyCodexQuotaOverdraftUsage(
 	ctx context.Context,
 	repo UsageLogRepository,

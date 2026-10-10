@@ -962,13 +962,6 @@ func applyCodexFingerprintClientMetadataRaw(body []byte, ids *codexFingerprintID
 	return next, modified, nil
 }
 
-// rewriteClientMetadataEmbeddedTurnMetadata 改写 client_metadata 中内嵌的
-// x-codex-turn-metadata JSON 字符串里的指定字段。非法/非对象值会重建，
-// 避免 flat client_metadata 与 embedded metadata 暴露两套身份。
-func rewriteClientMetadataEmbeddedTurnMetadata(clientMetadata map[string]any, fields map[string]any) {
-	applyClientMetadataEmbeddedTurnMetadata(clientMetadata, fields, nil, false)
-}
-
 func applyClientMetadataEmbeddedTurnMetadata(clientMetadata map[string]any, fields map[string]any, deleteKeys []string, createIfMissing bool) {
 	if clientMetadata == nil {
 		return

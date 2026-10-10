@@ -22,7 +22,6 @@ func TestCodexQuotaOverdraftSchedulingHooksPreserveThresholdAndNotifierBoundarie
 	rl := NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil)
 	rl.SetSettingService(NewSettingService(settingsRepo, &config.Config{}))
 	rl.SetAccountRuntimeBlocker(runtimeBlocker)
-	installCodexQuotaOverdraftSchedulingHooks(rl)
 
 	now := time.Now().UTC().Add(time.Hour)
 	account := &Account{

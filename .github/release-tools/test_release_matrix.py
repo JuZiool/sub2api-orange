@@ -155,8 +155,8 @@ class ReleaseMatrixTest(unittest.TestCase):
         self.assertIn('linux/arm64', log)
         self.assertNotIn('--push', log)
         self.assertNotIn('imagetools', log)
-        self.assertNotIn('skip/sub2api', log)
-        self.assertIn('ghcr.io/exampleowner/sub2api', log)
+        self.assertNotIn('skip/sub2api-orange', log)
+        self.assertIn('ghcr.io/exampleowner/sub2api-orange', log)
 
 
     def test_published_full_and_simple_image_tags(self):
@@ -179,11 +179,11 @@ class ReleaseMatrixTest(unittest.TestCase):
                 if simple:
                     self.assertNotIn('fixturehub', log)
                     self.assertNotIn('imagetools', log)
-                    self.assertIn('ghcr.io/exampleowner/sub2api:latest', log)
+                    self.assertIn('ghcr.io/exampleowner/sub2api-orange:latest', log)
                 else:
                     self.assertEqual(log.count('imagetools create'), 2)
-                    self.assertIn('fixturehub/sub2api:9.8', log)
-                    self.assertIn('ghcr.io/exampleowner/sub2api:9', log)
+                    self.assertIn('fixturehub/sub2api-orange:9.8', log)
+                    self.assertIn('ghcr.io/exampleowner/sub2api-orange:9', log)
 
 
 
