@@ -119,6 +119,74 @@ describe('AccountTestModal', () => {
     vi.restoreAllMocks()
   })
 
+  it.each([
+    ['openai', 'gpt-5.4'],
+    ['anthropic', 'claude-sonnet-4-6'],
+    ['gemini', 'gemini-2.5-flash'],
+    ['grok', 'grok-4.3']
+  ])('%s 普通文本测试会发送自定义提示词原文', async (platform, model) => {
+    getAvailableModels.mockResolvedValue([{ id: model, display_name: model }])
+    const wrapper = mountModal({ id: 42, name: 'Text Test', platform, type: 'oauth', status: 'active' })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const prompt = '  请原样回复你好🙂\n'
+    await wrapper.find('textarea.textarea-stub').setValue(prompt)
+    expect(wrapper.text()).toContain('admin.accounts.textTestPromptCustomSummary')
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toMatchObject({ model_id: model, prompt })
+  })
+
+  it('文本提示词留空使用默认值，重新打开弹窗清空自定义文本', async () => {
+    getAvailableModels.mockResolvedValue([{ id: 'gpt-5.4', display_name: 'GPT-5.4' }])
+    const wrapper = mountModal({ id: 42, name: 'Text Test', platform: 'openai', type: 'oauth', status: 'active' })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    expect(wrapper.text()).toContain('admin.accounts.textTestPromptDefaultSummary')
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+    expect(JSON.parse((global.fetch as any).mock.calls[0][1].body).prompt).toBe('')
+
+    await wrapper.find('textarea.textarea-stub').setValue('temporary question')
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('')
+  })
+
+  it('文本提示词按 Unicode 字符限制长度，超长时禁止测试', async () => {
+    getAvailableModels.mockResolvedValue([{ id: 'gpt-5.4', display_name: 'GPT-5.4' }])
+    const wrapper = mountModal({ id: 42, name: 'Text Test', platform: 'openai', type: 'oauth', status: 'active' })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    const textarea = wrapper.find('textarea.textarea-stub')
+    await textarea.setValue('🙂'.repeat(8192))
+    expect((wrapper.vm as any).canStartTest).toBe(true)
+    await textarea.setValue('🙂'.repeat(8193))
+    expect((wrapper.vm as any).canStartTest).toBe(false)
+    await (wrapper.vm as any).startTest()
+    expect(global.fetch).not.toHaveBeenCalled()
+  })
+
+  it('文本和图片模式分别保留提示词，图片请求不使用文本提示词', async () => {
+    const wrapper = mountModal()
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    await wrapper.find('textarea').setValue('draw a cat')
+    ;(wrapper.vm as any).selectedModelId = 'gemini-2.0-flash'
+    await flushPromises()
+    await wrapper.find('textarea').setValue('describe a cat')
+    ;(wrapper.vm as any).selectedModelId = 'gemini-3.1-flash-image'
+    await flushPromises()
+    expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('draw a cat')
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+    expect(JSON.parse((global.fetch as any).mock.calls[0][1].body).prompt).toBe('draw a cat')
+  })
+
   it('gemini 图片模型测试会携带提示词并渲染图片预览', async () => {
     const wrapper = mountModal()
     await wrapper.setProps({ show: true })
@@ -207,8 +275,11 @@ describe('AccountTestModal', () => {
     await wrapper.setProps({ show: true })
     await flushPromises()
 
+    await wrapper.find('textarea').setValue('custom question')
     ;(wrapper.vm as any).selectedModelId = 'gpt-5.4'
     ;(wrapper.vm as any).testMode = 'compact'
+    await flushPromises()
+    expect(wrapper.find('textarea').exists()).toBe(false)
     await (wrapper.vm as any).startTest()
     await flushPromises()
 

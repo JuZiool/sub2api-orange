@@ -81,7 +81,19 @@
         />
       </div>
 
-      <div v-if="supportsPromptInput" class="space-y-1.5">
+      <div v-if="supportsTextPrompt" class="space-y-1.5">
+        <TextArea
+          id="account-test-text-prompt"
+          v-model="textTestPrompt"
+          :label="t('admin.accounts.textTestPromptLabel')"
+          :placeholder="t('admin.accounts.textTestPromptPlaceholder')"
+          :hint="t('admin.accounts.textTestPromptHint', { max: TEXT_TEST_PROMPT_LIMIT })"
+          :error="textPromptError"
+          :disabled="status === 'connecting'"
+          rows="3"
+        />
+      </div>
+      <div v-else-if="supportsPromptInput" class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
           :label="promptInputLabel"
@@ -407,6 +419,8 @@ const errorMessage = ref('')
 const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
+const textTestPrompt = ref('')
+const TEXT_TEST_PROMPT_LIMIT = 8192
 const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewMedia[]>([])
@@ -495,6 +509,17 @@ const modelOptionsForMode = computed(() => {
   }
   return []
 })
+
+const supportsTextPrompt = computed(() =>
+  testMode.value !== 'compact' &&
+  !supportsImageTest.value &&
+  (!isGrokAccount.value || grokTestMode.value === 'text')
+)
+const textPromptError = computed(() =>
+  Array.from(textTestPrompt.value).length > TEXT_TEST_PROMPT_LIMIT
+    ? t('admin.accounts.textTestPromptTooLong', { max: TEXT_TEST_PROMPT_LIMIT })
+    : ''
+)
 
 const supportsPromptInput = computed(() => {
   if (!isGrokAccount.value) {
@@ -651,6 +676,11 @@ const promptInputHint = computed(() => {
 })
 
 const testModeSummary = computed(() => {
+  if (supportsTextPrompt.value) {
+    return t(textTestPrompt.value.trim()
+      ? 'admin.accounts.textTestPromptCustomSummary'
+      : 'admin.accounts.textTestPromptDefaultSummary')
+  }
   if (isGrokAccount.value) {
     switch (grokTestMode.value) {
       case 'video':
@@ -674,6 +704,7 @@ const testModeSummary = computed(() => {
 })
 
 const canStartTest = computed(() => {
+  if (supportsTextPrompt.value && textPromptError.value) return false
   if (status.value === 'connecting') return false
   if (isGrokAccount.value) {
     if (
@@ -737,6 +768,7 @@ watch(
   () => props.show,
   async (newVal) => {
     if (newVal && props.account) {
+      textTestPrompt.value = ''
       testPrompt.value = ''
       testMode.value = 'default'
       grokTestMode.value = 'text'
@@ -852,7 +884,9 @@ const startTest = async () => {
       audio_data_url?: string
     } = {
       model_id: showModelSelect.value ? selectedModelId.value : '',
-      prompt: supportsPromptInput.value ? testPrompt.value.trim() : ''
+      prompt: supportsTextPrompt.value
+        ? textTestPrompt.value
+        : supportsPromptInput.value ? testPrompt.value.trim() : ''
     }
     if (isOpenAIAccount.value) {
       requestBody.mode = testMode.value
