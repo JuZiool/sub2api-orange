@@ -911,6 +911,10 @@ const startTest = async () => {
       }
     }
 
+    const sendingTextTestMessage = requestBody.prompt.trim()
+      ? t('admin.accounts.sendingCustomTestMessage', { prompt: requestBody.prompt })
+      : t('admin.accounts.sendingTestMessage')
+
     // Use the configured API base; EventSource does not support POST.
     const url = buildApiUrl(`/admin/accounts/${props.account.id}/test`)
 
@@ -952,7 +956,7 @@ const startTest = async () => {
           if (jsonStr) {
             try {
               const event = JSON.parse(jsonStr)
-              handleEvent(event)
+              handleEvent(event, sendingTextTestMessage)
             } catch (e) {
               console.error('Failed to parse SSE event:', e)
             }
@@ -982,7 +986,7 @@ const handleEvent = (event: {
   audio_url?: string
   video_url?: string
   mime_type?: string
-}) => {
+}, sendingTextTestMessage: string) => {
   switch (event.type) {
     case 'test_start':
       addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
@@ -1003,11 +1007,11 @@ const handleEvent = (event: {
                     ? t('admin.accounts.grok.sendingSTTRequest')
                     : grokTestMode.value === 'realtime'
                       ? t('admin.accounts.grok.sendingRealtimeRequest')
-                      : t('admin.accounts.sendingTestMessage')
+                      : sendingTextTestMessage
           : supportsImageTest.value
             ? t('admin.accounts.sendingImageRequest')
-            : t('admin.accounts.sendingTestMessage'),
-        'text-gray-400'
+            : sendingTextTestMessage,
+        'text-gray-400 whitespace-pre-wrap break-words'
       )
       addLine('', 'text-gray-300')
       addLine(t('admin.accounts.response'), 'text-yellow-400')
