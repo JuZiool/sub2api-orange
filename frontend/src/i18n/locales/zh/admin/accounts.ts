@@ -228,6 +228,12 @@ export default {
       setPrivacy: '设置隐私',
       subscriptionAbnormal: '异常',
       subscriptionExpires: '到期',
+      subscriptionGraceUntil: '挽留至 {time}',
+      subscriptionGraceEnded: '挽留已结束 {time}',
+      subscriptionGraceLoading: '查询挽留期…',
+      subscriptionGraceMissing: '未返回挽留期',
+      subscriptionGraceFailed: '挽留期查询失败',
+      subscriptionGraceRetry: '点击重新查询挽留期',
       // 容量状态提示
       capacity: {
         proxyPoolTotal: '代理池总并发（{count} 个代理）',

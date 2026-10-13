@@ -382,6 +382,12 @@ export default {
       setPrivacy: 'Set Privacy',
       subscriptionAbnormal: 'Abnormal',
       subscriptionExpires: 'Expires',
+      subscriptionGraceUntil: 'Grace until {time}',
+      subscriptionGraceEnded: 'Grace ended {time}',
+      subscriptionGraceLoading: 'Checking grace period…',
+      subscriptionGraceMissing: 'No grace period returned',
+      subscriptionGraceFailed: 'Grace period query failed',
+      subscriptionGraceRetry: 'Click to retry the grace period query',
       // Capacity status tooltips
       capacity: {
         proxyPoolTotal: 'Proxy pool total concurrency ({count} proxies)',

@@ -261,6 +261,7 @@
                     {{ getAntigravityTierLabel(row) }}
                   </span>
                 </div>
+                <OpenAISubscriptionGraceCell :account="row" />
                 <div
                   v-if="getOpenAICompactMeta(row)"
                   :class="[
@@ -533,6 +534,7 @@ import AccountStatsModal from '@/components/admin/account/AccountStatsModal.vue'
 import ScheduledTestsPanel from '@/components/admin/account/ScheduledTestsPanel.vue'
 import type { SelectOption } from '@/components/common/Select.vue'
 import AccountStatusIndicator from '@/components/account/AccountStatusIndicator.vue'
+import OpenAISubscriptionGraceCell from '@/components/account/OpenAISubscriptionGraceCell.vue'
 import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'

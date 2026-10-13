@@ -231,36 +231,9 @@ func fetchChatGPTSubscriptionExpiresAt(ctx context.Context, clientFactory Privac
 		return ""
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-
-	client, err := clientFactory(proxyURL)
-	if err != nil {
-		slog.Debug("chatgpt_subscription_client_error", "error", err.Error())
-		return ""
-	}
-
-	var result struct {
-		PlanType    string `json:"plan_type"`
-		ActiveUntil string `json:"active_until"`
-		WillRenew   bool   `json:"will_renew"`
-		ID          string `json:"id"`
-	}
-	resp, err := client.R().
-		SetContext(ctx).
-		SetHeader("Authorization", "Bearer "+accessToken).
-		SetHeader("Origin", "https://chatgpt.com").
-		SetHeader("Referer", "https://chatgpt.com/").
-		SetHeader("Accept", "application/json").
-		SetSuccessResult(&result).
-		SetQueryParam("account_id", accountID).
-		Get(chatGPTSubscriptionsURL)
+	result, err := fetchChatGPTSubscription(ctx, clientFactory, accessToken, proxyURL, accountID)
 	if err != nil {
 		slog.Warn("chatgpt_subscription_request_error", "error", err.Error())
-		return ""
-	}
-	if !resp.IsSuccessState() {
-		slog.Warn("chatgpt_subscription_failed", "status", resp.StatusCode, "cf_challenge", isCloudflareChallengeResponse(resp.Header.Get("cf-mitigated"), resp.String()), "body", truncate(resp.String(), 200))
 		return ""
 	}
 
