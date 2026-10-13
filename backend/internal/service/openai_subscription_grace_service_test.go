@@ -126,7 +126,7 @@ func TestSubscriptionGrace_EmptyAndFailedResponses(t *testing.T) {
 		{"html success", `<html>challenge</html>`, 200, true},
 		{"null response", `null`, 200, true},
 		{"unauthorized", `{"error":"token expired"}`, 401, true},
-		{"cloudflare", `<html>challenge</html>`, 403, true},
+		{"cloudflare", `<html>Just a moment - cloudflare</html>`, 403, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -151,9 +151,53 @@ func TestSubscriptionGrace_EmptyAndFailedResponses(t *testing.T) {
 				require.NoError(t, err)
 				require.Empty(t, info.GracePeriodEndsAt)
 			}
+			if tc.name == "unauthorized" {
+				require.Contains(t, err.Error(), "HTTP 401")
+			}
+			if tc.name == "cloudflare" {
+				require.Contains(t, err.Error(), "HTTP 403")
+				require.Contains(t, err.Error(), "Cloudflare")
+			}
 			if tc.name == "invalid timestamp" {
 				require.Equal(t, "2026-01-01T00:00:00Z", fetchChatGPTSubscriptionExpiresAt(context.Background(), svc.privacyClientFactory, "secret-token", "", "personal"), "非法挽留字段不能破坏原有到期补全")
 			}
+		})
+	}
+}
+
+func TestSubscriptionGrace_ClientAndRequestErrorsPreserveSafeDetails(t *testing.T) {
+	for _, stage := range []string{"client", "request"} {
+		t.Run(stage, func(t *testing.T) {
+			proxy := &Proxy{ID: 7, Protocol: "socks5", Host: "127.0.0.1", Port: 1080,
+				Username: "proxy-user", Password: "private/proxy?password", Status: StatusActive}
+			const accessToken = "private-bearer-token"
+			requestErr := errors.New("dial tcp 127.0.0.1:1080: context deadline exceeded; proxy=" + proxy.URL() +
+				" password=" + proxy.Password + " Authorization=Bearer " + accessToken)
+			svc := &OpenAIOAuthService{
+				proxyRepo: subscriptionGraceProxyRepo{proxy: proxy},
+				privacyClientFactory: func(proxyURL string) (*req.Client, error) {
+					require.Equal(t, proxy.URL(), proxyURL)
+					if stage == "client" {
+						return nil, requestErr
+					}
+					client := req.C().SetTimeout(time.Second)
+					client.GetTransport().WrapRoundTripFunc(func(http.RoundTripper) req.HttpRoundTripFunc {
+						return func(*http.Request) (*http.Response, error) { return nil, requestErr }
+					})
+					return client, nil
+				},
+			}
+			account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, ProxyID: &proxy.ID, Credentials: map[string]any{
+				"access_token": accessToken, "chatgpt_account_id": "personal", "plan_type": "plus",
+				"subscription_expires_at": time.Now().Add(-time.Hour).Format(time.RFC3339),
+			}}
+			_, err := svc.GetAccountSubscriptionGrace(context.Background(), account)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "via account proxy")
+			require.Contains(t, err.Error(), "context deadline exceeded")
+			require.NotContains(t, err.Error(), accessToken)
+			require.NotContains(t, err.Error(), proxy.Password)
+			require.NotContains(t, err.Error(), "private%2Fproxy%3Fpassword")
 		})
 	}
 }

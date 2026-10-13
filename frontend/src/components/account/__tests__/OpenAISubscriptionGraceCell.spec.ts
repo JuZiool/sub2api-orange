@@ -130,10 +130,13 @@ describe('OpenAI Plus subscription grace in the account column', () => {
   })
 
   it('shows failure and lets the user retry immediately', async () => {
-    get.mockRejectedValueOnce(new Error('upstream unavailable'))
+    const message = 'subscription request failed (via account proxy): context deadline exceeded'
+    get.mockRejectedValueOnce({ reason: 'OPENAI_SUBSCRIPTION_QUERY_FAILED', message })
     const wrapper = render()
     await flushPromises()
     expect(wrapper.text()).toContain('subscriptionGraceFailed')
+    expect(wrapper.get('button').attributes('title')).toContain(message)
+    expect(wrapper.get('button').attributes('aria-label')).toContain(message)
     render()
     await flushPromises()
     expect(get).toHaveBeenCalledTimes(1)
@@ -141,13 +144,24 @@ describe('OpenAI Plus subscription grace in the account column', () => {
     await flushPromises()
     expect(get).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('subscriptionGraceUntil')
+    expect(wrapper.find('button').exists()).toBe(false)
   })
 
-  it('hides when the upstream reports a renewed subscription', async () => {
+  it('keeps the grace deadline visible when active_until is in the future', async () => {
     get.mockResolvedValue({ data: { ...response, active_until: '2026-11-12T00:00:00Z' } })
     const wrapper = render()
     await flushPromises()
-    expect(wrapper.text()).toBe('')
+    expect(wrapper.text()).toContain('subscriptionGraceUntil')
+    expect(wrapper.get('span').attributes('title')).toContain('subscriptionGraceUpstreamExpires')
+  })
+
+  it('reports missing grace data instead of hiding a future active_until', async () => {
+    get.mockResolvedValue({ data: { ...response, active_until: '2026-11-12T00:00:00Z', grace_period_end_timestamp: '' } })
+    const wrapper = render()
+    await flushPromises()
+    expect(wrapper.text()).toContain('subscriptionGraceMissing')
+    expect(wrapper.get('span').attributes('title')).toContain('subscriptionGraceUpstreamExpires')
+    expect(wrapper.get('span').attributes('title')).toContain('2026')
   })
 
   it('discards a late response after the row becomes unexpired', async () => {

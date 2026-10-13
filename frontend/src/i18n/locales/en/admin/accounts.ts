@@ -388,6 +388,7 @@ export default {
       subscriptionGraceMissing: 'No grace period returned',
       subscriptionGraceFailed: 'Grace period query failed',
       subscriptionGraceRetry: 'Click to retry the grace period query',
+      subscriptionGraceUpstreamExpires: 'Upstream subscription expires {time}',
       // Capacity status tooltips
       capacity: {
         proxyPoolTotal: 'Proxy pool total concurrency ({count} proxies)',

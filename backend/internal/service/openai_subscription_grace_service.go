@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
+	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 )
 
 // Orange 特有：只读取订阅时间，不触发令牌刷新、隐私设置或数据库更新。
@@ -39,7 +42,7 @@ func fetchChatGPTSubscription(ctx context.Context, clientFactory PrivacyClientFa
 	defer cancel()
 	client, err := clientFactory(proxyURL)
 	if err != nil {
-		return nil, fmt.Errorf("subscription client unavailable")
+		return nil, subscriptionQueryError("subscription client unavailable", err, accessToken, proxyURL)
 	}
 	resp, err := client.R().
 		SetContext(ctx).
@@ -52,9 +55,12 @@ func fetchChatGPTSubscription(ctx context.Context, clientFactory PrivacyClientFa
 		SetQueryParam("account_id", accountID).
 		Get(chatGPTSubscriptionsURL)
 	if err != nil {
-		return nil, fmt.Errorf("subscription request or response decoding failed")
+		return nil, subscriptionQueryError("subscription request failed", err, accessToken, proxyURL)
 	}
 	if !resp.IsSuccessState() {
+		if isCloudflareChallengeResponse(resp.Header.Get("cf-mitigated"), resp.String()) {
+			return nil, fmt.Errorf("subscription blocked by Cloudflare (HTTP %d)", resp.StatusCode)
+		}
 		return nil, fmt.Errorf("subscription request failed (HTTP %d)", resp.StatusCode)
 	}
 	var result chatGPTSubscriptionResponse
@@ -66,6 +72,32 @@ func fetchChatGPTSubscription(ctx context.Context, clientFactory PrivacyClientFa
 		return nil, fmt.Errorf("subscription response decoding failed")
 	}
 	return &result, nil
+}
+
+// Orange 特有：保留拨号、超时和 TLS 细节，移除令牌及代理认证信息。
+func subscriptionQueryError(stage string, err error, accessToken, proxyURL string) error {
+	detail := err.Error()
+	secrets := []string{accessToken, strings.TrimSpace(proxyURL)}
+	if _, parsed, parseErr := proxyurl.Parse(proxyURL); parseErr == nil && parsed != nil {
+		secrets = append(secrets, parsed.String())
+		if parsed.User != nil {
+			secrets = append(secrets, parsed.User.String())
+			if password, ok := parsed.User.Password(); ok {
+				secrets = append(secrets, password, url.QueryEscape(password), url.PathEscape(password))
+			}
+		}
+	}
+	for _, secret := range secrets {
+		if secret != "" {
+			detail = strings.ReplaceAll(detail, secret, "***")
+		}
+	}
+	detail = truncateString(logredact.RedactText(sanitizeUpstreamErrorMessage(detail), "authorization", "cookie", "account_id"), 1024)
+	route := "direct"
+	if strings.TrimSpace(proxyURL) != "" {
+		route = "via account proxy"
+	}
+	return fmt.Errorf("%s (%s): %s", stage, route, detail)
 }
 
 func (s *OpenAIOAuthService) GetAccountSubscriptionGrace(ctx context.Context, account *Account) (*OpenAISubscriptionGrace, error) {

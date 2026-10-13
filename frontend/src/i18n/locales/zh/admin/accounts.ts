@@ -234,6 +234,7 @@ export default {
       subscriptionGraceMissing: '未返回挽留期',
       subscriptionGraceFailed: '挽留期查询失败',
       subscriptionGraceRetry: '点击重新查询挽留期',
+      subscriptionGraceUpstreamExpires: '上游订阅到期 {time}',
       // 容量状态提示
       capacity: {
         proxyPoolTotal: '代理池总并发（{count} 个代理）',
