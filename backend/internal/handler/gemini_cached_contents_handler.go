@@ -125,6 +125,7 @@ func (h *GatewayHandler) GeminiCachedContentsCreate(c *gin.Context) {
 
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, modelName)
 	reqModel := modelName
+	rateResolution := h.gatewayService.ResolveRateResolution(c.Request.Context(), authSubject.UserID, apiKey.Group, reqModel)
 	if channelMapping.Mapped {
 		modelName = channelMapping.MappedModel
 	}
@@ -276,13 +277,14 @@ func (h *GatewayHandler) GeminiCachedContentsCreate(c *gin.Context) {
 				Usage: service.ClaudeUsage{InputTokens: int(tokens)}, CacheStorageTokenHours: storageTokenHours,
 			},
 			APIKey: apiKey, User: apiKey.User, Subscription: subscription, PricingAt: pricingAt, ChannelUsageFields: usageFields,
+			RateResolution: rateResolution,
 		})
 		inflightRelease()
 		chargeDone, err := h.reserveGeminiCachedContentCharge(c, apiKey, subscription, amount)
 		if err != nil {
 			reqLog.Info("gemini.cached_content.storage_charge_rejected", zap.Float64("amount", amount), zap.Error(err))
 			h.cleanupGeminiCachedContentUpstream(reqLog, account, upstream.Name)
-			h.submitGeminiCachedContentUsage(c, apiKey, account, subscription, pricingAt,
+			h.submitGeminiCachedContentUsage(c, apiKey, account, subscription, pricingAt, rateResolution,
 				service.GeminiCachedContentCreateUsageRequestID(publicID), modelName, mappedModel, int(tokens), 0, usageFields, body)
 			writeGeminiCachedContentBillingError(c, err)
 			return
@@ -314,7 +316,7 @@ func (h *GatewayHandler) GeminiCachedContentsCreate(c *gin.Context) {
 			return
 		}
 
-		h.submitGeminiCachedContentUsage(c, apiKey, account, subscription, pricingAt,
+		h.submitGeminiCachedContentUsage(c, apiKey, account, subscription, pricingAt, rateResolution,
 			service.GeminiCachedContentCreateUsageRequestID(publicID), modelName, mappedModel, int(tokens), storageTokenHours, usageFields, body)
 		c.JSON(http.StatusOK, service.GeminiCachedContentView(record))
 		return
@@ -429,6 +431,11 @@ func (h *GatewayHandler) GeminiCachedContentsPatch(c *gin.Context) {
 	setOpsRequestContext(c, record.Model, false)
 	pricingCtx, pricingAt := service.WithGatewayTokenRequestPricing(c.Request.Context())
 	c.Request = c.Request.WithContext(pricingCtx)
+	requestedModel := record.ChannelUsage.OriginalModel
+	if requestedModel == "" {
+		requestedModel = record.Model
+	}
+	rateResolution := h.gatewayService.ResolveRateResolution(c.Request.Context(), apiKey.UserID, apiKey.Group, requestedModel)
 
 	subscription, _ := middleware.GetSubscriptionFromContext(c)
 	if extension := svc.Now().Add(ttl).Sub(record.ExpireTime); extension > 0 {
@@ -439,6 +446,7 @@ func (h *GatewayHandler) GeminiCachedContentsPatch(c *gin.Context) {
 			},
 			APIKey: apiKey, User: apiKey.User, Subscription: subscription, PricingAt: pricingAt,
 			ChannelUsageFields: record.ChannelUsage,
+			RateResolution:     rateResolution,
 		}
 		if !h.gatewayService.CacheStoragePriced(c.Request.Context(), usage) {
 			googlePlatformError(c, http.StatusBadRequest, fmt.Sprintf("Explicit context caching is not available for model %s: storage pricing is not configured", record.Model))
@@ -511,7 +519,7 @@ func (h *GatewayHandler) GeminiCachedContentsPatch(c *gin.Context) {
 	}
 	// 提交前库中的到期时间一直是修改前的值：按本次实际推进的时长收费。
 	if extended := expireTime.Sub(mutation.Baseline()); extended > 0 {
-		h.submitGeminiCachedContentUsage(c, apiKey, account, subscription, pricingAt,
+		h.submitGeminiCachedContentUsage(c, apiKey, account, subscription, pricingAt, rateResolution,
 			service.GeminiCachedContentPatchUsageRequestID(record.PublicID), record.Model, record.UpstreamModelID(), 0,
 			service.GeminiCachedContentStorageTokenHours(record.TotalTokenCount, extended), record.ChannelUsage, body)
 	}
@@ -662,6 +670,7 @@ func (h *GatewayHandler) submitGeminiCachedContentUsage(
 	account *service.Account,
 	subscription *service.UserSubscription,
 	pricingAt time.Time,
+	rateResolution *service.RateResolution,
 	requestID string,
 	model string,
 	upstreamModel string,
@@ -697,6 +706,7 @@ func (h *GatewayHandler) submitGeminiCachedContentUsage(
 			Account:            account,
 			Subscription:       subscription,
 			PricingAt:          pricingAt,
+			RateResolution:     rateResolution,
 			InboundEndpoint:    inboundEndpoint,
 			UpstreamEndpoint:   upstreamEndpoint,
 			UserAgent:          userAgent,
