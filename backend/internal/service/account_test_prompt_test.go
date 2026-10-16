@@ -4,6 +4,8 @@ package service
 
 import (
 	"encoding/json"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -91,21 +93,24 @@ func TestAccountTestPromptAntigravityDefaultsAndCustom(t *testing.T) {
 	svc := &AntigravityGatewayService{}
 	for _, builder := range []struct {
 		name  string
-		build func(string, string, ...string) ([]byte, error)
+		model string
+		build func(string, string, string) ([]byte, error)
 	}{
-		{"gemini", svc.buildGeminiTestRequest},
-		{"claude", svc.buildClaudeTestRequest},
+		{"gemini", "gemini-2.5-flash", svc.buildGeminiTestRequestWithPrompt},
+		{"claude", "claude-sonnet-4-6", func(projectID, model, prompt string) ([]byte, error) {
+			return svc.buildClaudeTestRequest(projectID, model, prompt)
+		}},
 	} {
 		for _, tc := range []struct {
-			prompts []string
-			want    string
-			limit   int64
+			prompt string
+			want   string
+			limit  int64
 		}{
-			{nil, ".", 1},
-			{[]string{" \n"}, ".", 1},
-			{[]string{"  中文\"🙂\"\n"}, "  中文\"🙂\"\n", 1024},
+			{"", ".", 1},
+			{" \n", ".", 1},
+			{"  中文\"🙂\"\n", "  中文\"🙂\"\n", 1024},
 		} {
-			raw, err := builder.build("test-project", "claude-sonnet-4-6", tc.prompts...)
+			raw, err := builder.build("test-project", builder.model, tc.prompt)
 			require.NoError(t, err)
 			want := tc.want
 			if builder.name == "claude" {
@@ -127,4 +132,66 @@ func TestAccountTestPromptGrokFinalRequest(t *testing.T) {
 	require.NoError(t, svc.TestAccountConnection(c, account.ID, "grok-4.3", prompt, "text"))
 	require.Len(t, upstream.requests, 1)
 	require.Equal(t, prompt, gjson.GetBytes(upstream.lastBody, "input").String())
+}
+
+func TestAccountTestPromptAntigravityFinalRequests(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		model  string
+		prompt string
+		image  bool
+	}{
+		{"gemini_default", "gemini-2.5-flash", "", false},
+		{"gemini_custom", "gemini-2.5-flash", "  请回复你好🙂\n", false},
+		{"claude_default", "claude-sonnet-4-6", "", false},
+		{"claude_custom", "claude-sonnet-4-6", "  请回复你好🙂\n", false},
+		{"image_default", "gemini-3.1-flash-image", "", true},
+		{"image_custom", "gemini-3.1-flash-image", "画一只猫", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			account := adaptiveCNAccountTestAccount(993, PlatformAntigravity)
+			account.Type = AccountTypeOAuth
+			account.Credentials = map[string]any{
+				"access_token":  "test-token",
+				"project_id":    "test-project",
+				"model_mapping": map[string]any{"probe-alias": tc.model},
+			}
+			parts := `{"text":"ok"}`
+			if tc.image {
+				parts += `,{"inlineData":{"mimeType":"image/png","data":"aW1hZ2U="}}`
+			}
+			upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(`data: {"response":{"candidates":[{"content":{"parts":[` + parts + "]}}]}}\n\n")),
+			}}}
+			svc, _ := adaptiveCNAccountTestService(account)
+			svc.antigravityGatewayService = &AntigravityGatewayService{
+				tokenProvider: &AntigravityTokenProvider{},
+				httpUpstream:  upstream,
+			}
+			c, rec := newTestContext()
+			require.NoError(t, svc.TestAccountConnection(c, account.ID, "probe-alias", tc.prompt, "default"))
+			require.Len(t, upstream.requestBodies, 1)
+			raw := upstream.requestBodies[0]
+			require.Equal(t, tc.model, gjson.GetBytes(raw, "model").String())
+			wantPrompt, wantLimit := resolveAntigravityTestPrompt(tc.prompt)
+			if tc.image {
+				wantPrompt = tc.prompt
+				if wantPrompt == "" {
+					wantPrompt = defaultGeminiImageTestPrompt
+				}
+				require.Equal(t, `["TEXT","IMAGE"]`, gjson.GetBytes(raw, "request.generationConfig.responseModalities").Raw)
+				require.Contains(t, rec.Body.String(), `"type":"image"`)
+				require.Contains(t, rec.Body.String(), "data:image/png;base64,aW1hZ2U=")
+			} else {
+				require.EqualValues(t, wantLimit, gjson.GetBytes(raw, "request.generationConfig.maxOutputTokens").Int())
+				if strings.HasPrefix(tc.model, "claude-") {
+					wantPrompt = strings.TrimSpace(wantPrompt)
+				}
+			}
+			require.Equal(t, wantPrompt, gjson.GetBytes(raw, "request.contents.0.parts.0.text").String())
+			require.Contains(t, rec.Body.String(), `"type":"test_complete","success":true`)
+		})
+	}
 }
