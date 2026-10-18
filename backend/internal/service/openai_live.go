@@ -251,6 +251,9 @@ func (s *OpenAIGatewayService) shouldFailoverLiveCreateError(account *Account, e
 		// 凭证读取和网络传输错误都可能只影响当前账号或代理。
 		return true
 	}
+	if !upstreamErr.ShouldRetryNextAccount() {
+		return false
+	}
 	return s.shouldFailoverOpenAIUpstreamResponse(account,
 		upstreamErr.StatusCode,
 		"",
@@ -264,6 +267,9 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 	request *LiveCallRequest,
 	attestation string,
 ) (*LiveCallCreated, error) {
+	if err := s.validateLiveCodexTransport(ctx, account); err != nil {
+		return nil, err
+	}
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		logLiveCreateStageFailure(ctx, account.ID, "access_token", err)
@@ -413,11 +419,38 @@ func applyLiveUpstreamIdentityHeaders(headers http.Header) {
 	headers.Del("OpenAI-Beta")
 }
 
+// Live uses its own SDP protocol and has no sampled strict transport profile.
+// Resolve the credential source so a shadow cannot bypass its source's setting.
+func (s *OpenAIGatewayService) validateLiveCodexTransport(ctx context.Context, account *Account) error {
+	if account == nil || !account.IsOpenAIOAuthLike() {
+		return nil
+	}
+	source, err := resolveCredentialAccount(ctx, s.accountRepo, account)
+	if err != nil {
+		return err
+	}
+	if source == nil {
+		return nil
+	}
+	if raw, exists := source.Extra[CodexVerifiedTransportExtraKey]; exists {
+		if _, valid := raw.(bool); !valid {
+			return codexStrictClientError(errors.New("the strict transport setting must be a boolean"))
+		}
+	}
+	if codexVerifiedTransportEnabled(source.Extra) {
+		return codexStrictClientError(errors.New("strict transport does not support the Realtime/Live protocol"))
+	}
+	return nil
+}
+
 func (s *OpenAIGatewayService) liveSidebandHeaders(
 	ctx context.Context,
 	account *Account,
 	record *LiveCallRecord,
 ) (http.Header, error) {
+	if err := s.validateLiveCodexTransport(ctx, account); err != nil {
+		return nil, err
+	}
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		return nil, err

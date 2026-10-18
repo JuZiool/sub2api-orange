@@ -83,7 +83,7 @@ func codexFingerprintSeedValidSQL(extraExpr string) string {
 }
 
 func ensureCodexFingerprintSeedSQL(extraExpr string) string {
-	return "CASE WHEN platform = 'openai' AND type = 'oauth' THEN " +
+	return "CASE WHEN platform = 'openai' AND (type = 'oauth' OR (type = 'setup-token' AND (" + extraExpr + ") ->> 'codex_fingerprint_mode' = 'fixed_device_conversations')) THEN " +
 		"jsonb_set(" + extraExpr + ", '{codex_fingerprint_seed}', " +
 		"CASE WHEN " + codexFingerprintSeedValidSQL("extra") +
 		" THEN to_jsonb(extra ->> 'codex_fingerprint_seed') ELSE to_jsonb(gen_random_uuid()::text) END, true) " +
@@ -94,12 +94,14 @@ func stripCodexFingerprintSeedFromExtraUpdate(extra map[string]any) map[string]a
 	if extra == nil {
 		return nil
 	}
-	if _, exists := extra["codex_fingerprint_seed"]; !exists {
+	_, hasSeed := extra["codex_fingerprint_seed"]
+	_, hasIdentity := extra[service.CodexClientIdentityExtraKey]
+	if !hasSeed && !hasIdentity {
 		return extra
 	}
 	stripped := make(map[string]any, len(extra)-1)
 	for key, value := range extra {
-		if key == "codex_fingerprint_seed" {
+		if key == "codex_fingerprint_seed" || key == service.CodexClientIdentityExtraKey {
 			continue
 		}
 		stripped[key] = value
@@ -705,7 +707,9 @@ func lockAndMergeAccountProbeExtra(
 				false
 			),
 			extra -> 'opencode_go_usage_auto_refresh',
-			extra -> 'opencode_go_usage_snapshot'
+			extra -> 'opencode_go_usage_snapshot',
+			extra -> 'codex_fingerprint_seed',
+			extra -> 'codex_client_identity'
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -734,6 +738,8 @@ func lockAndMergeAccountProbeExtra(
 		currentOllamaSnapshot          []byte
 		currentOpenCodeAutoRefresh     []byte
 		currentOpenCodeSnapshot        []byte
+		currentCodexSeed               []byte
+		currentCodexIdentity           []byte
 	)
 	if err := rows.Scan(
 		&identityUnchanged,
@@ -748,6 +754,8 @@ func lockAndMergeAccountProbeExtra(
 		&opencodeGroupIdentityUnchanged,
 		&currentOpenCodeAutoRefresh,
 		&currentOpenCodeSnapshot,
+		&currentCodexSeed,
+		&currentCodexIdentity,
 	); err != nil {
 		return nil, err
 	}
@@ -756,6 +764,18 @@ func lockAndMergeAccountProbeExtra(
 	}
 
 	extra := copyJSONMap(normalizeJSONMap(account.Extra))
+	currentCodexExtra := make(map[string]any, 2)
+	for key, raw := range map[string][]byte{
+		"codex_fingerprint_seed":            currentCodexSeed,
+		service.CodexClientIdentityExtraKey: currentCodexIdentity,
+	} {
+		if value, ok, decodeErr := decodeAccountExtraJSON(raw); decodeErr != nil {
+			return nil, decodeErr
+		} else if ok {
+			currentCodexExtra[key] = value
+		}
+	}
+	extra = service.PreserveCodexManagedIdentityExtra(account, currentCodexExtra)
 	for _, key := range []string{
 		service.UpstreamBillingProbeEnabledExtraKey,
 		service.UpstreamBillingRateSyncEnabledExtraKey,

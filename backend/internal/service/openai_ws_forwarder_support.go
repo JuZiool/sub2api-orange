@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codextransport"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -77,9 +78,13 @@ func (s *OpenAIGatewayService) performOpenAIWSGeneratePrewarm(
 	}
 	prewarmPayload["generate"] = false
 	prewarmPayloadJSON := payloadAsJSONBytes(prewarmPayload)
+	_, strictTransport := codextransport.FromContext(ctx)
 
 	if err := lease.WriteJSONWithContextTimeout(ctx, prewarmPayload, s.openAIWSWriteTimeout()); err != nil {
 		lease.MarkBroken()
+		if strictTransport {
+			return codexStrictClientError(&codextransport.Failure{Err: err})
+		}
 		logOpenAIWSModeInfo(
 			"prewarm_write_fail account_id=%d conn_id=%s cause=%s",
 			account.ID,
@@ -97,6 +102,9 @@ func (s *OpenAIGatewayService) performOpenAIWSGeneratePrewarm(
 		message, readErr := lease.ReadMessageWithContextTimeout(ctx, s.openAIWSReadTimeout())
 		if readErr != nil {
 			lease.MarkBroken()
+			if strictTransport {
+				return codexStrictClientError(&codextransport.Failure{Err: readErr})
+			}
 			closeStatus, closeReason := summarizeOpenAIWSReadCloseError(readErr)
 			logOpenAIWSModeInfo(
 				"prewarm_read_fail account_id=%d conn_id=%s close_status=%s close_reason=%s cause=%s events=%d",
@@ -110,6 +118,10 @@ func (s *OpenAIGatewayService) performOpenAIWSGeneratePrewarm(
 			return wrapOpenAIWSFallback("prewarm_"+classifyOpenAIWSReadFallbackReason(readErr), readErr)
 		}
 
+		if strictTransport && !json.Valid(message) {
+			lease.MarkBroken()
+			return codexStrictClientError(&codextransport.Failure{Err: errors.New("upstream websocket prewarm returned malformed Responses event JSON")})
+		}
 		eventType, eventResponseID, _ := parseOpenAIWSEventEnvelope(message)
 		if eventType == "" {
 			continue

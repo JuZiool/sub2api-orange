@@ -1,0 +1,407 @@
+{
+  "version": "0.162.1",
+  "source_commit": "092d3acd6bec3e3a14bdc7e7a2810ab628ab759d",
+  "trust_mode": "isolated CODEX_CA_CERTIFICATE",
+  "builds": [
+    {
+      "system": "Darwin",
+      "machine": "arm64",
+      "release": "24.6.0",
+      "binary_sha256": "74c6a6d263f40d65f99c27a815275f5b4ed0bcc2baecc396b4cf3255498bdfc0",
+      "capture_sha256": "1305a24b6bf1f4ae581e8758a45ad0458b72e68b96698ad3248d03d2a5a53063",
+      "run": 38678469179
+    },
+    {
+      "system": "Darwin",
+      "machine": "x86_64",
+      "release": "24.6.0",
+      "binary_sha256": "f86b8cfd3de94dc70763d251da3ff292e94f4a53ad41b81faab3619a7bcb626c",
+      "capture_sha256": "9a277bb573e779c7e56b648f1d2557e79d03661a7430a5039787c0f4240377f6",
+      "run": 38678469179
+    },
+    {
+      "system": "Windows",
+      "machine": "AMD64",
+      "release": "2025Server",
+      "binary_sha256": "dd13bdb162a184fa04039488b234a8258ef9b76f84e926c505d5742b19249a6a",
+      "capture_sha256": "ee28fc637855987c22cef3f66a39e40c61b1aef1112bfb0b6d5271eac34b9e9a",
+      "run": 38678469179
+    },
+    {
+      "system": "Linux",
+      "machine": "x86_64",
+      "release": "6.17.0-1022-azure",
+      "binary_sha256": "628e35487d888a28f0427fc37501da529dd3d81fcbad7a2c3421c1e8670d92e1",
+      "capture_sha256": "fac35060f0b97a3b2fd8b98a0c7e753f2ffd2784dc0b36545e139ab90d374766",
+      "run": 38678469179
+    }
+  ],
+  "profiles": {
+    "http": {
+      "tls": {
+        "legacy_version": 771,
+        "cipher_suites": [
+          4866,
+          4865,
+          4867,
+          49196,
+          49195,
+          52393,
+          49200,
+          49199,
+          52392,
+          255
+        ],
+        "compression_methods": [
+          0
+        ],
+        "session_id_length": 32,
+        "extensions": [
+          23,
+          0,
+          45,
+          11,
+          5,
+          35,
+          13,
+          16,
+          51,
+          43,
+          10
+        ],
+        "extension_data": {
+          "23": "",
+          "45": "0101",
+          "11": "0100",
+          "5": "0100000000",
+          "13": "001a0503040306030807080608050804060105010401090409050906",
+          "16": "000c02683208687474702f312e31",
+          "43": "0403040303",
+          "10": "000811ec001d00170018"
+        },
+        "alpn": [
+          "h2",
+          "http/1.1"
+        ],
+        "groups": [
+          4588,
+          29,
+          23,
+          24
+        ],
+        "key_share_groups": [
+          4588,
+          29
+        ],
+        "signature_algorithms": [
+          1283,
+          1027,
+          1539,
+          2055,
+          2054,
+          2053,
+          2052,
+          1537,
+          1281,
+          1025,
+          2308,
+          2309,
+          2310
+        ],
+        "versions": [
+          772,
+          771
+        ],
+        "psk_modes": [
+          1
+        ]
+      },
+      "header_order": [
+        "x-codex-beta-features",
+        "x-codex-window-id",
+        "x-codex-turn-metadata",
+        "x-client-request-id",
+        "session-id",
+        "thread-id",
+        "accept",
+        "content-type",
+        "authorization",
+        "originator",
+        "user-agent",
+        "content-length"
+      ],
+      "header_case": {
+        "x-codex-beta-features": "x-codex-beta-features",
+        "x-codex-window-id": "x-codex-window-id",
+        "x-codex-turn-metadata": "x-codex-turn-metadata",
+        "x-client-request-id": "x-client-request-id",
+        "session-id": "session-id",
+        "thread-id": "thread-id",
+        "accept": "accept",
+        "content-type": "content-type",
+        "authorization": "authorization",
+        "originator": "originator",
+        "user-agent": "user-agent",
+        "content-length": "content-length"
+      },
+      "pseudo_header_order": [
+        ":method",
+        ":scheme",
+        ":authority",
+        ":path"
+      ],
+      "settings": [
+        {
+          "id": 2,
+          "value": 0
+        },
+        {
+          "id": 4,
+          "value": 2097152
+        },
+        {
+          "id": 5,
+          "value": 16384
+        },
+        {
+          "id": 6,
+          "value": 16384
+        }
+      ],
+      "connection_flow": 5177345,
+      "extension_order": "randomized"
+    },
+    "ws": {
+      "tls": {
+        "legacy_version": 771,
+        "cipher_suites": [
+          4866,
+          4865,
+          4867,
+          49196,
+          49195,
+          52393,
+          49200,
+          49199,
+          52392,
+          255
+        ],
+        "compression_methods": [
+          0
+        ],
+        "session_id_length": 32,
+        "extensions": [
+          35,
+          23,
+          0,
+          13,
+          5,
+          11,
+          51,
+          43,
+          45,
+          10
+        ],
+        "extension_data": {
+          "23": "",
+          "13": "001a0503040306030807080608050804060105010401090409050906",
+          "5": "0100000000",
+          "11": "0100",
+          "43": "0403040303",
+          "45": "0101",
+          "10": "000811ec001d00170018"
+        },
+        "alpn": [],
+        "groups": [
+          4588,
+          29,
+          23,
+          24
+        ],
+        "key_share_groups": [
+          4588,
+          29
+        ],
+        "signature_algorithms": [
+          1283,
+          1027,
+          1539,
+          2055,
+          2054,
+          2053,
+          2052,
+          1537,
+          1281,
+          1025,
+          2308,
+          2309,
+          2310
+        ],
+        "versions": [
+          772,
+          771
+        ],
+        "psk_modes": [
+          1
+        ]
+      },
+      "header_order": [
+        "host",
+        "connection",
+        "upgrade",
+        "sec-websocket-version",
+        "sec-websocket-key",
+        "authorization",
+        "user-agent",
+        "originator",
+        "openai-beta",
+        "x-codex-turn-metadata",
+        "x-codex-beta-features",
+        "x-client-request-id",
+        "session-id",
+        "thread-id",
+        "x-codex-window-id",
+        "sec-websocket-extensions"
+      ],
+      "header_case": {
+        "host": "Host",
+        "connection": "Connection",
+        "upgrade": "Upgrade",
+        "sec-websocket-version": "Sec-WebSocket-Version",
+        "sec-websocket-key": "Sec-WebSocket-Key",
+        "authorization": "authorization",
+        "user-agent": "user-agent",
+        "originator": "originator",
+        "openai-beta": "openai-beta",
+        "x-codex-turn-metadata": "x-codex-turn-metadata",
+        "x-codex-beta-features": "x-codex-beta-features",
+        "x-client-request-id": "x-client-request-id",
+        "session-id": "session-id",
+        "thread-id": "thread-id",
+        "x-codex-window-id": "x-codex-window-id",
+        "sec-websocket-extensions": "sec-websocket-extensions"
+      },
+      "pseudo_header_order": [],
+      "settings": [],
+      "connection_flow": 0,
+      "extension_order": "randomized"
+    },
+    "http1": {
+      "tls": {
+        "legacy_version": 771,
+        "cipher_suites": [
+          4866,
+          4865,
+          4867,
+          49196,
+          49195,
+          52393,
+          49200,
+          49199,
+          52392,
+          255
+        ],
+        "compression_methods": [
+          0
+        ],
+        "session_id_length": 32,
+        "extensions": [
+          10,
+          0,
+          13,
+          16,
+          11,
+          5,
+          35,
+          23,
+          45,
+          43,
+          51
+        ],
+        "extension_data": {
+          "10": "000811ec001d00170018",
+          "13": "001a0503040306030807080608050804060105010401090409050906",
+          "16": "000c02683208687474702f312e31",
+          "11": "0100",
+          "5": "0100000000",
+          "23": "",
+          "45": "0101",
+          "43": "0403040303"
+        },
+        "alpn": [
+          "h2",
+          "http/1.1"
+        ],
+        "groups": [
+          4588,
+          29,
+          23,
+          24
+        ],
+        "key_share_groups": [
+          4588,
+          29
+        ],
+        "signature_algorithms": [
+          1283,
+          1027,
+          1539,
+          2055,
+          2054,
+          2053,
+          2052,
+          1537,
+          1281,
+          1025,
+          2308,
+          2309,
+          2310
+        ],
+        "versions": [
+          772,
+          771
+        ],
+        "psk_modes": [
+          1
+        ]
+      },
+      "header_order": [
+        "x-codex-beta-features",
+        "x-codex-window-id",
+        "x-codex-turn-metadata",
+        "x-client-request-id",
+        "session-id",
+        "thread-id",
+        "accept",
+        "content-type",
+        "authorization",
+        "originator",
+        "user-agent",
+        "host",
+        "content-length"
+      ],
+      "header_case": {
+        "x-codex-beta-features": "x-codex-beta-features",
+        "x-codex-window-id": "x-codex-window-id",
+        "x-codex-turn-metadata": "x-codex-turn-metadata",
+        "x-client-request-id": "x-client-request-id",
+        "session-id": "session-id",
+        "thread-id": "thread-id",
+        "accept": "accept",
+        "content-type": "content-type",
+        "authorization": "authorization",
+        "originator": "originator",
+        "user-agent": "user-agent",
+        "host": "host",
+        "content-length": "content-length"
+      },
+      "pseudo_header_order": [],
+      "settings": [],
+      "connection_flow": 0,
+      "extension_order": "randomized"
+    }
+  },
+  "real_model_requests": 0,
+  "resumption_observed": false,
+  "resumption_policy": "fresh handshake; official reconnect captures did not resume TLS sessions"
+}

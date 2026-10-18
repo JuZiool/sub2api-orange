@@ -1013,12 +1013,17 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 	fallbackTooLarge := false
 	var sseData openAISSEDataAccumulator
 	var streamErr error
+	sawTerminal := false
+	strictResponse := codexStrictResponseFailure(resp, ErrOpenAIUpstreamStreamTruncated) != nil
 	finish := func() error {
 		if direct == nil {
 			return nil
 		}
 		if streamErr != nil {
 			return streamErr
+		}
+		if strictResponse && !sawTerminal {
+			return codexStrictResponseFailure(resp, ErrOpenAIUpstreamStreamTruncated)
 		}
 		if !seenSSEData || imageCounter.Count() == 0 {
 			return newOpenAIUpstreamStreamReadError(ErrOpenAIUpstreamStreamTruncated)
@@ -1060,6 +1065,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesStreamingResponse(
 			return
 		}
 		eventType := gjson.GetBytes(dataBytes, "type").String()
+		if eventType == "image_generation.completed" || eventType == "image_edit.completed" {
+			sawTerminal = true
+		}
 		if direct != nil && strings.TrimSpace(direct.Model) != "" {
 			dataBytes, _ = sjson.SetBytes(dataBytes, "model", strings.TrimSpace(direct.Model))
 		}

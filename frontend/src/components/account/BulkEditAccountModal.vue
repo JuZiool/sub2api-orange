@@ -992,6 +992,15 @@
           </p>
           <Select v-model="codexFingerprintMode" data-testid="bulk-codex-fingerprint-mode-select" :options="codexFingerprintModeOptions" />
         </div>
+        <div v-if="enableCodexFingerprintMode && codexFingerprintMode === 'fixed_device_conversations'" class="mt-4 space-y-2">
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexFingerprintFixedDeviceConversationsDesc') }}</p>
+          <div class="flex items-center justify-between gap-4">
+            <label for="bulk-codex-verified-transport-update" class="input-label mb-0">{{ t('admin.accounts.openai.codexVerifiedTransport') }}</label>
+            <input id="bulk-codex-verified-transport-update" v-model="enableCodexVerifiedTransport" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+          </div>
+          <Select v-if="enableCodexVerifiedTransport" v-model="codexVerifiedTransportEnabled" :options="codexVerifiedTransportOptions" />
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexVerifiedTransportBulkDesc') }}</p>
+        </div>
       </div>
 
       <!-- Upstream billing auto probe (any API-key platform) -->
@@ -1485,6 +1494,7 @@ import type {
   AccountPlatform,
   AccountType,
   OpenAICompactMode,
+  CodexFingerprintMode,
   OpenAIEndpointCapability,
   OpenAIResponsesMode
 } from '@/types'
@@ -1708,12 +1718,18 @@ const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OF
 const upstreamBillingAutoProbeMode = ref<'enabled' | 'disabled'>('enabled')
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
-type CodexFingerprintMode = 'off' | 'single_machine_multi_window' | 'device' | 'session' | 'full'
 const enableCodexFingerprintMode = ref(false)
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
+const enableCodexVerifiedTransport = ref(false)
+const codexVerifiedTransportEnabled = ref(false)
+const codexVerifiedTransportOptions = computed(() => [
+  { value: false, label: t('common.disabled') },
+  { value: true, label: t('common.enabled') }
+])
 const codexFingerprintModeOptions = computed(() => [
   { value: 'off' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintOff') },
   { value: 'single_machine_multi_window' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintSingleMachineMultiWindow') },
+  { value: 'fixed_device_conversations' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFixedDeviceConversations') },
   { value: 'device' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintDevice') },
   { value: 'session' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintSession') },
   { value: 'full' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFull') },
@@ -2114,6 +2130,9 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     // load_factor 落 0，proxy_id 落 0 —— 批量路径一律用显式哨兵值，不用省略。
     extra.codex_fingerprint_mode = codexFingerprintMode.value
   }
+  if (enableCodexFingerprintMode.value && codexFingerprintMode.value === 'fixed_device_conversations' && enableCodexVerifiedTransport.value) {
+    ensureExtra().codex_verified_transport_enabled = codexVerifiedTransportEnabled.value
+  }
 
   if (enableOpenAICompactMode.value) {
     const extra = ensureExtra()
@@ -2381,6 +2400,8 @@ watch(
       enableCodexCLIOnlyAppServer.value = false
       enableCodexFingerprintMode.value = false
       codexFingerprintMode.value = 'off'
+      enableCodexVerifiedTransport.value = false
+      codexVerifiedTransportEnabled.value = false
       enableOpenAICompactMode.value = false
       enableOpenAICompactModelMapping.value = false
       enableRpmLimit.value = false

@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codextransport"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
@@ -761,7 +762,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			firstClientMessage = aliasedBody
 		}
 	}
-	accountScopedFirst, accountScoped, scopeErr := applyCodexAccountIdentityClientMetadataRaw(firstClientMessage, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
+	accountScopedFirst, accountScoped, scopeErr := s.scopeCodexRequestMetadataRaw(c, account, firstClientMessage)
 	if scopeErr != nil {
 		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket identity metadata", scopeErr)
 	}
@@ -865,6 +866,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if buildHdrErr != nil {
 		return fmt.Errorf("build ws headers: %w", buildHdrErr)
 	}
+	ctx, err = codexTransportContext(ctx, headers, codexAccountIdentitySource(c, account), account, "ws")
+	if err != nil {
+		return err
+	}
+	_, strictTransport := codextransport.FromContext(ctx)
+	initialIdentityCompatibility := normalizeOpenAIWSHandshakeCompatibility(account, headers, codexWSIdentityRevision(c, account))
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
@@ -904,6 +911,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				return fmt.Errorf("agent identity task recovery failed: %w", recoveryErr)
 			}
 			continue
+		}
+		if strictTransport && statusCode <= 0 {
+			var stopped *UpstreamFailoverError
+			if errors.As(err, &stopped) && stopped.NextAccountAction == NextAccountStop {
+				return stopped
+			}
+			return codexStrictClientError(&codextransport.Failure{Err: err})
 		}
 		logOpenAIWSV2Passthrough(
 			"relay_dial_failed account_id=%d status_code=%d err=%s",
@@ -997,6 +1011,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			acceptedTurn := false
 			if isResponseCreate {
 				responseCreateAt = time.Now()
+				if policyErr := s.checkCodexConversationPolicy(ctx, c, account); policyErr != nil {
+					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, policyErr.Error(), policyErr)
+				}
 				if !turnLifecycle.beginResponseCreate(clientFrameConn.markTurnStarted) {
 					err := errors.New("overlapping response.create is not supported")
 					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, err.Error(), err)
@@ -1025,13 +1042,30 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					payload = aliasedBody
 				}
 			}
-			if isResponseCreate || eventType == "session.update" {
-				accountScopedPayload, accountScoped, scopeErr := applyCodexAccountIdentityClientMetadataRaw(payload, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
+			if eventType == "session.update" && usesCodexConversationIdentity(account) {
+				for _, field := range []string{"client_metadata", "prompt_cache_key", "session.client_metadata", "session.prompt_cache_key"} {
+					if gjson.GetBytes(payload, field).Exists() {
+						return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "identity metadata must be supplied in response.create", nil)
+					}
+				}
+			}
+			if isResponseCreate || (eventType == "session.update" && !usesCodexConversationIdentity(account)) {
+				if isResponseCreate {
+					beginCodexConversationTurn(c, account, payload)
+				}
+				accountScopedPayload, accountScoped, scopeErr := s.scopeCodexRequestMetadataRaw(c, account, payload)
 				if scopeErr != nil {
 					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket identity metadata", scopeErr)
 				}
 				if accountScoped {
 					payload = accountScopedPayload
+				}
+				if usesCodexConversationIdentity(account) {
+					nextHeaders := cloneHeader(headers)
+					applyCodexConversationIdentityHeaders(c, account, nextHeaders)
+					if normalizeOpenAIWSHandshakeCompatibility(account, nextHeaders, codexWSIdentityRevision(c, account)) != initialIdentityCompatibility {
+						return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "conversation identity changed; open a new websocket conversation", nil)
+					}
 				}
 			}
 			if isResponseCreate {
@@ -1158,6 +1192,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	firstWriteErr := relayUpstreamFrameConn.WriteFrame(firstWriteCtx, coderws.MessageText, firstClientMessage)
 	cancelFirstWrite()
 	if firstWriteErr != nil {
+		if strictTransport {
+			return codexStrictClientError(&codextransport.Failure{Err: firstWriteErr})
+		}
 		return wrapOpenAIWSIngressTurnError(
 			"write_upstream",
 			fmt.Errorf("write first upstream websocket request: %w", firstWriteErr),
@@ -1217,6 +1254,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				)
 			},
 			OnTurnComplete: func(turn openaiwsv2.RelayTurnResult) {
+				recordCodexConversationResponse(c, account, turn.RequestID)
 				turnNo := int(completedTurns.Add(1))
 				if hooks != nil && hooks.TurnStarted != nil && !turn.StartedAt.IsZero() {
 					hooks.TurnStarted(turnNo, turn.StartedAt)
@@ -1297,6 +1335,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			BeforeWriteClient: func(msgType coderws.MessageType, payload []byte, wroteDownstream bool) error {
 				if msgType != coderws.MessageText {
 					return nil
+				}
+				if strictTransport && !gjson.ValidBytes(payload) {
+					return codexStrictClientError(&codextransport.Failure{Err: errors.New("upstream websocket returned malformed Responses event JSON")})
 				}
 				eventType, _, _ := parseOpenAIWSEventEnvelope(payload)
 				if eventType == "response.created" {
@@ -1426,6 +1467,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	)
 
 	relayErr := relayExit.Err
+	if strictTransport && (relayExit.Stage == "read_upstream" || relayExit.Stage == "write_upstream") {
+		var stopped *UpstreamFailoverError
+		if !errors.As(relayErr, &stopped) || stopped.NextAccountAction != NextAccountStop {
+			relayErr = codexStrictClientError(&codextransport.Failure{Err: relayErr})
+		}
+	}
 	var firstOutputTimeoutErr *openAIWSPassthroughFirstOutputTimeoutError
 	if errors.As(relayErr, &firstOutputTimeoutErr) {
 		deadline := firstOutputTimeoutErr.deadline

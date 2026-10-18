@@ -61,6 +61,11 @@ func (s *OpenAIGatewayService) ForwardResponsesInputTokens(
 		return err
 	}
 
+	if usesCodexConversationIdentity(account) {
+		writeOpenAIResponsesInputTokensFallback(c, account, prepared, 0, "codex_conversation_identity")
+		return nil
+	}
+
 	if shouldEstimateOpenAIInputTokensLocally(account) {
 		writeOpenAIResponsesInputTokensFallback(c, account, prepared, 0, "custom_relay")
 		return nil
@@ -291,6 +296,11 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 	if err != nil {
 		writeAnthropicCountTokensError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return err
+	}
+
+	if usesCodexConversationIdentity(account) {
+		writeOpenAIOAuthInputTokensFallback(c, account, prepared, 0)
+		return nil
 	}
 
 	upstreamBody, err := marshalOpenAIUpstreamJSON(prepared.Request)

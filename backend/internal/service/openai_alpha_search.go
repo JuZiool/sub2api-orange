@@ -228,6 +228,13 @@ func openAIAlphaSearchSchedulingModel(account *Account, requestedModel string) s
 }
 
 func (s *OpenAIGatewayService) buildOpenAIAlphaSearchResponsesWebSearchRequest(ctx context.Context, c *gin.Context, account *Account, alphaBody []byte, body []byte, token string) (*http.Request, error) {
+	if usesCodexConversationIdentity(account) {
+		var identityErr error
+		body, identityErr = projectCodexConversationAuxiliaryRaw(c, account, body)
+		if identityErr != nil {
+			return nil, identityErr
+		}
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, chatgptCodexURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -281,10 +288,10 @@ func (s *OpenAIGatewayService) buildOpenAIAlphaSearchResponsesWebSearchRequest(c
 		req.Header.Set("Session_ID", isolated)
 		req.Header.Set("Conversation_ID", isolated)
 	}
-	applyCodexAccountIdentityHeaders(req.Header, codexAccountIdentitySource(c, account), apiKeyID)
+	applyCodexRequestIdentityHeaders(c, account, req.Header)
 	enforceCodexIdentityHeadersWithUA(req.Header, s.codexIdentityOverrideUA(account))
 	account.ApplyHeaderOverrides(req.Header)
-	return req, nil
+	return bindCodexAttemptRequest(c, req, account)
 }
 
 func buildOpenAIAlphaSearchResponsesWebSearchBody(alphaBody []byte, model string) ([]byte, error) {
@@ -353,6 +360,11 @@ func truncateOpenAIAlphaSearchPromptJSON(value string, limit int) string {
 }
 
 func (s *OpenAIGatewayService) buildOpenAIAlphaSearchRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string) (*http.Request, error) {
+	if usesCodexConversationIdentity(account) {
+		if _, identityErr := prepareCodexConversationAuxiliary(c, account); identityErr != nil {
+			return nil, identityErr
+		}
+	}
 	targetURL, err := s.openAIAlphaSearchURL(account)
 	if err != nil {
 		return nil, err
@@ -390,7 +402,7 @@ func (s *OpenAIGatewayService) buildOpenAIAlphaSearchRequest(ctx context.Context
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	if account.Type == AccountTypeOAuth {
+	if account.Type == AccountTypeOAuth || usesCodexConversationIdentity(account) {
 		req.Host = "chatgpt.com"
 		if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, req.Header, account); err != nil {
 			return nil, fmt.Errorf("resolve chatgpt account headers: %w", err)
@@ -399,7 +411,11 @@ func (s *OpenAIGatewayService) buildOpenAIAlphaSearchRequest(ctx context.Context
 		if turnMetadata := openAIAlphaSearchInboundHeader(c, "X-Codex-Turn-Metadata"); turnMetadata != "" {
 			req.Header.Set("X-Codex-Turn-Metadata", turnMetadata)
 		}
-		applyCodexAccountIdentityHeaders(req.Header, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
+		if usesCodexConversationIdentity(account) {
+			applyCodexConversationAlphaHeader(c, account, req.Header)
+		} else {
+			applyCodexRequestIdentityHeaders(c, account, req.Header)
+		}
 		canonical := resolveCodexOutboundIdentity("")
 		if version := openAIAlphaSearchInboundHeader(c, "Version"); version != "" {
 			req.Header.Set("Version", version)
@@ -426,7 +442,7 @@ func (s *OpenAIGatewayService) buildOpenAIAlphaSearchRequest(ctx context.Context
 
 	account.ApplyHeaderOverrides(req.Header)
 	stripOpenAIAlphaSearchResponsesHeaders(req.Header)
-	return req, nil
+	return bindCodexAttemptRequest(c, req, account)
 }
 
 // stripOpenAIAlphaSearchResponsesHeaders 让独立搜索请求与官方 Codex

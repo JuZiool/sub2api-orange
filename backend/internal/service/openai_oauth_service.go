@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codextransport"
+
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
@@ -17,6 +19,8 @@ type OpenAIOAuthService struct {
 	sessionStore         *openai.SessionStore
 	proxyRepo            ProxyRepository
 	oauthClient          OpenAIOAuthClient
+	accountRepo          AccountRepository
+	pluginManager        *PluginManager
 	privacyClientFactory PrivacyClientFactory // 用于调用 chatgpt.com/backend-api（ImpersonateChrome）
 }
 
@@ -33,6 +37,14 @@ func NewOpenAIOAuthService(proxyRepo ProxyRepository, oauthClient OpenAIOAuthCli
 // 用于调用 chatgpt.com/backend-api 获取账号信息（plan_type 等）。
 func (s *OpenAIOAuthService) SetPrivacyClientFactory(factory PrivacyClientFactory) {
 	s.privacyClientFactory = factory
+}
+
+func (s *OpenAIOAuthService) SetAccountRepository(repo AccountRepository) {
+	s.accountRepo = repo
+}
+
+func (s *OpenAIOAuthService) SetPluginManager(manager *PluginManager) {
+	s.pluginManager = manager
 }
 
 // OpenAIAuthURLResult contains the authorization URL and session info
@@ -337,16 +349,54 @@ func resolveChatGPTSubscriptionAccountID(tokenInfo *OpenAITokenInfo, orgID strin
 
 // RefreshAccountToken refreshes token for an OpenAI OAuth account
 func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *Account) (*OpenAITokenInfo, error) {
+	if account == nil {
+		return nil, infraerrors.BadRequest("OPENAI_OAUTH_INVALID_ACCOUNT", "account is required")
+	}
+	if account.IsCredentialShadow() {
+		return nil, infraerrors.BadRequest("OPENAI_OAUTH_INVALID_ACCOUNT", "refresh credentials on the parent account")
+	}
+	// Refresh is infrequent and must observe the source's latest persisted policy.
+	if s.accountRepo != nil && account.ID > 0 && account.GetCodexFingerprintMode() == codexFingerprintFixedDeviceConversations {
+		selectedProxyID := account.SelectedProxyID
+		current, err := s.accountRepo.GetByID(ctx, account.ID)
+		if err != nil {
+			return nil, err
+		}
+		if current == nil {
+			return nil, ErrAccountNotFound
+		}
+		account = current
+		if selectedProxyID > 0 {
+			account, err = account.WithProxyRoute(selectedProxyID)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	if account.Platform != PlatformOpenAI {
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_INVALID_ACCOUNT", "account is not an OpenAI account")
 	}
 	if account.Type != AccountTypeOAuth {
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_INVALID_ACCOUNT_TYPE", "account is not an OAuth account")
 	}
+	if err := validateCodexVerifiedRuntimeFamily(ctx, s.accountRepo, account, account, s.pluginManager); err != nil {
+		return nil, err
+	}
+	var bindErr error
+	ctx, bindErr = codexTransportContext(ctx, nil, account, account, "http")
+	if bindErr != nil {
+		return nil, bindErr
+	}
 
 	var proxyURL string
+	if account.ProxyID != nil && s.proxyRepo == nil && codexVerifiedTransportEnabled(account.Extra) {
+		return nil, codexStrictClientError(&codextransport.Error{Reason: "the strict transport account's proxy repository is unavailable"})
+	}
 	if account.ProxyID != nil && s.proxyRepo != nil {
 		proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
+		if codexVerifiedTransportEnabled(account.Extra) && (err != nil || proxy == nil) {
+			return nil, codexStrictClientError(&codextransport.Error{Reason: "the strict transport account's selected proxy could not be resolved"})
+		}
 		if err == nil && proxy != nil {
 			proxyURL = proxy.URL()
 		}

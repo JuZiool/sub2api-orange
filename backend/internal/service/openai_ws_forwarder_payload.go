@@ -145,7 +145,7 @@ func (s *OpenAIGatewayService) buildOpenAIWSHeaders(
 		headers.Set(openAIWSTurnMetadataHeader, metadata)
 	}
 	ensureStagedCodexFingerprintIDs(c, account)
-	applyCodexAccountIdentityHeaders(headers, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
+	applyCodexRequestIdentityHeaders(c, account, headers)
 	applyStagedCodexFingerprintHeaders(c, account, headers)
 
 	if account != nil && account.UsesOpenAICodexProtocol() {

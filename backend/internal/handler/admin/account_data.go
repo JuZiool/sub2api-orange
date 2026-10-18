@@ -434,6 +434,13 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 
 		enrichCredentialsFromIDToken(&item)
+		// Orange 特有：通用导入新建账号不是设备恢复，不能携带系统身份或默认启用新方案。
+		delete(item.Extra, "codex_fingerprint_seed")
+		delete(item.Extra, service.CodexClientIdentityExtraKey)
+		delete(item.Extra, service.CodexVerifiedTransportExtraKey)
+		if item.Extra["codex_fingerprint_mode"] == "fixed_device_conversations" {
+			delete(item.Extra, "codex_fingerprint_mode")
+		}
 
 		accountInput := &service.CreateAccountInput{
 			Name:                 item.Name,

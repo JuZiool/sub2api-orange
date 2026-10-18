@@ -846,13 +846,16 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		}
 		credentialAccount = resolved
 	}
+	if err := s.prepareCodexProbeIdentity(ctx, c, account, credentialAccount); err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
 
 	// Determine authentication method and API URL
 	var authToken string
 	var apiURL string
 	var isOAuth bool
 
-	if credentialAccount.IsOAuth() {
+	if credentialAccount.IsOAuth() || (usesCodexConversationIdentity(account) && credentialAccount.IsOpenAIOAuthLike()) {
 		isOAuth = true
 		// Agent Identity signs each request and does not retain the OAuth token.
 		if !credentialAccount.IsOpenAIAgentIdentity() {
@@ -901,7 +904,9 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		upstreamTestModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
 	}
 	payload := createOpenAITestPayload(upstreamTestModelID, isOAuth, prompt)
-	applyCodexFingerprintTestPayload(c, account, payload)
+	if identityErr := applyCodexFingerprintTestPayload(c, account, payload); identityErr != nil {
+		return s.sendErrorAndEnd(c, identityErr.Error())
+	}
 	payloadBytes, _ := json.Marshal(payload)
 	ctx, payloadBytes, overdraftInjected := s.prepareCodexQuotaOverdraftTestRequest(ctx, credentialAccount, payloadBytes)
 
@@ -964,6 +969,10 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
+	req, err = bindCodexTransportForAccounts(req, credentialAccount, account, "http")
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
 	resp, err := s.doOpenAIAccountTestUpstream(req, proxyURL, account, true)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
@@ -2219,13 +2228,16 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		}
 		credentialAccount = resolved
 	}
+	if err := s.prepareCodexProbeIdentity(ctx, c, account, credentialAccount); err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
 
 	authToken := ""
 	apiURL := ""
 	isOAuth := false
 
 	switch {
-	case credentialAccount.IsOAuth():
+	case credentialAccount.IsOAuth() || (usesCodexConversationIdentity(account) && credentialAccount.IsOpenAIOAuthLike()):
 		isOAuth = true
 		if !credentialAccount.IsOpenAIAgentIdentity() {
 			authToken = credentialAccount.GetOpenAIAccessToken()
@@ -2322,6 +2334,10 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		proxyURL = account.Proxy.URL()
 	}
 
+	req, err = bindCodexTransportForAccounts(req, credentialAccount, account, "http")
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
 	resp, err := s.doOpenAIAccountTestUpstream(req, proxyURL, account, true)
 	if err != nil {
 		if s.accountRepo != nil {
@@ -3155,6 +3171,9 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 		}
 		credentialAccount = resolved
 	}
+	if err := s.prepareCodexProbeIdentity(ctx, c, account, credentialAccount); err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
+	}
 	authToken := ""
 	if !credentialAccount.IsOpenAIAgentIdentity() {
 		authToken = credentialAccount.GetOpenAIAccessToken()
@@ -3237,6 +3256,10 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
+	}
+	req, err = bindCodexTransportForAccounts(req, credentialAccount, account, "http")
+	if err != nil {
+		return s.sendErrorAndEnd(c, err.Error())
 	}
 	resp, err := s.doOpenAIAccountTestUpstream(req, proxyURL, account, false)
 	if err != nil {

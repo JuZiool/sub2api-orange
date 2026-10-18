@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codextransport"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
@@ -561,6 +562,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		}
 		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 		if err != nil {
+			if codextransport.IsFailure(err) || codextransport.IsError(err) {
+				return nil, codexStrictClientError(err)
+			}
 			if turn == 1 {
 				return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, true)
 			}
@@ -575,8 +579,11 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			break
 		}
 
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, openAIWSHTTPBridgeErrorBodyLimitBytes))
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, openAIWSHTTPBridgeErrorBodyLimitBytes))
 		_ = resp.Body.Close()
+		if strictErr := codexStrictResponseFailure(resp, readErr); strictErr != nil {
+			return nil, strictErr
+		}
 		markOpenAICyberPolicyEvent(c, respBody, resp.StatusCode, nil)
 		if resp.StatusCode == http.StatusBadRequest &&
 			extractUpstreamErrorCode(respBody) == openAIWSFallbackReasonInvalidEncryptedContent {
@@ -899,6 +906,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				isOpenAIWSTerminalEvent(eventType)
 			if stageBeforeSemanticOutput && !commitStagedMessages && !isKeepalive {
 				if pendingClientMessageBytes+int64(len(clientMessage)) > openAIFirstOutputStageMaxBytes {
+					if strictErr := codexStrictResponseFailure(resp, errors.New("OpenAI WS HTTP bridge first-output staging limit exceeded")); strictErr != nil {
+						return resultWithUsage(), strictErr
+					}
 					return nil, s.newOpenAIStreamFailoverError(
 						c,
 						account,
@@ -994,6 +1004,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	}
 	if err := scanner.Err(); err != nil {
 		streamErr := fmt.Errorf("read upstream http bridge stream: %w", err)
+		if strictErr := codexStrictResponseFailure(resp, streamErr); strictErr != nil {
+			return resultWithUsage(), strictErr
+		}
 		if turn == 1 && !clientDisconnected && !wroteDownstream {
 			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, streamErr, true)
 		}
@@ -1002,6 +1015,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	terminalErr := errors.New("upstream http bridge stream ended before terminal event")
 	if sawDone {
 		terminalErr = errors.New("upstream http bridge stream sent [DONE] before terminal event")
+	}
+	if strictErr := codexStrictResponseFailure(resp, terminalErr); strictErr != nil {
+		return resultWithUsage(), strictErr
 	}
 	if turn == 1 && !clientDisconnected && !wroteDownstream {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, terminalErr, true)

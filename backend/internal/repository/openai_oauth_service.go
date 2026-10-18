@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codextransport"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -83,10 +84,14 @@ func (s *openaiOAuthService) RefreshTokenWithClientID(ctx context.Context, refre
 }
 
 func (s *openaiOAuthService) refreshTokenWithClientID(ctx context.Context, refreshToken, proxyURL, clientID string) (*openai.TokenResponse, error) {
-	client, err := createOpenAIReqClient(proxyURL)
+	client, finish, err := createOpenAIRefreshReqClient(ctx, proxyURL)
 	if err != nil {
-		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_CLIENT_INIT_FAILED", "create HTTP client: %v", err)
+		if _, strict := codextransport.FromContext(ctx); strict && !codextransport.IsError(err) {
+			err = &codextransport.Error{Reason: "unable to initialize the selected strict OAuth transport"}
+		}
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_CLIENT_INIT_FAILED", "create HTTP client: %v", err).WithCause(err)
 	}
+	defer finish()
 
 	formData := url.Values{}
 	formData.Set("grant_type", "refresh_token")
@@ -96,7 +101,7 @@ func (s *openaiOAuthService) refreshTokenWithClientID(ctx context.Context, refre
 
 	var tokenResp openai.TokenResponse
 
-	authUA, authOriginator := service.CodexCanonicalAuthIdentity()
+	authUA, authOriginator := service.CodexAuthIdentityForContext(ctx)
 	resp, err := client.R().
 		SetContext(ctx).
 		SetHeader("User-Agent", authUA).
@@ -106,14 +111,21 @@ func (s *openaiOAuthService) refreshTokenWithClientID(ctx context.Context, refre
 		Post(s.tokenURL)
 
 	if err != nil {
+		if _, strict := codextransport.FromContext(ctx); strict && !codextransport.IsFailure(err) && !codextransport.IsError(err) {
+			// A decode error can occur after the refresh token has been consumed.
+			err = &codextransport.Failure{Err: err}
+		}
 		if shouldReturnOpenAINoProxyHint(ctx, proxyURL, err) {
 			return nil, newOpenAINoProxyHintError(err)
 		}
-		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_REQUEST_FAILED", "request failed: %v", err)
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_REQUEST_FAILED", "request failed: %v", err).WithCause(err)
 	}
 
 	if !resp.IsSuccessState() {
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_OAUTH_TOKEN_REFRESH_FAILED", "token refresh failed: status %d, body: %s", resp.StatusCode, resp.String())
+	}
+	if _, strict := codextransport.FromContext(ctx); strict && strings.TrimSpace(tokenResp.AccessToken) == "" {
+		return nil, &codextransport.Failure{Err: errors.New("strict OAuth refresh response has no access token")}
 	}
 
 	return &tokenResp, nil
@@ -124,6 +136,34 @@ func createOpenAIReqClient(proxyURL string) (*req.Client, error) {
 		ProxyURL: proxyURL,
 		Timeout:  120 * time.Second,
 	})
+}
+
+// A refresh has one fully buffered response. A short-lived strict client avoids
+// retaining a new global pool for every source and policy revision indefinitely.
+func createOpenAIRefreshReqClient(ctx context.Context, proxyURL string) (*req.Client, func(), error) {
+	binding, strict := codextransport.FromContext(ctx)
+	if !strict {
+		client, err := createOpenAIReqClient(proxyURL)
+		return client, func() {}, err
+	}
+	_, parsed, err := normalizeProxyURL(proxyURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	transport, err := codextransport.New(binding, codextransport.Options{
+		ProxyURL: parsed, MaxIdleConns: 1, MaxIdleConnsPerHost: 1,
+		IdleConnTimeout: 30 * time.Second, ResponseHeaderTimeout: 120 * time.Second,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	client := req.C().SetTimeout(120 * time.Second).DisableAutoDecode()
+	client.Transport = transport
+	client.GetClient().Transport = transport
+	client.GetClient().CheckRedirect = func(*http.Request, []*http.Request) error {
+		return &codextransport.Error{Reason: "strict OAuth refresh does not follow redirects"}
+	}
+	return client, transport.CloseIdleConnections, nil
 }
 
 func shouldReturnOpenAINoProxyHint(ctx context.Context, proxyURL string, err error) bool {

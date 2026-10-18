@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codextransport"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 )
@@ -49,7 +51,31 @@ func (s *OpenAIOAuthService) ValidateCodexPersonalAccessToken(ctx context.Contex
 		ResponseHeaderTimeout: 15 * time.Second,
 	})
 	if err != nil {
+		if _, strict := codextransport.FromContext(ctx); strict {
+			return nil, codexStrictClientError(&codextransport.Error{Reason: "invalid proxy configuration for strict PAT validation"})
+		}
 		return nil, infraerrors.Newf(http.StatusBadRequest, "OPENAI_CODEX_PAT_PROXY_INVALID", "invalid proxy configuration: %v", err)
+	}
+	if binding, strict := codextransport.FromContext(ctx); strict {
+		var proxy *url.URL
+		if strings.TrimSpace(proxyURL) != "" {
+			proxy, err = url.Parse(proxyURL)
+			if err != nil {
+				return nil, codexStrictClientError(&codextransport.Error{Reason: "invalid proxy URL for strict PAT validation"})
+			}
+		}
+		transport, transportErr := codextransport.New(binding, codextransport.Options{
+			ProxyURL: proxy, MaxIdleConns: 1, MaxIdleConnsPerHost: 1,
+			ResponseHeaderTimeout: 15 * time.Second,
+		})
+		if transportErr != nil {
+			return nil, codexStrictClientError(transportErr)
+		}
+		defer transport.CloseIdleConnections()
+		client = &http.Client{Transport: transport, Timeout: 20 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return &codextransport.Error{Reason: "strict PAT validation does not follow redirects"}
+			}}
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, openAICodexPATWhoamiURL, nil)
@@ -59,10 +85,18 @@ func (s *OpenAIOAuthService) ValidateCodexPersonalAccessToken(ctx context.Contex
 	req.Header.Set("authorization", "Bearer "+accessToken)
 	req.Header.Set("accept", "application/json")
 	ApplyCodexCanonicalAuthIdentity(req.Header)
+	if _, strict := codextransport.FromContext(ctx); strict {
+		userAgent, originator := CodexAuthIdentityForContext(ctx)
+		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("Originator", originator)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_PAT_VALIDATE_FAILED", "failed to validate Codex personal access token: %v", err)
+		if _, strict := codextransport.FromContext(ctx); strict {
+			return nil, codexStrictClientError(&codextransport.Failure{Err: err})
+		}
+		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_PAT_VALIDATE_FAILED", "failed to validate Codex personal access token: %v", err).WithCause(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -80,6 +114,9 @@ func (s *OpenAIOAuthService) ValidateCodexPersonalAccessToken(ctx context.Contex
 
 	var whoami openAICodexPATWhoamiResponse
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 64*1024)).Decode(&whoami); err != nil {
+		if failure := codexStrictResponseFailure(resp, err); failure != nil {
+			return nil, failure
+		}
 		return nil, infraerrors.Newf(http.StatusBadGateway, "OPENAI_CODEX_PAT_RESPONSE_INVALID", "invalid Codex personal access token validation response: %v", err)
 	}
 	if err := validateOpenAICodexPATWhoami(whoami); err != nil {

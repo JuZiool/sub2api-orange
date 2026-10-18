@@ -87,6 +87,10 @@ func stagedCodexFingerprintIDs(c *gin.Context, account *Account) *codexFingerpri
 // 非透传与透传两个请求构造器共用本函数，防止应用语义漂移。仅解析该
 // snapshot 的 OAuth 账号可读取，避免 stale context 跨账号 failover 泄漏。
 func applyStagedCodexFingerprintHeaders(c *gin.Context, account *Account, h http.Header) {
+	if usesCodexConversationIdentity(account) {
+		applyCodexConversationIdentityHeaders(c, account, h)
+		return
+	}
 	applyCodexFingerprintHeaders(h, stagedCodexFingerprintIDs(c, account))
 }
 
@@ -139,6 +143,8 @@ const (
 	// account, maps downstream sessions onto a small pool of Codex windows,
 	// and renders overflow occupancy as spawned sub-agents of those windows.
 	codexFingerprintSingleMachineMultiWindow codexFingerprintMode = "single_machine_multi_window"
+	// Orange 特有：固定凭据源设备，保留真实对话图；不启用旧窗口池或隐式 Mac TLS。
+	codexFingerprintFixedDeviceConversations codexFingerprintMode = "fixed_device_conversations"
 )
 
 // resolveCodexMacTLSProfile returns the stable network fingerprint used by
@@ -198,7 +204,7 @@ func codexFingerprintModeFromExtra(extra map[string]any) codexFingerprintMode {
 	switch codexFingerprintMode(strings.TrimSpace(raw)) {
 	case "account_device": // Older exports use this alias for the official device mode.
 		return codexFingerprintDevice
-	case codexFingerprintOff, codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull, codexFingerprintSingleMachineMultiWindow:
+	case codexFingerprintOff, codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull, codexFingerprintSingleMachineMultiWindow, codexFingerprintFixedDeviceConversations:
 		return codexFingerprintMode(strings.TrimSpace(raw))
 	default:
 		return codexFingerprintOff
@@ -207,7 +213,7 @@ func codexFingerprintModeFromExtra(extra map[string]any) codexFingerprintMode {
 
 func codexFingerprintModeRequiresSeed(mode codexFingerprintMode) bool {
 	switch mode {
-	case codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull, codexFingerprintSingleMachineMultiWindow:
+	case codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull, codexFingerprintSingleMachineMultiWindow, codexFingerprintFixedDeviceConversations:
 		return true
 	default:
 		return false
@@ -661,6 +667,9 @@ func resolveCodexFingerprintIDsFromRequest(account *Account, clientHeaders http.
 		return nil
 	}
 	mode, allowDerivedSeed := resolveCodexFingerprintMode(account)
+	if mode == codexFingerprintFixedDeviceConversations {
+		return nil // The independent conversation projection owns this mode.
+	}
 	if mode == codexFingerprintOff {
 		return nil
 	}
@@ -991,11 +1000,18 @@ func prepareCodexFingerprintTestIDs(c *gin.Context, account *Account) *codexFing
 	return ids
 }
 
-func applyCodexFingerprintTestPayload(c *gin.Context, account *Account, payload map[string]any) {
+func applyCodexFingerprintTestPayload(c *gin.Context, account *Account, payload map[string]any) error {
+	if usesCodexConversationIdentity(account) {
+		return projectCodexConversationAuxiliaryMap(c, account, payload)
+	}
 	applyCodexFingerprintClientMetadata(payload, prepareCodexFingerprintTestIDs(c, account))
+	return nil
 }
 
 func applyCodexFingerprintTestPayloadRaw(c *gin.Context, account *Account, payload []byte) ([]byte, error) {
+	if usesCodexConversationIdentity(account) {
+		return projectCodexConversationAuxiliaryRaw(c, account, payload)
+	}
 	body, _, err := applyCodexFingerprintClientMetadataRaw(payload, prepareCodexFingerprintTestIDs(c, account))
 	return body, err
 }

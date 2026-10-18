@@ -539,8 +539,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Account namespace is orthogonal to fingerprint convergence: preserve
 		// each client's identity cardinality, but never reuse it across OAuth
 		// credentials after scheduler failover.
-		if !isCompactRequest && applyCodexAccountIdentityClientMetadataMap(decoded, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c)) {
-			markDecodedModified()
+		if !isCompactRequest || usesCodexConversationIdentity(account) {
+			identityChanged, identityErr := s.scopeCodexRequestMetadataMap(c, account, decoded)
+			if identityErr != nil {
+				return nil, identityErr
+			}
+			if identityChanged {
+				markDecodedModified()
+			}
 		}
 		stageCodexFingerprintIDs(c, nil)
 		// 指纹收敛：一次性解析收敛 ID，请求体和出站头共享同一份 IDs（保证 turn_id 等随机字段一致）。
@@ -564,7 +570,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if codexResult.NormalizedModel != "" {
 			upstreamModel = codexResult.NormalizedModel
 		}
-		if strings.TrimSpace(clientPromptCacheKey) != "" {
+		if usesCodexConversationIdentity(account) {
+			promptCacheKey, _ = decoded["prompt_cache_key"].(string)
+		} else if strings.TrimSpace(clientPromptCacheKey) != "" {
 			// The body now carries an account-scoped value. Keep the original here
 			// so the header builder derives the same namespace exactly once.
 			promptCacheKey = clientPromptCacheKey
@@ -1499,7 +1507,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 
 	// 账号 namespace 不改变客户端身份基数，但确保 scheduler failover 后不会把
 	// 同一组 Codex IDs 发送给另一份 OAuth 凭据。可选指纹收敛随后仍可覆盖这些值。
-	applyCodexAccountIdentityHeaders(req.Header, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
+	applyCodexRequestIdentityHeaders(c, account, req.Header)
 
 	// 指纹收敛：使用 Forward() 中预计算的收敛 ID 改写出站头，与请求体使用同一份 IDs。
 	applyStagedCodexFingerprintHeaders(c, account, req.Header)
@@ -1531,7 +1539,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	if err := applyMappedGPT55LiteCompatibility(req, account, body); err != nil {
 		return nil, err
 	}
-	return req, nil
+	return bindCodexAttemptRequest(c, req, account)
 }
 
 // codexIdentityOverrideUA 返回账号级显式配置的出站 User-Agent，供强制统一身份时作为覆写来源。

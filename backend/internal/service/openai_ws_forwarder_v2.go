@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codextransport"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -71,7 +72,13 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		turnState = strings.TrimSpace(c.GetHeader(openAIWSTurnStateHeader))
 		turnMetadata = strings.TrimSpace(c.GetHeader(openAIWSTurnMetadataHeader))
 	}
-	setOpenAIWSTurnMetadata(payload, turnMetadata)
+	if usesCodexConversationIdentity(account) {
+		if _, identityErr := projectCodexConversationMetadataMap(c, account, payload, false); identityErr != nil {
+			return nil, identityErr
+		}
+	} else {
+		setOpenAIWSTurnMetadata(payload, turnMetadata)
+	}
 	ensureStagedCodexFingerprintIDs(c, account)
 	applyStagedCodexFingerprintClientMetadata(c, account, payload)
 	previousResponseID := openAIWSPayloadString(payload, "previous_response_id")
@@ -169,6 +176,21 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	if buildHdrErr != nil {
 		return nil, fmt.Errorf("build ws headers: %w", buildHdrErr)
 	}
+	ctx, err = codexTransportContext(ctx, wsHeaders, codexAccountIdentitySource(c, account), account, "ws")
+	if err != nil {
+		return nil, err
+	}
+	_, strictTransport := codextransport.FromContext(ctx)
+	strictAttemptFailure := func(cause error) *UpstreamFailoverError {
+		if !strictTransport || cause == nil {
+			return nil
+		}
+		var stopped *UpstreamFailoverError
+		if errors.As(cause, &stopped) && stopped.NextAccountAction == NextAccountStop {
+			return stopped
+		}
+		return codexStrictClientError(&codextransport.Failure{Err: cause})
+	}
 	logOpenAIWSModeDebug(
 		"acquire_start account_id=%d account_type=%s transport=%s preferred_conn_id=%s has_previous_response_id=%v session_hash=%s has_turn_state=%v turn_state_len=%d has_turn_metadata=%v turn_metadata_len=%d store_disabled=%v store_disabled_conn_mode=%s retry_last_reason=%s force_new_conn=%v header_user_agent=%s header_openai_beta=%s header_originator=%s header_accept_language=%s header_session_id=%s header_conversation_id=%s session_id_source=%s conversation_id_source=%s has_prompt_cache_key=%v has_chatgpt_account_id=%v has_authorization=%v has_session_id=%v has_conversation_id=%v proxy_enabled=%v",
 		account.ID,
@@ -205,9 +227,11 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	defer acquireCancel()
 
 	lease, err := s.getOpenAIWSConnPool().Acquire(acquireCtx, openAIWSAcquireRequest{
-		Account: account,
-		WSURL:   wsURL,
-		Headers: wsHeaders,
+		Account:          account,
+		CredentialSource: codexAccountIdentitySource(c, account),
+		IdentityRevision: codexWSIdentityRevision(c, account),
+		WSURL:            wsURL,
+		Headers:          wsHeaders,
 		HeadersFactory: func(factoryCtx context.Context, headers http.Header) (http.Header, error) {
 			return s.refreshOpenAIAgentIdentityHeaders(factoryCtx, account, headers)
 		},
@@ -228,6 +252,12 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 				return nil, fmt.Errorf("agent identity task recovery failed: %w", recoveryErr)
 			}
 			return nil, &agentIdentityTaskRecoveredError{}
+		}
+		var strictDialErr *openAIWSDialError
+		if !errors.As(err, &strictDialErr) || strictDialErr.StatusCode <= 0 {
+			if strictErr := strictAttemptFailure(err); strictErr != nil {
+				return nil, strictErr
+			}
 		}
 		s.handleOpenAIWSDialTransientFailure(ctx, account, mappedModel, err)
 		dialStatus, dialClass, dialCloseStatus, dialCloseReason, dialRespServer, dialRespVia, dialRespCFRay, dialRespReqID := summarizeOpenAIWSDialError(err)
@@ -348,6 +378,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 
 	if err := lease.WriteJSONWithContextTimeout(ctx, payload, s.openAIWSWriteTimeout()); err != nil {
 		lease.MarkBroken()
+		if strictErr := strictAttemptFailure(err); strictErr != nil {
+			return nil, strictErr
+		}
 		logOpenAIWSModeInfo(
 			"write_request_fail account_id=%d conn_id=%s cause=%s payload_bytes=%d",
 			account.ID,
@@ -454,6 +487,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		f, ok := c.Writer.(http.Flusher)
 		if !ok {
 			lease.MarkBroken()
+			if strictErr := strictAttemptFailure(errors.New("streaming is not supported by response writer")); strictErr != nil {
+				return resultWithUsage(), strictErr
+			}
 			return nil, wrapOpenAIWSFallback("streaming_not_supported", errors.New("streaming not supported"))
 		}
 		flusher = f
@@ -573,6 +609,9 @@ readLoop:
 				len(message),
 				wroteDownstream,
 			)
+			if strictErr := strictAttemptFailure(errors.New("upstream websocket returned malformed Responses event JSON")); strictErr != nil {
+				return resultWithUsage(), strictErr
+			}
 			if !wroteDownstream {
 				return nil, wrapOpenAIWSFallback("invalid_event_json", errors.New("upstream websocket returned malformed Responses event JSON"))
 			}
@@ -602,6 +641,9 @@ readLoop:
 					continue
 				}
 				break
+			}
+			if strictErr := strictAttemptFailure(readErr); strictErr != nil {
+				return resultWithUsage(), strictErr
 			}
 			if !wroteDownstream {
 				return nil, wrapOpenAIWSFallback(classifyOpenAIWSReadFallbackReason(readErr), readErr)
@@ -786,6 +828,11 @@ readLoop:
 		}
 	}
 
+	if terminalEventCount == 0 {
+		if strictErr := strictAttemptFailure(errors.New("upstream websocket ended before a terminal event")); strictErr != nil {
+			return resultWithUsage(), strictErr
+		}
+	}
 	if clientDisconnected && terminalEventCount == 0 {
 		return resultWithUsage(), fmt.Errorf("openai ws stream incomplete after client disconnect: %w", context.Canceled)
 	}
@@ -803,6 +850,9 @@ readLoop:
 				terminalEventCount,
 				wroteDownstream,
 			)
+			if strictErr := strictAttemptFailure(errors.New("upstream websocket terminal event has no response payload")); strictErr != nil {
+				return resultWithUsage(), strictErr
+			}
 			if !wroteDownstream {
 				return nil, wrapOpenAIWSFallback("missing_final_response", errors.New("no terminal response payload"))
 			}

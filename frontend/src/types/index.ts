@@ -1256,7 +1256,7 @@ export interface Account {
   ollama_cloud_usage?: OllamaCloudUsageState
   opencode_go_usage?: OpenCodeGoUsageState
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
-  extra?: (CodexUsageSnapshot & OpenAICompactState & {
+  extra?: (CodexUsageSnapshot & OpenAICompactState & CodexFingerprintState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
     upstream_billing_probe_enabled?: boolean
@@ -1571,6 +1571,23 @@ export interface CodexUsageSnapshot {
 }
 
 export type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'
+export type CodexFingerprintMode = 'off' | 'single_machine_multi_window' | 'fixed_device_conversations' | 'device' | 'session' | 'full'
+
+export interface CodexClientIdentity {
+  v: number
+  os_type: string
+  os_version: string
+  arch: string
+  terminal: string
+  sandbox: string
+  generated_at?: string
+}
+
+export interface CodexFingerprintState {
+  codex_fingerprint_mode?: CodexFingerprintMode
+  codex_verified_transport_enabled?: boolean
+  codex_client_identity?: CodexClientIdentity
+}
 export type OpenAIResponsesMode = 'auto' | 'force_responses' | 'force_chat_completions'
 export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings' | 'seedance'
 

@@ -263,7 +263,9 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		if codexResult.PromptCacheKey != "" {
 			promptCacheKey = codexResult.PromptCacheKey
 		}
-		applyCodexAccountIdentityClientMetadataMap(reqBody, codexAccountIdentitySource(c, account), apiKeyID)
+		if _, identityErr := s.scopeCodexRequestMetadataMap(c, account, reqBody); identityErr != nil {
+			return nil, identityErr
+		}
 		delete(reqBody, "prompt_cache_key")
 		if shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
 			compatTurnState = s.getOpenAICompatSessionTurnState(ctx, c, account, promptCacheKey)
@@ -374,7 +376,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 
 	// Override session_id with a deterministic UUID derived from the isolated
 	// session key, ensuring different API keys produce different upstream sessions.
-	if account.Platform != PlatformGrok && promptCacheKey != "" {
+	if account.Platform != PlatformGrok && promptCacheKey != "" && !usesCodexConversationIdentity(account) {
 		isolatedSessionID := generateSessionUUID(isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), promptCacheKey))
 		upstreamReq.Header.Set("session_id", isolatedSessionID)
 		if upstreamReq.Header.Get("conversation_id") != "" {
@@ -398,6 +400,13 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 	if compatTurnState != "" && upstreamReq.Header.Get("x-codex-turn-state") == "" {
 		upstreamReq.Header.Set("x-codex-turn-state", compatTurnState)
+	}
+	if usesCodexConversationIdentity(account) {
+		applyCodexConversationIdentityHeaders(c, account, upstreamReq.Header)
+		upstreamReq, err = bindCodexAttemptRequest(c, upstreamReq, account)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// 7. Send request
@@ -780,6 +789,9 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 	acc := apicompat.NewBufferedResponseAccumulator()
 	var usage OpenAIUsage
 	if resp == nil || resp.Body == nil {
+		if strictErr := codexStrictResponseFailure(resp, errors.New("upstream response body is nil")); strictErr != nil {
+			return nil, usage, acc, strictErr
+		}
 		return nil, usage, acc, errors.New("upstream response body is nil")
 	}
 
@@ -872,10 +884,16 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 						}
 					}
 				}
+				if strictErr := codexStrictResponseFailure(resp, errors.New("buffered stream ended before a terminal event")); strictErr != nil {
+					return nil, usage, acc, strictErr
+				}
 				return nil, usage, acc, nil
 			}
 			resetTimeout()
 			if ev.err != nil {
+				if strictErr := codexStrictResponseFailure(resp, ev.err); strictErr != nil {
+					return nil, usage, acc, strictErr
+				}
 				if !errors.Is(ev.err, context.Canceled) && !errors.Is(ev.err, context.DeadlineExceeded) {
 					logger.L().Warn(logPrefix+": read error",
 						zap.Error(ev.err),
@@ -886,6 +904,9 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 			}
 
 			if isOpenAICompatDoneSentinelLine(ev.line) {
+				if strictErr := codexStrictResponseFailure(resp, errors.New("buffered stream ended before a terminal event")); strictErr != nil {
+					return nil, usage, acc, strictErr
+				}
 				return nil, usage, acc, nil
 			}
 			frame, ok := parser.AddLine(ev.line)
@@ -922,6 +943,9 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 
 		case <-timeoutCh:
 			_ = resp.Body.Close()
+			if strictErr := codexStrictResponseFailure(resp, errors.New("stream data interval timeout")); strictErr != nil {
+				return nil, usage, acc, strictErr
+			}
 			logger.L().Warn(logPrefix+": data interval timeout",
 				zap.String("request_id", requestID),
 				zap.Duration("interval", streamInterval),
@@ -1185,6 +1209,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	}
 	missingTerminalErr := func() (*OpenAIForwardResult, error) {
 		result := resultWithUsage()
+		if strictErr := codexStrictResponseFailure(resp, errors.New("stream ended before a terminal event")); strictErr != nil {
+			return result, strictErr
+		}
 		if clientDisconnected {
 			return result, fmt.Errorf("stream usage incomplete: missing terminal event")
 		}
@@ -1223,6 +1250,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			}
 		}
 		if err := scanner.Err(); err != nil {
+			if strictErr := codexStrictResponseFailure(resp, err); strictErr != nil {
+				return resultWithUsage(), strictErr
+			}
 			handleScanErr(err)
 			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
 		}
@@ -1296,6 +1326,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				return missingTerminalErr()
 			}
 			if ev.err != nil {
+				if strictErr := codexStrictResponseFailure(resp, ev.err); strictErr != nil {
+					return resultWithUsage(), strictErr
+				}
 				handleScanErr(ev.err)
 				return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", ev.err)
 			}
@@ -1316,6 +1349,10 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
 			if time.Since(lastRead) < streamInterval {
 				continue
+			}
+			if strictErr := codexStrictResponseFailure(resp, errors.New("stream data interval timeout")); strictErr != nil {
+				_ = resp.Body.Close()
+				return resultWithUsage(), strictErr
 			}
 			if clientDisconnected {
 				return resultWithUsage(), fmt.Errorf("stream usage incomplete after timeout")

@@ -16,6 +16,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codextransport"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 )
 
@@ -1115,7 +1116,7 @@ func (s *AccountTestService) buildAntigravityAPIKeyModelsRequest(ctx context.Con
 }
 
 func (s *AccountTestService) buildOpenAIUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
-	if account.IsOpenAIOAuth() {
+	if account.IsOpenAIOAuth() || (account.IsOpenAIOAuthLike() && account.GetCodexFingerprintMode() == codexFingerprintMode("fixed_device_conversations")) {
 		return s.buildOpenAIOAuthUpstreamModelsRequest(ctx, account)
 	}
 	return buildOpenAIAPIKeyModelsRequest(ctx, account, s.validateUpstreamBaseURL)
@@ -1164,16 +1165,23 @@ func (s *AccountTestService) buildOpenAIOAuthUpstreamModelsRequest(ctx context.C
 	if err != nil {
 		return nil, newUpstreamModelSyncConfigError("Failed to resolve OpenAI account credentials", err)
 	}
-	if !credentialAccount.IsOpenAIOAuth() {
+	if !credentialAccount.IsOpenAIOAuth() && !(credentialAccount.IsOpenAIOAuthLike() && account.GetCodexFingerprintMode() == codexFingerprintMode("fixed_device_conversations")) {
 		return nil, newUpstreamModelSyncUnsupportedError(
 			fmt.Sprintf("Unsupported OpenAI account type for upstream model sync: %s", credentialAccount.Type), nil,
 		)
+	}
+	if err := validateCodexVerifiedRuntimeFamily(ctx, s.accountRepo, credentialAccount, account, s.pluginManager); err != nil {
+		return nil, err
+	}
+	clientVersion := CodexCanonicalClientVersion()
+	if codexVerifiedTransportEnabled(credentialAccount.Extra) {
+		clientVersion = codextransport.LatestVersion()
 	}
 
 	modelsURL, err := buildCodexModelsManifestURL(
 		chatgptCodexModelsURL,
 		false,
-		CodexCanonicalClientVersion(),
+		clientVersion,
 	)
 	if err != nil {
 		return nil, newUpstreamModelSyncConfigError("Invalid OpenAI Codex model list URL", err)
@@ -1215,7 +1223,7 @@ func (s *AccountTestService) buildOpenAIOAuthUpstreamModelsRequest(ctx context.C
 	setOpenAIChatGPTAccountHeaders(req.Header, credentialAccount)
 	credentialAccount.ApplyHeaderOverrides(req.Header)
 	enforceCodexIdentityHeadersWithUA(req.Header, credentialAccount.GetOpenAIUserAgent())
-	return req, nil
+	return bindCodexTransportForAccounts(req, credentialAccount, account, "http")
 }
 
 func (s *AccountTestService) buildGeminiUpstreamModelsRequest(ctx context.Context, account *Account) (*http.Request, error) {
@@ -1310,6 +1318,9 @@ func (s *AccountTestService) fetchAntigravityOAuthUpstreamModels(ctx context.Con
 }
 
 func (s *AccountTestService) doUpstreamModelsRequest(req *http.Request, proxyURL string, account *Account) (*http.Response, error) {
+	if _, strict := codextransport.FromContext(req.Context()); strict && s.pluginManager != nil && s.pluginManager.ShouldRouteOpenAIOAuth(account) {
+		return nil, codexStrictClientError(&codextransport.Error{Reason: "the selected OpenAI transport plugin is incompatible with strict models requests"})
+	}
 	if s.tlsFPProfileService == nil {
 		return s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, nil)
 	}

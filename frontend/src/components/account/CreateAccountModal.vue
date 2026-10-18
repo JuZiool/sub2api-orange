@@ -3570,8 +3570,17 @@
             </p>
           </div>
           <div class="w-52 flex-shrink-0">
-            <Select v-model="codexFingerprintMode" data-testid="create-codex-fingerprint-mode-select" :options="codexFingerprintModeOptions" />
+            <Select v-model="codexFingerprintMode" data-testid="create-codex-fingerprint-mode-select" :options="codexFingerprintModeOptions" :disabled="codexVerifiedTransportEnabled" />
           </div>
+        </div>
+        <div v-if="codexFingerprintMode === 'fixed_device_conversations'" class="mt-4 space-y-2">
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexFingerprintFixedDeviceConversationsDesc') }}</p>
+          <div class="flex items-center justify-between gap-4">
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.codexVerifiedTransport') }}</label>
+            <Toggle v-model="codexVerifiedTransportEnabled" :aria-label="t('admin.accounts.openai.codexVerifiedTransport')" />
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexVerifiedTransportDesc') }}</p>
+          <p v-if="codexVerifiedTransportEnabled" class="text-xs text-amber-600 dark:text-amber-400">{{ t('admin.accounts.openai.codexVerifiedTransportModeLocked') }}</p>
         </div>
       </div>
 
@@ -4179,6 +4188,7 @@ import type {
   CreateAccountRequest,
   CodexSessionImportMessage,
   OpenAICompactMode,
+  CodexFingerprintMode,
   OpenAIResponsesMode,
   OpenAIEndpointCapability,
   TempUnschedulableScope
@@ -4749,11 +4759,12 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
-type CodexFingerprintMode = 'off' | 'single_machine_multi_window' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('single_machine_multi_window')
+const codexVerifiedTransportEnabled = ref(false)
 const codexFingerprintModeOptions = computed(() => [
   { value: 'off' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintOff') },
   { value: 'single_machine_multi_window' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintSingleMachineMultiWindow') },
+  { value: 'fixed_device_conversations' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFixedDeviceConversations') },
   { value: 'device' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintDevice') },
   { value: 'session' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintSession') },
   { value: 'full' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFull') },
@@ -5719,6 +5730,7 @@ const resetForm = () => {
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'single_machine_multi_window'
+  codexVerifiedTransportEnabled.value = false
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
   webSearchEmulationMode.value = 'default'
@@ -5834,6 +5846,7 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   } else {
     delete extra.codex_fingerprint_mode
   }
+  extra.codex_verified_transport_enabled = codexVerifiedTransportEnabled.value
   if (openAICompactMode.value !== 'auto') {
     extra.openai_compact_mode = openAICompactMode.value
   } else {

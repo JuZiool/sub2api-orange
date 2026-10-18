@@ -2495,7 +2495,7 @@
 
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
-        v-if="account?.platform === 'openai' && account?.type === 'oauth'"
+        v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token')"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between gap-4">
@@ -2506,8 +2506,25 @@
             </p>
           </div>
           <div class="w-52 flex-shrink-0">
-            <Select v-model="codexFingerprintMode" data-testid="edit-codex-fingerprint-mode-select" :options="codexFingerprintModeOptions" />
+            <Select v-model="codexFingerprintMode" data-testid="edit-codex-fingerprint-mode-select" :options="codexFingerprintModeOptions" :disabled="codexEffectiveStrictTransportEnabled || (isSparkShadow && codexParentPolicyLoading)" />
           </div>
+        </div>
+        <div v-if="codexFingerprintMode === 'fixed_device_conversations'" class="mt-4 space-y-2">
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexFingerprintFixedDeviceConversationsDesc') }}</p>
+          <div class="flex items-center justify-between gap-4">
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.codexVerifiedTransport') }}</label>
+            <template v-if="isSparkShadow">
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ codexParentPolicyLoading ? t('common.loading') : codexParentPolicyError ? t('admin.accounts.openai.codexVerifiedTransportParentLoadFailed') : t(codexEffectiveStrictTransportEnabled ? 'common.enabled' : 'common.disabled') }}</span>
+            </template>
+            <Toggle v-else v-model="codexVerifiedTransportEnabled" :aria-label="t('admin.accounts.openai.codexVerifiedTransport')" />
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexVerifiedTransportDesc') }}</p>
+          <div v-if="isSparkShadow" class="flex items-center justify-between gap-3 text-xs">
+            <span class="text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexVerifiedTransportInherited') }}</span>
+            <button type="button" class="text-primary-600 hover:underline" @click="editCodexCredentialParent">{{ t('admin.accounts.openai.codexVerifiedTransportEditParent') }}</button>
+          </div>
+          <p v-if="codexEffectiveStrictTransportEnabled" class="text-xs text-amber-600 dark:text-amber-400">{{ t('admin.accounts.openai.codexVerifiedTransportModeLocked') }}</p>
+          <p v-if="codexEffectiveStrictTransportEnabled && codexVerifiedUserAgent" class="break-all text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexVerifiedTransportEffectiveUA') }}: {{ codexVerifiedUserAgent }}</p>
         </div>
       </div>
 
@@ -3286,6 +3303,7 @@ import type {
   Group,
   CheckMixedChannelResponse,
   OpenAICompactMode,
+  CodexFingerprintMode,
   OpenAIResponsesMode,
   OpenAIEndpointCapability,
   OllamaCloudUsageState,
@@ -3394,6 +3412,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   close: []
   updated: [account: Account]
+  'edit-parent': [accountID: number]
 }>()
 
 const { t } = useI18n()
@@ -3907,8 +3926,24 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
-type CodexFingerprintMode = 'off' | 'single_machine_multi_window' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
+const codexVerifiedTransportEnabled = ref(false)
+const codexParentAccount = ref<Account | null>(null)
+const codexParentPolicyLoading = ref(false)
+const codexParentPolicyError = ref(false)
+const codexEffectiveStrictTransportEnabled = computed(() => isSparkShadow.value
+  ? codexParentAccount.value?.extra?.codex_verified_transport_enabled === true
+  : codexVerifiedTransportEnabled.value)
+const codexVerifiedUserAgent = computed(() => {
+  const identity = (isSparkShadow.value ? codexParentAccount.value : props.account)?.extra?.codex_client_identity
+  if (!identity) return ''
+  const version = '0.162.1'
+  return `codex-tui/${version} (${identity.os_type} ${identity.os_version}; ${identity.arch}) ${identity.terminal} (codex-tui; ${version})`
+})
+const editCodexCredentialParent = () => {
+  const parentID = props.account?.parent_account_id
+  if (parentID) emit('edit-parent', parentID)
+}
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
 type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
@@ -3943,6 +3978,7 @@ const editResetTimezone = ref<string | null>(null)
 const codexFingerprintModeOptions = computed(() => [
   { value: 'off' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintOff') },
   { value: 'single_machine_multi_window' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintSingleMachineMultiWindow') },
+  { value: 'fixed_device_conversations' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFixedDeviceConversations') },
   { value: 'device' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintDevice') },
   { value: 'session' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintSession') },
   { value: 'full' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFull') },
@@ -4410,6 +4446,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
+  codexVerifiedTransportEnabled.value = extra?.codex_verified_transport_enabled === true
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
@@ -4463,10 +4500,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       codexCLIOnlyAppServerEnabled.value =
         extra?.codex_cli_only_allow_app_server === true
     }
-    if (newAccount.type === 'oauth') {
+    if (newAccount.type === 'oauth' || newAccount.type === 'setup-token') {
       const fpMode = extra?.codex_fingerprint_mode as string | undefined
       // 缺省/非法值按 off 呈现，与后端 GetCodexFingerprintMode 的 opt-in 语义一致（#5610）
-      codexFingerprintMode.value = (['off', 'single_machine_multi_window', 'device', 'session', 'full'].includes(fpMode || '')
+      codexFingerprintMode.value = (['off', 'single_machine_multi_window', 'fixed_device_conversations', 'device', 'session', 'full'].includes(fpMode || '')
         ? fpMode as CodexFingerprintMode
         : 'off')
     }
@@ -4797,6 +4834,26 @@ watch(
     if (!wasShow || newAccount !== previousAccount) {
       syncFormFromAccount(newAccount)
       loadTLSProfiles()
+    }
+  },
+  { immediate: true }
+)
+
+watch(
+  [() => props.show, () => props.account?.id, () => props.account?.parent_account_id],
+  async ([show, accountID, parentID]) => {
+    codexParentAccount.value = null
+    codexParentPolicyError.value = false
+    codexParentPolicyLoading.value = false
+    if (!show || !parentID) return
+    codexParentPolicyLoading.value = true
+    try {
+      const parent = await adminAPI.accounts.getById(parentID)
+      if (props.account?.id === accountID) codexParentAccount.value = parent
+    } catch {
+      if (props.account?.id === accountID) codexParentPolicyError.value = true
+    } finally {
+      if (props.account?.id === accountID) codexParentPolicyLoading.value = false
     }
   },
   { immediate: true }
@@ -6079,11 +6136,16 @@ const handleSubmit = async () => {
 
       // 指纹收敛模式：默认 off（不写入）；device/session/full 是显式 opt-in，
       // 必须落键，否则管理员的选择会被后端当作"未设置"而回落到 off（#5610）。
-      if (props.account.type === 'oauth') {
+      if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
         if (codexFingerprintMode.value !== 'off') {
           newExtra.codex_fingerprint_mode = codexFingerprintMode.value
         } else {
-          delete newExtra.codex_fingerprint_mode
+          newExtra.codex_fingerprint_mode = 'off'
+        }
+        if (isSparkShadow.value) {
+          delete newExtra.codex_verified_transport_enabled
+        } else {
+          newExtra.codex_verified_transport_enabled = codexVerifiedTransportEnabled.value
         }
       }
 

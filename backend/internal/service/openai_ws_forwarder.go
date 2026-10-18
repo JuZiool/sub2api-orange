@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codextransport"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	coderws "github.com/coder/websocket"
 	"go.uber.org/zap"
@@ -80,6 +81,13 @@ func (e *openAIWSFallbackError) Unwrap() error {
 }
 
 func wrapOpenAIWSFallback(reason string, err error) error {
+	var failure *UpstreamFailoverError
+	if errors.As(err, &failure) && !failure.ShouldRetryNextAccount() {
+		return failure
+	}
+	if codextransport.IsFailure(err) || codextransport.IsError(err) {
+		return codexStrictClientError(err)
+	}
 	return &openAIWSFallbackError{Reason: strings.TrimSpace(reason), Err: err}
 }
 
@@ -116,6 +124,13 @@ func (e *openAIWSCurrentTurnFailoverError) Unwrap() error {
 }
 
 func newOpenAIWSCurrentTurnFailoverError(cause error, retryPayload []byte) error {
+	var failure *UpstreamFailoverError
+	if errors.As(cause, &failure) && !failure.ShouldRetryNextAccount() {
+		return failure
+	}
+	if codextransport.IsFailure(cause) || codextransport.IsError(cause) {
+		return codexStrictClientError(cause)
+	}
 	return &openAIWSCurrentTurnFailoverError{
 		cause:        cause,
 		retryPayload: append([]byte(nil), retryPayload...),
@@ -152,6 +167,13 @@ func (e *openAIWSIngressTurnError) Unwrap() error {
 func wrapOpenAIWSIngressTurnError(stage string, cause error, wroteDownstream bool) error {
 	if cause == nil {
 		return nil
+	}
+	var failure *UpstreamFailoverError
+	if errors.As(cause, &failure) && !failure.ShouldRetryNextAccount() {
+		return failure
+	}
+	if codextransport.IsFailure(cause) || codextransport.IsError(cause) {
+		return codexStrictClientError(cause)
 	}
 	return &openAIWSIngressTurnError{
 		stage:           strings.TrimSpace(stage),

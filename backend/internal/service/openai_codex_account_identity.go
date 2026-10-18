@@ -31,6 +31,15 @@ func (s *OpenAIGatewayService) prepareCodexAccountIdentitySource(ctx context.Con
 	}
 	if c != nil {
 		c.Set(codexAccountIdentitySourceContextKey, source)
+		c.Set(codexConversationSnapshotKey, (*codexConversationIdentitySnapshot)(nil))
+	}
+	if usesCodexConversationIdentity(account) {
+		if _, ok := codexFingerprintSeed(source.Extra); !ok {
+			return nil, codexConversationConfigurationError()
+		}
+	}
+	if err := validateCodexVerifiedRuntimeFamily(ctx, s.accountRepo, source, account, s.pluginManager); err != nil {
+		return nil, err
 	}
 	return source, nil
 }

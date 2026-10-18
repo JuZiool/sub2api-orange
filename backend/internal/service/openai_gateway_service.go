@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codextransport"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -777,6 +778,9 @@ func (s *OpenAIGatewayService) getOpenAIWSProtocolResolver() OpenAIWSProtocolRes
 func classifyOpenAIWSReconnectReason(err error) (string, bool) {
 	if err == nil {
 		return "", false
+	}
+	if codextransport.IsFailure(err) || codextransport.IsError(err) {
+		return "codex_strict_transport", false
 	}
 	var fallbackErr *openAIWSFallbackError
 	if !errors.As(err, &fallbackErr) || fallbackErr == nil {

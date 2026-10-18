@@ -136,6 +136,8 @@ var duplicateAccountDiscardedExtraKeys = map[string]struct{}{
 	"drive_tier_updated_at":                  {},
 	// Codex fingerprint convergence uses a per-account random seed, never copied from another account.
 	codexFingerprintSeedExtraKey:           {},
+	CodexClientIdentityExtraKey:            {},
+	CodexVerifiedTransportExtraKey:         {},
 	"codex_primary_used_percent":           {},
 	"codex_primary_reset_after_seconds":    {},
 	"codex_primary_window_minutes":         {},
@@ -161,6 +163,9 @@ func duplicateAccountExtra(value map[string]any) (map[string]any, error) {
 	}
 	for key := range duplicateAccountDiscardedExtraKeys {
 		delete(cloned, key)
+	}
+	if codexFingerprintModeFromExtra(cloned) == "fixed_device_conversations" {
+		delete(cloned, codexFingerprintModeExtraKey)
 	}
 	return cloned, nil
 }
@@ -424,7 +429,11 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
 	delete(accountExtra, OpenCodeGoUsageAutoRefreshExtraKey)
 	delete(accountExtra, OpenCodeGoUsageSnapshotExtraKey)
-	accountExtra = prepareCodexFingerprintExtraForCreate(input.Platform, input.Type, accountExtra)
+	var err error
+	accountExtra, err = prepareCodexManagedExtraForCreate(input.Platform, input.Type, accountExtra)
+	if err != nil {
+		return nil, err
+	}
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
@@ -545,6 +554,9 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
+	if err := s.validateCodexVerifiedTransportAccount(ctx, account, nil); err != nil {
+		return nil, err
+	}
 	if err := s.ValidateAccountGroupBindings(ctx, groupIDs); err != nil {
 		return nil, err
 	}
@@ -597,6 +609,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	var normalizedExtra map[string]any
 	if input.Extra != nil {
+		if err := validateCodexVerifiedTransportExtra(input.Extra); err != nil {
+			return nil, err
+		}
 		normalizedExtra, err = normalizeOpenAILongContextBillingUpdateExtra(account, input)
 		if err != nil {
 			return nil, err
@@ -720,7 +735,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 				normalizedExtra[key] = v
 			}
 		}
-		normalizedExtra = prepareCodexFingerprintExtraForUpdate(account, normalizedExtra)
+		normalizedExtra = prepareCodexManagedExtraForUpdate(account, normalizedExtra)
 		account.Extra = normalizedExtra
 		if account.Platform == PlatformAntigravity && wasOveragesEnabled && !account.IsOveragesEnabled() {
 			delete(account.Extra, "antigravity_credits_overages") // 清理旧版 overages 运行态
@@ -741,7 +756,10 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		NormalizeFixedQuotaWindows(account.Extra)
 	}
 	if input.Extra == nil {
-		account.Extra = prepareCodexFingerprintExtraForUpdate(account, account.Extra)
+		account.Extra = prepareCodexManagedExtraForUpdate(account, account.Extra)
+	}
+	if err := s.validateCodexVerifiedTransportAccount(ctx, account, nil); err != nil {
+		return nil, err
 	}
 	if requestedRateSyncEnabledUpdate != nil && *requestedRateSyncEnabledUpdate {
 		if requestedProbeEnabledUpdate != nil && !*requestedProbeEnabledUpdate {
@@ -891,6 +909,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 
+	if _, err := s.ensureCodexConversationSourceSeed(ctx, account, nil); err != nil {
+		return nil, err
+	}
 	billingSettingsAppliedAtomically := false
 	updater := s.accountBillingRepo
 	if updater == nil {
@@ -956,7 +977,44 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 // UpdateAccountExtra 仅对 Extra JSONB 做 key 级合并，避免覆盖其它运行态键
 // （如 model_rate_limits / passive_usage_* 等）。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
-	updates = sanitizedCodexFingerprintExtraUpdates(updates)
+	updates = sanitizedCodexManagedExtraUpdates(updates)
+	if err := validateCodexVerifiedTransportExtra(updates); err != nil {
+		return err
+	}
+	if codexPolicyExtraUpdated(updates) {
+		account, err := s.accountRepo.GetByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		projected := *account
+		projected.Extra = maps.Clone(account.Extra)
+		if projected.Extra == nil {
+			projected.Extra = make(map[string]any)
+		}
+		maps.Copy(projected.Extra, updates)
+		if err := s.validateCodexVerifiedTransportAccount(ctx, &projected, nil); err != nil {
+			return err
+		}
+		if _, err := s.ensureCodexConversationSourceSeed(ctx, &projected, nil); err != nil {
+			return err
+		}
+		if codexVerifiedTransportEnabled(projected.Extra) && !projected.IsCredentialShadow() {
+			prepared := prepareCodexManagedExtraForUpdate(account, projected.Extra)
+			initialized := *account
+			initialized.Extra = maps.Clone(account.Extra)
+			if initialized.Extra == nil {
+				initialized.Extra = make(map[string]any)
+			}
+			initialized.Extra[codexFingerprintSeedExtraKey] = prepared[codexFingerprintSeedExtraKey]
+			initialized.Extra[CodexClientIdentityExtraKey] = prepared[CodexClientIdentityExtraKey]
+			// Persist generated managed identity through the repository's guarded update path.
+			if !reflect.DeepEqual(initialized.Extra, account.Extra) {
+				if err := s.accountRepo.Update(ctx, &initialized); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
 	delete(updates, UpstreamBillingRateSyncEnabledExtraKey)
@@ -985,7 +1043,10 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 // It merges credentials/extra keys instead of overwriting the whole object.
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
 	// Managed probe/session state may only enter through dedicated typed endpoints.
-	input.Extra = sanitizedCodexFingerprintExtraUpdates(input.Extra)
+	input.Extra = sanitizedCodexManagedExtraUpdates(input.Extra)
+	if err := validateCodexVerifiedTransportExtra(input.Extra); err != nil {
+		return nil, err
+	}
 	input.Extra = stripOpenAIAutoResetCreditManagedExtra(input.Extra, true)
 	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)
 	delete(input.Extra, UpstreamBillingRateSyncEnabledExtraKey)
@@ -1030,7 +1091,8 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil {
+	checkCodexActivation := (input.Schedulable != nil && *input.Schedulable) || input.Status == StatusActive
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || openAISettings.any() || input.ProbeEnabled != nil || input.RateMultiplier != nil || codexPolicyExtraUpdated(input.Extra) || checkCodexActivation {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
@@ -1041,6 +1103,28 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	for _, account := range cachedTargets {
 		if account != nil {
 			targetsByID[account.ID] = account
+		}
+	}
+	var codexProjected map[int64]*Account
+	if codexPolicyExtraUpdated(input.Extra) || checkCodexActivation {
+		codexProjected = make(map[int64]*Account, len(cachedTargets))
+		for _, accountID := range input.AccountIDs {
+			account := targetsByID[accountID]
+			if account == nil {
+				return nil, ErrAccountNotFound
+			}
+			projected := *account
+			projected.Extra = maps.Clone(account.Extra)
+			if projected.Extra == nil {
+				projected.Extra = make(map[string]any)
+			}
+			maps.Copy(projected.Extra, input.Extra)
+			codexProjected[accountID] = &projected
+		}
+		for _, account := range codexProjected {
+			if err := s.validateCodexVerifiedTransportAccount(ctx, account, codexProjected); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if openAISettings.any() {
@@ -1153,6 +1237,37 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	// only when platform is known Grok — empty platform still strips password/*).
 	if input.Credentials != nil {
 		input.Credentials = SanitizeStoredCredentials("", input.Credentials)
+	}
+	for _, projected := range codexProjected {
+		source, err := s.ensureCodexConversationSourceSeed(ctx, projected, targetsByID)
+		if err != nil {
+			return nil, err
+		}
+		if source != nil {
+			if projectedSource := codexProjected[source.ID]; projectedSource != nil {
+				projectedSource.Extra[codexFingerprintSeedExtraKey] = source.Extra[codexFingerprintSeedExtraKey]
+			}
+		}
+	}
+	for accountID, projected := range codexProjected {
+		if projected.IsCredentialShadow() || !codexVerifiedTransportEnabled(projected.Extra) {
+			continue
+		}
+		prepared := prepareCodexManagedExtraForUpdate(targetsByID[accountID], projected.Extra)
+		// Each source has its own generated identity; never put one identity into shared bulk extra.
+		initialized := *targetsByID[accountID]
+		initialized.Extra = maps.Clone(initialized.Extra)
+		if initialized.Extra == nil {
+			initialized.Extra = make(map[string]any)
+		}
+		initialized.Extra[codexFingerprintSeedExtraKey] = prepared[codexFingerprintSeedExtraKey]
+		initialized.Extra[CodexClientIdentityExtraKey] = prepared[CodexClientIdentityExtraKey]
+		if reflect.DeepEqual(initialized.Extra, targetsByID[accountID].Extra) {
+			continue
+		}
+		if err := s.accountRepo.Update(ctx, &initialized); err != nil {
+			return nil, err
+		}
 	}
 
 	// Prepare bulk updates for columns and JSONB fields.
@@ -1382,6 +1497,15 @@ func (s *adminServiceImpl) SetAccountError(ctx context.Context, id int64, errorM
 }
 
 func (s *adminServiceImpl) SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error) {
+	if schedulable {
+		account, err := s.accountRepo.GetByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.validateCodexVerifiedTransportAccount(ctx, account, nil); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.accountRepo.SetSchedulable(ctx, id, schedulable); err != nil {
 		return nil, err
 	}
@@ -1500,6 +1624,9 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 		Extra: map[string]any{
 			openAILongContextBillingEnabledKey: parent.IsOpenAILongContextBillingEnabled(),
 		},
+	}
+	if err := s.validateCodexVerifiedTransportAccount(ctx, shadow, nil); err != nil {
+		return nil, err
 	}
 
 	// 5. 持久化（Create 填充 shadow.ID）。并发竞态:预查(步骤2)放行后另一请求抢先建成,本次会撞

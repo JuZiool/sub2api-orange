@@ -273,6 +273,11 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				message = "OpenAI first-output staging limit exceeded"
 			}
 			logger.LegacyPrintf("service.openai_gateway", "%s: account=%d model=%s error=%v", message, account.ID, originalModel, err)
+			if strictErr := codexStrictResponseFailure(resp, err); strictErr != nil {
+				streamEarlyErr = strictErr
+				_ = resp.Body.Close()
+				return
+			}
 			failoverErr := s.newOpenAIStreamFailoverError(c, account, false, upstreamRequestID, nil, message)
 			failoverErr.SafeToFailoverAfterWrite = true
 			streamEarlyErr = failoverErr
@@ -392,6 +397,11 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		if sawTerminalEvent && !sawFailedEvent {
 			s.clearOpenAIProxyStreamDisconnect(account)
 		}
+		if !sawTerminalEvent && !sawBareError {
+			if strictErr := codexStrictResponseFailure(resp, errors.New("stream ended before a terminal event")); strictErr != nil {
+				return resultWithUsage(), strictErr
+			}
+		}
 		if !sawTerminalEvent && !openAIStreamClientOutputStarted(c, clientOutputStarted) && !eventShouldFlush {
 			return resultWithUsage(), s.newOpenAIStreamFailoverError(
 				c,
@@ -418,6 +428,13 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	handleScanErr := func(scanErr error) (*openaiStreamingResult, error, bool) {
 		if scanErr == nil {
 			return nil, nil, false
+		}
+		// A complete terminal remains authoritative. Without one, a local size
+		// boundary or broken read cannot make an already-sent turn replayable.
+		if !sawTerminalEvent && !sawBareError {
+			if strictErr := codexStrictResponseFailure(resp, scanErr); strictErr != nil {
+				return resultWithUsage(), strictErr, true
+			}
 		}
 		if errors.Is(scanErr, errOpenAIFirstOutputScannerLimit) && !firstOutputProgressObserved {
 			logger.LegacyPrintf("service.openai_gateway", "SSE token exceeded guarded first-output limit: account=%d limit=%d error=%v", account.ID, openAIFirstOutputStageMaxBytes+openAIFirstOutputScannerFramingAllowance, scanErr)
@@ -925,6 +942,10 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				_ = resp.Body.Close()
 				return finalizeStream()
 			}
+			if strictErr := codexStrictResponseFailure(resp, errors.New("stream data interval timeout")); strictErr != nil {
+				_ = resp.Body.Close()
+				return resultWithUsage(), strictErr
+			}
 			if clientDisconnected {
 				return resultWithUsage(), fmt.Errorf("stream usage incomplete after timeout")
 			}
@@ -958,6 +979,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			_ = resp.Body.Close()
 			for ev := range events {
 				markEventProcessed(ev)
+			}
+			if strictErr := codexStrictResponseFailure(resp, errors.New("first output timeout")); strictErr != nil {
+				return resultWithUsage(), strictErr
 			}
 			return resultWithUsage(), s.newOpenAIFirstOutputTimeoutError(
 				ctx, c, account, opsUpstreamProxyID(account), opsUpstreamProxyName(account),
@@ -1605,6 +1629,9 @@ func openAICacheCreationTokensFromUsage(value gjson.Result) int {
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
+		if strictErr := codexStrictResponseFailure(resp, err); strictErr != nil {
+			return nil, strictErr
+		}
 		return nil, err
 	}
 	observer := upstreamResponseModelObserverFromContext(c)
@@ -1724,6 +1751,11 @@ func bodyHasSSEFraming(body []byte) bool {
 func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Context, account *Account, body []byte, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {
 	bodyText := string(body)
 	terminalType, terminalPayload, terminalOK := extractOpenAISSETerminalEvent(bodyText)
+	if !terminalOK {
+		if strictErr := codexStrictResponseFailure(resp, errors.New("buffered stream ended before a terminal event")); strictErr != nil {
+			return nil, strictErr
+		}
+	}
 	if terminalOK && (terminalType == "response.failed" || terminalType == "error") {
 		msg := extractOpenAISSEErrorMessage(terminalPayload)
 		if msg == "" {

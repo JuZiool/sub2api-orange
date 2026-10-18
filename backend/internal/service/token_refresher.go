@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codextransport"
 )
 
 // TokenRefresher 定义平台特定的token刷新策略接口
@@ -120,6 +123,11 @@ func (r *OpenAITokenRefresher) NeedsRefresh(account *Account, refreshWindow time
 func (r *OpenAITokenRefresher) Refresh(ctx context.Context, account *Account) (map[string]any, error) {
 	tokenInfo, err := r.openaiOAuthService.RefreshAccountToken(ctx, account)
 	if err != nil {
+		var failure *UpstreamFailoverError
+		if codextransport.IsFailure(err) || codextransport.IsError(err) ||
+			(errors.As(err, &failure) && failure.SuppressAccountHealthPenalty) {
+			return nil, &providerCycleContainmentRefreshError{err: err}
+		}
 		return nil, err
 	}
 

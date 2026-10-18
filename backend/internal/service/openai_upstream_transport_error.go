@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codextransport"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -117,6 +118,13 @@ func isClientCanceledTransportError(ctx context.Context, err error) bool {
 func (s *OpenAIGatewayService) handleOpenAIUpstreamTransportError(ctx context.Context, c *gin.Context, account *Account, err error, passthrough bool) error {
 	if isClientCanceledTransportError(ctx, err) {
 		return err
+	}
+	var requestFailure *UpstreamFailoverError
+	if errors.As(err, &requestFailure) && requestFailure.NextAccountAction == NextAccountStop {
+		return requestFailure
+	}
+	if codextransport.IsFailure(err) || codextransport.IsError(err) {
+		return codexStrictClientError(err)
 	}
 	safeErr := sanitizeUpstreamErrorMessage(err.Error())
 	setOpsUpstreamError(c, 0, safeErr, "")

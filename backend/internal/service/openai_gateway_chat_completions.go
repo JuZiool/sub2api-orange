@@ -261,8 +261,14 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 
 	if account.UsesOpenAICodexProtocol() {
 		var reqBody map[string]any
-		if err := json.Unmarshal(responsesBody, &reqBody); err != nil {
-			return nil, fmt.Errorf("unmarshal for codex transform: %w", err)
+		var decodeErr error
+		if usesCodexConversationIdentity(account) {
+			decodeErr = decodeOpenAIJSONUseNumber(responsesBody, &reqBody)
+		} else {
+			decodeErr = json.Unmarshal(responsesBody, &reqBody)
+		}
+		if decodeErr != nil {
+			return nil, fmt.Errorf("unmarshal for codex transform: %w", decodeErr)
 		}
 		isJSONObjectFormat := strings.EqualFold(strings.TrimSpace(gjson.GetBytes(responsesBody, "text.format.type").String()), "json_object")
 		codexResult := applyCodexOAuthTransformWithOptions(reqBody, codexOAuthTransformOptions{
@@ -285,7 +291,12 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		} else if promptCacheKey != "" {
 			reqBody["prompt_cache_key"] = promptCacheKey
 		}
-		applyCodexAccountIdentityClientMetadataMap(reqBody, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
+		if _, identityErr := s.scopeCodexRequestMetadataMap(c, account, reqBody); identityErr != nil {
+			return nil, identityErr
+		}
+		if usesCodexConversationIdentity(account) {
+			promptCacheKey, _ = reqBody["prompt_cache_key"].(string)
+		}
 		responsesBody, err = json.Marshal(reqBody)
 		if err != nil {
 			return nil, fmt.Errorf("remarshal after codex transform: %w", err)
@@ -347,7 +358,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		return nil, fmt.Errorf("build upstream request: %w", err)
 	}
 
-	if promptCacheKey != "" {
+	if promptCacheKey != "" && !usesCodexConversationIdentity(account) {
 		apiKeyID := getAPIKeyIDFromContext(c)
 		sessionKey := promptCacheKey
 		if !compatPromptCacheTenantIsolated {
@@ -1151,6 +1162,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 	}
 	missingTerminalErr := func() (*OpenAIForwardResult, error) {
+		if strictErr := codexStrictResponseFailure(resp, errors.New("stream ended before a terminal event")); strictErr != nil {
+			return resultWithUsage(), strictErr
+		}
 		return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
 	}
 	processFrame := func(frame openAICompatSSEFrame) bool {
@@ -1184,6 +1198,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			}
 		}
 		if err := scanner.Err(); err != nil {
+			if strictErr := codexStrictResponseFailure(resp, err); strictErr != nil {
+				return resultWithUsage(), strictErr
+			}
 			handleScanErr(err)
 			if clientDisconnected || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
@@ -1259,6 +1276,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				return missingTerminalErr()
 			}
 			if ev.err != nil {
+				if strictErr := codexStrictResponseFailure(resp, ev.err); strictErr != nil {
+					return resultWithUsage(), strictErr
+				}
 				handleScanErr(ev.err)
 				if clientDisconnected || errors.Is(ev.err, context.Canceled) || errors.Is(ev.err, context.DeadlineExceeded) {
 					return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", ev.err)
@@ -1282,6 +1302,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
 			if time.Since(lastRead) < streamInterval {
 				continue
+			}
+			if strictErr := codexStrictResponseFailure(resp, errors.New("stream data interval timeout")); strictErr != nil {
+				_ = resp.Body.Close()
+				return resultWithUsage(), strictErr
 			}
 			if clientDisconnected {
 				return resultWithUsage(), fmt.Errorf("stream usage incomplete after timeout")

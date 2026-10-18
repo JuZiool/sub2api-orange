@@ -69,8 +69,11 @@ func (e *openAIWSDialError) Unwrap() error {
 
 type openAIWSAcquireRequest struct {
 	Account *Account
-	WSURL   string
-	Headers http.Header
+	// Frozen credential-source policy also survives background prewarming.
+	CredentialSource *Account
+	IdentityRevision string
+	WSURL            string
+	Headers          http.Header
 	// HeadersFactory is evaluated inside dialConn. It exists so credentials
 	// whose authorization is per-dial (Agent Identity) are never cached in
 	// lastAcquire or delayed prewarm state.
@@ -84,6 +87,9 @@ type openAIWSAcquireRequest struct {
 }
 
 type openAIWSHandshakeCompatibilityKey struct {
+	identityPolicy      string
+	parentThreadID      string
+	selectedProxy       string
 	tlsProfile          string
 	betaFeatures        string
 	codexInstallationID string
@@ -1146,7 +1152,7 @@ func (p *openAIWSConnPool) acquire(ctx context.Context, req openAIWSAcquireReque
 
 retryAcquire:
 	accountID := req.Account.ID
-	compatibility := normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers)
+	compatibility := normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers, req.IdentityRevision, req.ProxyURL)
 	routingAffinity := normalizeOpenAIWSRoutingAffinity(req.Headers)
 	effectiveMaxConns := p.effectiveMaxConnsByAccount(req.Account)
 	if effectiveMaxConns <= 0 {
@@ -2130,6 +2136,14 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 	dialCtx, cancelDial := context.WithTimeout(ctx, p.dialTimeout())
 	defer cancelDial()
 	dialCtx = withOpenAIWSTLSProfile(dialCtx, resolveCodexMacTLSProfile(req.Account))
+	source := req.CredentialSource
+	if source == nil {
+		source = req.Account
+	}
+	dialCtx, err = codexTransportContext(dialCtx, headers, source, req.Account, "ws")
+	if err != nil {
+		return nil, err
+	}
 	conn, status, handshakeHeaders, err := p.clientDialer.Dial(dialCtx, req.WSURL, headers, req.ProxyURL)
 	if err != nil {
 		var handshakeErr *openAIWSHandshakeError
@@ -2156,7 +2170,7 @@ func (p *openAIWSConnPool) dialConn(ctx context.Context, req openAIWSAcquireRequ
 	accountID := req.Account.ID
 	evict := func() { p.evictConn(accountID, id) }
 	pooledConn.onPeerClosed.Store(&evict)
-	pooledConn.handshakeCompatibility = normalizeOpenAIWSHandshakeCompatibility(req.Account, req.Headers)
+	pooledConn.handshakeCompatibility = normalizeOpenAIWSHandshakeCompatibility(req.Account, headers, req.IdentityRevision, req.ProxyURL)
 	pooledConn.routingAffinity = normalizeOpenAIWSRoutingAffinity(req.Headers)
 	return pooledConn, nil
 }
@@ -2337,7 +2351,7 @@ func cloneOpenAIWSAcquireRequestPtr(req *openAIWSAcquireRequest) *openAIWSAcquir
 func sameOpenAIWSPrewarmTarget(a, b openAIWSAcquireRequest) bool {
 	return stringsTrim(a.WSURL) == stringsTrim(b.WSURL) &&
 		stringsTrim(a.ProxyURL) == stringsTrim(b.ProxyURL) &&
-		normalizeOpenAIWSHandshakeCompatibility(a.Account, a.Headers) == normalizeOpenAIWSHandshakeCompatibility(b.Account, b.Headers)
+		normalizeOpenAIWSHandshakeCompatibility(a.Account, a.Headers, a.IdentityRevision, a.ProxyURL) == normalizeOpenAIWSHandshakeCompatibility(b.Account, b.Headers, b.IdentityRevision, b.ProxyURL)
 }
 
 func normalizeOpenAIWSBetaFeatures(headers http.Header) string {
@@ -2365,7 +2379,7 @@ func normalizeOpenAIWSBetaFeatures(headers http.Header) string {
 	return strings.Join(normalized, ",")
 }
 
-func normalizeOpenAIWSHandshakeCompatibility(account *Account, headers http.Header) openAIWSHandshakeCompatibilityKey {
+func normalizeOpenAIWSHandshakeCompatibility(account *Account, headers http.Header, revisions ...string) openAIWSHandshakeCompatibilityKey {
 	key := openAIWSHandshakeCompatibilityKey{
 		betaFeatures: normalizeOpenAIWSBetaFeatures(headers),
 	}
@@ -2375,6 +2389,22 @@ func normalizeOpenAIWSHandshakeCompatibility(account *Account, headers http.Head
 		key.tlsProfile = profile.Name
 	}
 	mode, allowDerivedSeed := resolveCodexFingerprintMode(account)
+	if mode == codexFingerprintFixedDeviceConversations {
+		key.identityPolicy = codexConversationIdentityVersion + ":" + string(mode)
+		if len(revisions) > 0 {
+			key.identityPolicy += ":" + revisions[0]
+		}
+		if len(revisions) > 1 {
+			key.selectedProxy = strings.TrimSpace(revisions[1])
+		}
+		key.codexInstallationID = normalizeOpenAIWSStableIdentityHeader(headers, "x-codex-installation-id")
+		key.sessionIDHyphen = normalizeOpenAIWSStableIdentityHeader(headers, "session-id")
+		key.threadID = normalizeOpenAIWSStableIdentityHeader(headers, "thread-id")
+		key.clientRequestID = normalizeOpenAIWSStableIdentityHeader(headers, "x-client-request-id")
+		key.codexWindowID = normalizeOpenAIWSStableIdentityHeader(headers, "x-codex-window-id")
+		key.parentThreadID = normalizeOpenAIWSStableIdentityHeader(headers, codexParentThreadIDHeader)
+		return key
+	}
 	if mode == codexFingerprintOff {
 		return key
 	}

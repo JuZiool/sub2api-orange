@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/codextransport"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
 	coderws "github.com/coder/websocket"
@@ -135,6 +136,7 @@ func (e *openAIWSHandshakeError) Unwrap() error {
 type openAIWSProxyClientEntry struct {
 	client           *http.Client
 	lastUsedUnixNano int64
+	inFlight         atomic.Int64
 }
 
 func (d *coderOpenAIWSClientDialer) Dial(
@@ -146,6 +148,9 @@ func (d *coderOpenAIWSClientDialer) Dial(
 	targetURL := strings.TrimSpace(wsURL)
 	if targetURL == "" {
 		return nil, 0, nil, errors.New("ws url is empty")
+	}
+	if binding, ok := codextransport.FromContext(ctx); ok {
+		return d.dialStrictCodex(ctx, targetURL, headers, strings.TrimSpace(proxyURL), binding)
 	}
 
 	wrapped := &coderOpenAIWSClientConn{}
@@ -283,6 +288,9 @@ func (d *coderOpenAIWSClientDialer) cleanupProxyClientsLocked(nowUnixNano int64)
 	}
 	now := time.Unix(0, nowUnixNano)
 	for key, entry := range d.proxyClients {
+		if entry != nil && entry.inFlight.Load() > 0 {
+			continue
+		}
 		if entry == nil || entry.client == nil {
 			delete(d.proxyClients, key)
 			continue
@@ -308,6 +316,9 @@ func (d *coderOpenAIWSClientDialer) ensureProxyClientCapacityLocked() {
 		var oldestLastUsed int64
 		hasOldest := false
 		for key, entry := range d.proxyClients {
+			if entry != nil && entry.inFlight.Load() > 0 {
+				continue
+			}
 			lastUsed := int64(0)
 			if entry != nil {
 				lastUsed = entry.lastUsedUnixNano
@@ -332,9 +343,7 @@ func closeOpenAIWSProxyClient(client *http.Client) {
 	if client == nil || client.Transport == nil {
 		return
 	}
-	if transport, ok := client.Transport.(*http.Transport); ok && transport != nil {
-		transport.CloseIdleConnections()
-	}
+	client.CloseIdleConnections()
 }
 
 func (d *coderOpenAIWSClientDialer) SnapshotTransportMetrics() OpenAIWSTransportMetricsSnapshot {
