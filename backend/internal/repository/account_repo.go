@@ -763,7 +763,6 @@ func lockAndMergeAccountProbeExtra(
 		return nil, err
 	}
 
-	extra := copyJSONMap(normalizeJSONMap(account.Extra))
 	currentCodexExtra := make(map[string]any, 2)
 	for key, raw := range map[string][]byte{
 		"codex_fingerprint_seed":            currentCodexSeed,
@@ -775,7 +774,7 @@ func lockAndMergeAccountProbeExtra(
 			currentCodexExtra[key] = value
 		}
 	}
-	extra = service.PreserveCodexManagedIdentityExtra(account, currentCodexExtra)
+	extra := service.PreserveCodexManagedIdentityExtra(account, currentCodexExtra)
 	for _, key := range []string{
 		service.UpstreamBillingProbeEnabledExtraKey,
 		service.UpstreamBillingRateSyncEnabledExtraKey,

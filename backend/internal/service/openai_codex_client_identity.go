@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"regexp"
-	"strings"
 	"time"
 )
 
@@ -78,29 +77,6 @@ func (id codexClientIdentity) valid() bool {
 	}
 	return codexClientOSVersionPattern.MatchString(id.OSVersion) &&
 		codexClientTerminalPattern.MatchString(id.Terminal)
-}
-
-// codexSandboxForUserAgent 从有效出站 UA 的 `(<os> <ver>; <arch>)` 段推出与之配套的
-// sandbox 标签；无法解析时返回空串（调用方不改写 sandbox）。turn metadata 声明的沙箱
-// 必须跟随最终发出的 UA，而不是账号身份本身：管理员显式 UA 覆盖时二者可能不同。
-var codexUserAgentPlatformPattern = regexp.MustCompile(`\(([^();]+?) [^ ();]+; [^();]+\)`)
-
-func codexSandboxForUserAgent(userAgent string) string {
-	m := codexUserAgentPlatformPattern.FindStringSubmatch(userAgent)
-	if m == nil {
-		return ""
-	}
-	osType := strings.ToLower(strings.TrimSpace(m[1]))
-	switch {
-	case osType == "":
-		return ""
-	case strings.HasPrefix(osType, "mac") || strings.HasPrefix(osType, "darwin"):
-		return codexClientSandboxMac
-	case strings.HasPrefix(osType, "windows"):
-		return codexClientSandboxWindows
-	default:
-		return codexClientSandboxLinux
-	}
 }
 
 // UserAgent 拼出真实 Codex TUI 的 User-Agent：

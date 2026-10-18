@@ -145,7 +145,10 @@ func TestAdminUpdateAccountExtraStripsSeedAndLeavesAtomicEnsureToRepository(t *t
 }
 
 func TestBulkUpdateAccountsDoesNotPrewriteCodexSeed(t *testing.T) {
-	repo := &upstreamBillingProbeAccountRepo{}
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		301: {ID: 301, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+		302: {ID: 302, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+	}}
 
 	result, err := (&adminServiceImpl{accountRepo: repo}).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{
 		AccountIDs: []int64{301, 302},

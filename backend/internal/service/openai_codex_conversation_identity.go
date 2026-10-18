@@ -613,7 +613,7 @@ func (s *OpenAIGatewayService) checkCodexConversationPolicy(ctx context.Context,
 		return err
 	}
 	if !usesCodexConversationIdentity(fresh) {
-		return fmt.Errorf("Codex identity mode changed; please open a new websocket conversation")
+		return fmt.Errorf("codex identity mode changed; please open a new websocket conversation")
 	}
 	source := fresh
 	if fresh.IsShadow() {
@@ -627,7 +627,7 @@ func (s *OpenAIGatewayService) checkCodexConversationPolicy(ctx context.Context,
 	}
 	currentSource := codexAccountIdentitySource(c, routed)
 	if codexConversationPolicyRevision(source) != codexConversationPolicyRevision(currentSource) || codexVerifiedTransportRevision(source) != codexVerifiedTransportRevision(currentSource) {
-		return fmt.Errorf("Codex identity or transport configuration changed; please open a new websocket conversation")
+		return fmt.Errorf("codex identity or transport configuration changed; please open a new websocket conversation")
 	}
 	return nil
 }

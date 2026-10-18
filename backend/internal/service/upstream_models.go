@@ -1165,7 +1165,8 @@ func (s *AccountTestService) buildOpenAIOAuthUpstreamModelsRequest(ctx context.C
 	if err != nil {
 		return nil, newUpstreamModelSyncConfigError("Failed to resolve OpenAI account credentials", err)
 	}
-	if !credentialAccount.IsOpenAIOAuth() && !(credentialAccount.IsOpenAIOAuthLike() && account.GetCodexFingerprintMode() == codexFingerprintMode("fixed_device_conversations")) {
+	if !credentialAccount.IsOpenAIOAuth() &&
+		(!credentialAccount.IsOpenAIOAuthLike() || account.GetCodexFingerprintMode() != codexFingerprintFixedDeviceConversations) {
 		return nil, newUpstreamModelSyncUnsupportedError(
 			fmt.Sprintf("Unsupported OpenAI account type for upstream model sync: %s", credentialAccount.Type), nil,
 		)

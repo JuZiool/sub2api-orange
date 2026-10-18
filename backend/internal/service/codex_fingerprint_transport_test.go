@@ -60,7 +60,7 @@ func TestCodexFingerprintAccountTestBodyHeaderParity(t *testing.T) {
 	account := newTestOAuthAccount(96, map[string]any{codexFingerprintModeExtraKey: "single_machine_multi_window"})
 	defer releaseStagedCodexFingerprintLease(c)
 	payload := map[string]any{"model": "test", "input": "keep", "prompt_cache_key": "keep-cache"}
-	applyCodexFingerprintTestPayload(c, account, payload)
+	require.NoError(t, applyCodexFingerprintTestPayload(c, account, payload))
 	headers := make(http.Header)
 	applyStagedCodexFingerprintHeaders(c, account, headers)
 	ids := stagedCodexFingerprintIDs(c, account)
