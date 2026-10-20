@@ -3717,7 +3717,7 @@
           </div>
           <button
             type="button"
-            @click="autoPauseOnExpired = !autoPauseOnExpired"
+            @click="toggleAutoPauseOnExpired"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
               autoPauseOnExpired ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
@@ -4743,6 +4743,11 @@ const applyGrokOAuthUpstreamConfig = (credentials: Record<string, unknown>) => {
 }
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
+const autoPauseOnExpiredTouched = ref(false)
+const toggleAutoPauseOnExpired = () => {
+  autoPauseOnExpired.value = !autoPauseOnExpired.value
+  autoPauseOnExpiredTouched.value = true
+}
 const openaiPassthroughEnabled = ref(false)
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
@@ -5183,6 +5188,8 @@ watch(
 watch(
   () => form.platform,
   (newPlatform) => {
+    autoPauseOnExpired.value = newPlatform !== 'openai'
+    autoPauseOnExpiredTouched.value = false
     // Reset base URL based on platform
     if (isMultiProtocolApiKeyPlatform(newPlatform)) {
       const mode = newPlatform === 'opencode_go' ? openCodeAccountMode.value : accountMode.value
@@ -5717,6 +5724,7 @@ const resetForm = () => {
   grokOAuthBaseUrl.value = ''
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
+  autoPauseOnExpiredTouched.value = false
   openaiPassthroughEnabled.value = false
   openaiFlattenNamespacesEnabled.value = false
   codexQuotaOverdraftDisabled.value = false
@@ -6863,7 +6871,8 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       rate_multiplier: form.rate_multiplier,
       group_ids: form.group_ids,
       expires_at: form.expires_at,
-      auto_pause_on_expired: autoPauseOnExpired.value,
+      // 未主动调整时，新建使用后端默认值，重新导入保留已有账号设置。
+      auto_pause_on_expired: autoPauseOnExpiredTouched.value ? autoPauseOnExpired.value : undefined,
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
       extra: withUpstreamRequestIdHeader(extra),
       update_existing: true

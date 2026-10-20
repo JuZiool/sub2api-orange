@@ -235,6 +235,7 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		}
 	}
 
+	extra := applyOpenAIAccountCreateDefaults(req.Platform, req.Type, req.Extra)
 	// 创建账号
 	account := &Account{
 		Name:        req.Name,
@@ -242,18 +243,14 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 		Platform:    req.Platform,
 		Type:        req.Type,
 		Credentials: SanitizeStoredCredentials(req.Platform, req.Credentials),
-		Extra:       prepareCodexFingerprintExtraForCreate(req.Platform, req.Type, req.Extra),
+		Extra:       prepareCodexFingerprintExtraForCreate(req.Platform, req.Type, extra),
 		ProxyID:     req.ProxyID,
 		Concurrency: req.Concurrency,
 		Priority:    req.Priority,
 		Status:      StatusActive,
 		ExpiresAt:   req.ExpiresAt,
 	}
-	if req.AutoPauseOnExpired != nil {
-		account.AutoPauseOnExpired = *req.AutoPauseOnExpired
-	} else {
-		account.AutoPauseOnExpired = true
-	}
+	account.AutoPauseOnExpired = resolveAccountAutoPauseOnExpiredForCreate(req.Platform, req.AutoPauseOnExpired, false)
 
 	if err := s.accountRepo.Create(ctx, account); err != nil {
 		return nil, fmt.Errorf("create account: %w", err)

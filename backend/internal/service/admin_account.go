@@ -469,11 +469,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		expiresAt := time.Unix(*input.ExpiresAt, 0)
 		account.ExpiresAt = &expiresAt
 	}
-	if input.AutoPauseOnExpired != nil {
-		account.AutoPauseOnExpired = *input.AutoPauseOnExpired
-	} else {
-		account.AutoPauseOnExpired = true
-	}
+	account.AutoPauseOnExpired = resolveAccountAutoPauseOnExpiredForCreate(input.Platform, input.AutoPauseOnExpired, input.SkipOpenAIAccountDefaults)
 	if input.RateMultiplier != nil {
 		if *input.RateMultiplier < 0 {
 			return nil, errors.New("rate_multiplier must be >= 0")
@@ -501,7 +497,11 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 			input.ProxyID = &ids[0]
 		}
 	}
-	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, input.Extra)
+	extra := input.Extra
+	if !input.SkipOpenAIAccountDefaults {
+		extra = applyOpenAIAccountCreateDefaults(input.Platform, input.Type, extra)
+	}
+	accountExtra, err := normalizeOpenAILongContextBillingExtra(input.Platform, extra)
 	if err != nil {
 		return nil, err
 	}

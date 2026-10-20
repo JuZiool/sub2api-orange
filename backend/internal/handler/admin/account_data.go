@@ -443,20 +443,21 @@ func (h *AccountHandler) importData(ctx context.Context, req DataImportRequest) 
 		}
 
 		accountInput := &service.CreateAccountInput{
-			Name:                 item.Name,
-			Notes:                item.Notes,
-			Platform:             item.Platform,
-			Type:                 item.Type,
-			Credentials:          item.Credentials,
-			Extra:                item.Extra,
-			ProxyID:              proxyID,
-			Concurrency:          item.Concurrency,
-			Priority:             item.Priority,
-			RateMultiplier:       item.RateMultiplier,
-			GroupIDs:             nil,
-			ExpiresAt:            item.ExpiresAt,
-			AutoPauseOnExpired:   item.AutoPauseOnExpired,
-			SkipDefaultGroupBind: skipDefaultGroupBind,
+			Name:                      item.Name,
+			Notes:                     item.Notes,
+			Platform:                  item.Platform,
+			Type:                      item.Type,
+			Credentials:               item.Credentials,
+			Extra:                     item.Extra,
+			ProxyID:                   proxyID,
+			Concurrency:               item.Concurrency,
+			Priority:                  item.Priority,
+			RateMultiplier:            item.RateMultiplier,
+			GroupIDs:                  nil,
+			ExpiresAt:                 item.ExpiresAt,
+			AutoPauseOnExpired:        item.AutoPauseOnExpired,
+			SkipOpenAIAccountDefaults: true,
+			SkipDefaultGroupBind:      skipDefaultGroupBind,
 		}
 
 		created, err := h.adminService.CreateAccount(ctx, accountInput)
