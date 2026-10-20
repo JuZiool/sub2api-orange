@@ -916,9 +916,9 @@ const hiddenColumns = reactive<Set<string>>(new Set())
 
 // Default hidden columns (columns hidden by default on first load)
 const DEFAULT_HIDDEN_COLUMNS = [
-  'notes', 'groups', 'subscriptions', 'usage', 'concurrency',
+  'username', 'groups', 'subscriptions',
   'usage_anthropic', 'usage_openai', 'usage_gemini', 'usage_antigravity',
-  'balance_platform_quota'
+  'balance_platform_quota', 'last_active_at'
 ]
 const REMOVED_COLUMNS = new Set(['last_login_at'])
 // 强制可见列：加载时会被强制移出 hiddenColumns，并在列设置 UI 上 disabled。
@@ -927,7 +927,7 @@ const FORCED_VISIBLE_COLUMNS = new Set<string>()
 
 // localStorage keys for column settings
 const HIDDEN_COLUMNS_KEY = 'user-hidden-columns'
-// 列设置 schema 版本号。每次给 DEFAULT_HIDDEN_COLUMNS 新增列时 bump 一次，
+// 列设置 schema 版本号。引入需要向已有布局追加默认隐藏的新列时 bump 一次，
 // 并在 VERSION_NEW_HIDDEN_COLUMNS 中登记该版本新增的 key。
 // 这样老用户升级后这些新列会被自动隐藏一次，而不会影响他们对其它老列的偏好。
 const COLUMN_SETTINGS_VERSION_KEY = 'user-column-settings-version'
