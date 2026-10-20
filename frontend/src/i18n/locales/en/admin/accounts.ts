@@ -1024,7 +1024,7 @@ export default {
 	  },
       autoResetCredit: {
 	    title: 'Automatically use reset credits',
-	    hint: 'Uses the earliest-expiring available credit only when actual usage reaches a threshold. New accounts enable this by default with 5h automatic reset off. The account remains paused if no credit is available or reset fails.',
+	    hint: 'Uses the earliest-expiring available credit only when actual usage reaches a threshold. New accounts leave this off by default, with 5h automatic reset also off. The account remains paused if no credit is available or reset fails.',
 	    enable5h: '5h automatic reset',
 	    hint5h: 'When off, reaching the 5h limit pauses the account until natural recovery without using a reset credit. The 7d threshold still triggers automatic resets.',
 	    threshold5h: '5h auto-reset threshold (%)',

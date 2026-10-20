@@ -13,7 +13,7 @@ func applyOpenAIAccountCreateDefaults(platform, accountType string, extra map[st
 		"auto_pause_7d_disabled": true,
 	}
 	if accountType == AccountTypeOAuth {
-		defaults[OpenAIAutoResetCreditEnabledExtraKey] = true
+		defaults[OpenAIAutoResetCreditEnabledExtraKey] = false
 		defaults[OpenAIAutoResetCredit5hDisabledExtraKey] = true
 		defaults[OpenAIAutoResetCredit5hThresholdExtraKey] = openAIAutoResetCreditDefaultThreshold
 		defaults[OpenAIAutoResetCredit7dThresholdExtraKey] = openAIAutoResetCreditDefaultThreshold
