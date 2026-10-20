@@ -337,7 +337,9 @@ const emit = defineEmits<{
 const enableRankingView = computed(() => props.enableRankingView)
 const showAccountCost = computed(() => props.showAccountCost)
 const distributionColspan = computed(() => showAccountCost.value ? 6 : 5)
-const activeView = ref<'model_distribution' | 'spending_ranking'>('model_distribution')
+const activeView = ref<'model_distribution' | 'spending_ranking'>(
+  props.enableRankingView ? 'spending_ranking' : 'model_distribution'
+)
 
 const chartColors = [
   '#3b82f6',
