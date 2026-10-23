@@ -118,7 +118,8 @@ func codexVerifiedBinding(source, routed *Account, plane string) (codextransport
 	if device == "" || strings.ContainsAny(device, "\r\n") || len(device) > 256 {
 		return empty, identity, codexStrictClientError(&codextransport.Error{Reason: "the credential source has an invalid installation identity"})
 	}
-	identity = codexVerifiedOutboundIdentity{profile.UserAgent(codextransport.LatestVersion()), codexTUIOriginator, codextransport.LatestVersion()}
+	clientVersion := CodexCanonicalClientVersion()
+	identity = codexVerifiedOutboundIdentity{profile.UserAgent(clientVersion), codexTUIOriginator, clientVersion}
 	scope := sha256.Sum256([]byte(codexAccountIdentityNamespace(source) + "\x00" + device))
 	binding, err := codextransport.Select(identity.userAgent, fmt.Sprintf("%x", scope[:16]), plane)
 	if err != nil {

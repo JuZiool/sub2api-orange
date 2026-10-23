@@ -82,6 +82,7 @@ type Binding struct {
 	RequestZstd            bool   `json:"-"`
 	ProfileID              string `json:"profile_id"`
 	Version                string `json:"version"`
+	ClientVersion          string `json:"client_version"`
 	SourceCommit           string `json:"source_commit"`
 	System                 string `json:"system"`
 	Arch                   string `json:"arch"`
@@ -95,14 +96,15 @@ type Binding struct {
 }
 
 var userAgent = regexp.MustCompile(`^[^/]+/([0-9A-Za-z.\-]+) \((Mac OS|Windows|Ubuntu) [^;]+; (arm64|x86_64)\)`)
+var clientVersion = regexp.MustCompile(`^[0-9]+(\.[0-9]+){1,3}(-[0-9A-Za-z.]+)?$`)
 
 func Select(ua, scope, plane string) (Binding, error) {
 	m := userAgent.FindStringSubmatch(strings.TrimSpace(ua))
 	if len(m) == 0 {
 		return Binding{}, &Error{"User-Agent has no supported fixed device profile"}
 	}
-	if !SupportsVersion(m[1]) {
-		return Binding{}, &Error{fmt.Sprintf("version %s has no verified profile", m[1])}
+	if !clientVersion.MatchString(m[1]) {
+		return Binding{}, &Error{"User-Agent has an invalid client version"}
 	}
 	system := map[string]string{"Mac OS": "Darwin", "Windows": "Windows", "Ubuntu": "Linux"}[m[2]]
 	arch := m[3]
@@ -126,13 +128,13 @@ func Select(ua, scope, plane string) (Binding, error) {
 	if plane != "http" && plane != "ws" {
 		return Binding{}, &Error{"unsupported protocol plane"}
 	}
-	return Binding{ProfileID: "codex-rust-" + verified.Version + "-r1", Version: verified.Version, SourceCommit: verified.SourceCommit,
+	return Binding{ProfileID: "codex-rust-" + verified.Version + "-r1", Version: verified.Version, ClientVersion: m[1], SourceCommit: verified.SourceCommit,
 		System: system, Arch: arch, Strict: true, Validated: true, Scope: scope, Plane: plane, ReferenceConfiguration: "official binary with isolated custom CA"}, nil
 }
 
 func (b Binding) Key() string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%d\x00%s\x00%s\x00%t",
-		b.ProfileID, b.Version, b.SourceCommit, b.System, b.Arch, b.Scope, b.Plane, b.SourceID, b.DeviceID, b.Revision, b.RequestZstd)))
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%d\x00%s\x00%s\x00%t",
+		b.ProfileID, b.Version, b.ClientVersion, b.SourceCommit, b.System, b.Arch, b.Scope, b.Plane, b.SourceID, b.DeviceID, b.Revision, b.RequestZstd)))
 	return fmt.Sprintf("%x", sum[:16])
 }
 
@@ -140,6 +142,9 @@ func (b Binding) Key() string {
 func (b Binding) Validate() error {
 	if !b.Strict || !b.Validated || !SupportsVersion(b.Version) || b.ProfileID != "codex-rust-"+verified.Version+"-r1" || b.SourceCommit != verified.SourceCommit {
 		return &Error{"profile has not been verified"}
+	}
+	if !clientVersion.MatchString(b.ClientVersion) {
+		return &Error{"client version is invalid"}
 	}
 	if b.Plane != "http" && b.Plane != "ws" {
 		return &Error{"missing protocol profile"}

@@ -2524,7 +2524,7 @@
             <button type="button" class="text-primary-600 hover:underline" @click="editCodexCredentialParent">{{ t('admin.accounts.openai.codexVerifiedTransportEditParent') }}</button>
           </div>
           <p v-if="codexEffectiveStrictTransportEnabled" class="text-xs text-amber-600 dark:text-amber-400">{{ t('admin.accounts.openai.codexVerifiedTransportModeLocked') }}</p>
-          <p v-if="codexEffectiveStrictTransportEnabled && codexVerifiedUserAgent" class="break-all text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexVerifiedTransportEffectiveUA') }}: {{ codexVerifiedUserAgent }}</p>
+          <p v-if="codexEffectiveStrictTransportEnabled" class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexVerifiedTransportReferenceVersion') }}: 0.162.1</p>
         </div>
       </div>
 
@@ -3934,12 +3934,6 @@ const codexParentPolicyError = ref(false)
 const codexEffectiveStrictTransportEnabled = computed(() => isSparkShadow.value
   ? codexParentAccount.value?.extra?.codex_verified_transport_enabled === true
   : codexVerifiedTransportEnabled.value)
-const codexVerifiedUserAgent = computed(() => {
-  const identity = (isSparkShadow.value ? codexParentAccount.value : props.account)?.extra?.codex_client_identity
-  if (!identity) return ''
-  const version = '0.162.1'
-  return `codex-tui/${version} (${identity.os_type} ${identity.os_version}; ${identity.arch}) ${identity.terminal} (codex-tui; ${version})`
-})
 const editCodexCredentialParent = () => {
   const parentID = props.account?.parent_account_id
   if (parentID) emit('edit-parent', parentID)
