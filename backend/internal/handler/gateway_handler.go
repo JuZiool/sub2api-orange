@@ -1192,7 +1192,16 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	// Get available models from account configurations for the selected group platform.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
-	if apiKey != nil && apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
+	// 聚合密钥：合并链上所有分组的模型目录，让客户端看到"这些组都能用"的完整集合。
+	// 合并结果已按各分组自己的模型白名单过滤过，因此不再套用链首白名单。
+	aggregated := false
+	if apiKey != nil {
+		if merged, ok := aggregateAvailableModels(c.Request.Context(), h.gatewayService, apiKey.ModelListingGroups(), platform); ok {
+			availableModels = merged
+			aggregated = true
+		}
+	}
+	if !aggregated && apiKey != nil && apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
 		source := modelListingSource(platform, availableModels, defaultModelIDsForPlatform(platform))
 		writeAllowlistedModelsList(c, platform, apiKey.Group.ModelAllowlist.FilterForListing(source))
 		return
@@ -1241,6 +1250,10 @@ func (h *GatewayHandler) CodexModels(c *gin.Context) {
 	}
 	modelIDs := h.codexModelIDsForGroup(c.Request.Context(), apiKey.Group, forcedPlatform)
 	modelIDs = service.FilterCodexModelIDsForGroup(modelIDs, apiKey.Group)
+	// 聚合密钥：合并链上所有分组的 Codex 模型目录（各分组已按自身白名单过滤）。
+	if merged, ok := h.aggregateCodexModelIDs(c.Request.Context(), apiKey, forcedPlatform); ok {
+		modelIDs = merged
+	}
 	body, err := h.gatewayService.BuildCodexModelsManifestForGroup(
 		c.Request.Context(),
 		apiKey.Group,
@@ -1261,8 +1274,45 @@ func (h *GatewayHandler) CodexModels(c *gin.Context) {
 	c.Data(http.StatusOK, "application/json", body)
 }
 
-func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *service.Group, platformOverride string) []string {
-	if h == nil || h.gatewayService == nil || group == nil {
+// aggregateCodexModelIDs 合并聚合密钥链上各分组的 Codex 模型目录（Orange 特有）。
+// 与 /v1/models 的合并保持一致：按 priority 升序、去重、各分组先套自己的白名单。
+// 返回 ok=false 表示不是聚合密钥，调用方沿用单分组结果。
+func (h *GatewayHandler) aggregateCodexModelIDs(ctx context.Context, apiKey *service.APIKey, platformOverride string) ([]string, bool) {
+	if h == nil || h.gatewayService == nil || apiKey == nil {
+		return nil, false
+	}
+	groups := apiKey.ModelListingGroups()
+	if len(groups) < 2 {
+		return nil, false
+	}
+	merged := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, group := range groups {
+		if group == nil || group.ID <= 0 {
+			continue
+		}
+		modelIDs := h.codexModelIDsForGroup(ctx, group, platformOverride)
+		modelIDs = service.FilterCodexModelIDsForGroup(modelIDs, group)
+		for _, modelID := range modelIDs {
+			modelID = strings.TrimSpace(modelID)
+			if modelID == "" {
+				continue
+			}
+			key := strings.ToLower(modelID)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			merged = append(merged, modelID)
+		}
+	}
+	if len(merged) == 0 {
+		return nil, false
+	}
+	return merged, true
+}
+
+func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *service.Group, platformOverride string) []string {	if h == nil || h.gatewayService == nil || group == nil {
 		return nil
 	}
 
@@ -1472,6 +1522,60 @@ func modelListingSource(platform string, availableModels, fallbackModels []strin
 		return mergeModelIDs(availableModels, fallbackModels)
 	}
 	return availableModels
+}
+
+// aggregateAvailableModels 合并聚合密钥链上各分组的模型目录（Orange 特有）。
+//
+// 返回 (models, true) 表示已拿到合并结果；返回 (nil, false) 表示应继续走原有的
+// "单个分组 + 默认列表"逻辑（非聚合密钥）。
+//
+// 语义要点：
+//   - 链上每个分组独立按 modelListingSource 规则展开（含该分组的默认列表回退），
+//     再整体去重合并，因此"只有后面的分组支持"的模型也会出现在列表里。
+//   - 顺序按 priority 升序，保持首次出现位置，客户端看到的首个模型仍是主分组的。
+//   - 分组级模型白名单按各自分组分别过滤：聚合链要求同平台，但各分组白名单可能
+//     不同，只合并每个分组真正可调用的模型。
+func aggregateAvailableModels(
+	ctx context.Context,
+	gateway *service.GatewayService,
+	groups []*service.Group,
+	platform string,
+) ([]string, bool) {
+	if gateway == nil || len(groups) < 2 {
+		return nil, false
+	}
+	merged := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, group := range groups {
+		if group == nil || group.ID <= 0 {
+			continue
+		}
+		groupPlatform := platform
+		if group.Platform != "" {
+			groupPlatform = group.Platform
+		}
+		available := gateway.GetAvailableModels(ctx, &group.ID, groupPlatform)
+		source := modelListingSource(groupPlatform, available, defaultModelIDsForPlatform(groupPlatform))
+		if group.ModelAllowlistEnabled() {
+			source = group.ModelAllowlist.FilterForListing(source)
+		}
+		for _, model := range source {
+			model = strings.TrimSpace(model)
+			if model == "" {
+				continue
+			}
+			key := strings.ToLower(model)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			merged = append(merged, model)
+		}
+	}
+	if len(merged) == 0 {
+		return nil, false
+	}
+	return merged, true
 }
 
 func defaultCodexModelIDsForPlatform(platform string) []string {

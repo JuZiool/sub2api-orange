@@ -124,6 +124,31 @@ func (k *APIKey) FallbackGroupIDs() []int64 {
 	return out
 }
 
+// ModelListingGroups 返回模型列表应当合并的分组（含主分组，按优先级升序）。
+// 普通密钥只有主分组一项；聚合密钥返回整条链，使模型目录反映"这些组都能用"。
+func (k *APIKey) ModelListingGroups() []*Group {
+	chain := k.GroupChain()
+	if len(chain) < 2 {
+		if k == nil || k.Group == nil {
+			return nil
+		}
+		return []*Group{k.Group}
+	}
+	out := make([]*Group, 0, len(chain))
+	seen := make(map[int64]struct{}, len(chain))
+	for _, entry := range chain {
+		if entry.Group == nil {
+			continue
+		}
+		if _, dup := seen[entry.Group.ID]; dup {
+			continue
+		}
+		seen[entry.Group.ID] = struct{}{}
+		out = append(out, entry.Group)
+	}
+	return out
+}
+
 // HasRateLimits returns true if any rate limit window is configured
 func (k *APIKey) HasRateLimits() bool {
 	return k.RateLimit5h > 0 || k.RateLimit1d > 0 || k.RateLimit7d > 0

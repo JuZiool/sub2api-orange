@@ -227,6 +227,93 @@ func (s *OpenAIGatewayService) MergeGroupConfiguredCodexModels(
 	return nil
 }
 
+// MergeAggregatedCodexModels 是 MergeGroupConfiguredCodexModels 的聚合密钥版本
+// （Orange 特有）：按链上每个分组分别收集「该分组可见的模型别名」，合并后再与
+// 上游 manifest 融合，使 Codex 模型选择器覆盖整条链而不只是链首分组。
+//
+// 白名单处理：聚合链要求同平台，但各分组白名单可能不同。这里取并集后传给
+// mergeConfiguredCodexModelsManifest；只有当链上所有分组都开启白名单时才启用
+// 按白名单过滤，否则会错误剔除其他分组可用的模型。
+func (s *OpenAIGatewayService) MergeAggregatedCodexModels(
+	ctx context.Context,
+	groups []*Group,
+	manifest *OpenAIModelsResponse,
+	ifNoneMatch string,
+) error {
+	if s == nil || s.accountRepo == nil || manifest == nil || manifest.NotModified || len(manifest.Body) == 0 {
+		return nil
+	}
+	if len(groups) < 2 {
+		if len(groups) == 1 {
+			return s.MergeGroupConfiguredCodexModels(ctx, groups[0], manifest, ifNoneMatch)
+		}
+		return nil
+	}
+
+	mergedConfigured := make([]string, 0)
+	seenConfigured := make(map[string]struct{})
+	mergedAllowlist := make([]string, 0)
+	seenAllowlist := make(map[string]struct{})
+	allAllowlisted := true
+	var mergedAccounts []Account
+
+	for _, group := range groups {
+		if group == nil || group.ID <= 0 || group.Platform != PlatformOpenAI {
+			continue
+		}
+		visible, accounts, err := loadCodexGroupCatalogAccounts(ctx, s.accountRepo, group.ID)
+		if err != nil {
+			return fmt.Errorf("load group configured Codex models: %w", err)
+		}
+		mergedAccounts = append(mergedAccounts, accounts...)
+		if !group.CodexModelsManifestConfig.Enabled {
+			for _, modelID := range openAIConfiguredCodexModelIDsForGroup(visible, group) {
+				if _, ok := seenConfigured[modelID]; ok {
+					continue
+				}
+				seenConfigured[modelID] = struct{}{}
+				mergedConfigured = append(mergedConfigured, modelID)
+			}
+		}
+		if group.ModelAllowlistEnabled() {
+			for _, modelID := range group.ModelAllowlist.Models {
+				modelID = strings.TrimSpace(modelID)
+				if modelID == "" {
+					continue
+				}
+				if _, ok := seenAllowlist[modelID]; ok {
+					continue
+				}
+				seenAllowlist[modelID] = struct{}{}
+				mergedAllowlist = append(mergedAllowlist, modelID)
+			}
+		} else {
+			allAllowlisted = false
+		}
+	}
+
+	body, _, err := mergeConfiguredCodexModelsManifest(
+		manifest.Body,
+		mergedConfigured,
+		mergedAllowlist,
+		allAllowlisted && len(mergedAllowlist) > 0,
+	)
+	if err != nil {
+		return fmt.Errorf("merge aggregated Codex models: %w", err)
+	}
+	filtered, _, err := filterRetiredOpenAIPublicModelsBody(body, mergedAccounts, true)
+	if err != nil {
+		return fmt.Errorf("filter retired Codex models: %w", err)
+	}
+	manifest.Body = filtered
+	manifest.ETag = codexModelsManifestBodyETag(filtered)
+	if codexModelsManifestETagMatches(ifNoneMatch, manifest.ETag) {
+		manifest.Body = nil
+		manifest.NotModified = true
+	}
+	return nil
+}
+
 // loadCodexGroupCatalogAccounts separates picker membership from capability
 // intersection. visible accounts are currently schedulable and decide which
 // public aliases appear. catalog accounts are persistently enabled group

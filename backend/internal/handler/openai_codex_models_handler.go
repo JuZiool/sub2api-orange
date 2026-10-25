@@ -86,6 +86,13 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 			return
 		}
 		if configured {
+			// 聚合密钥：链首分组有本地配置目录时，把其余分组配置的模型并入。
+			if groups := apiKey.ModelListingGroups(); len(groups) > 1 {
+				if err := h.gatewayService.MergeAggregatedCodexModels(c.Request.Context(), groups, configuredManifest, ifNoneMatch); err != nil {
+					h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
+					return
+				}
+			}
 			writeOpenAIModelsResponse(c, configuredManifest)
 			return
 		}
@@ -142,6 +149,13 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 		if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, manifest, ifNoneMatch); err != nil {
 			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
 			return
+		}
+		// 聚合密钥：把链上其余分组的模型别名也并入同一份 manifest。
+		if groups := apiKey.ModelListingGroups(); len(groups) > 1 {
+			if err := h.gatewayService.MergeAggregatedCodexModels(c.Request.Context(), groups, manifest, ifNoneMatch); err != nil {
+				h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
+				return
+			}
 		}
 		if c.Request.Context().Err() != nil {
 			return
