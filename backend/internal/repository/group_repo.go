@@ -1041,7 +1041,7 @@ func (r *groupRepository) pruneAPIKeyGroupChain(ctx context.Context, exec sqlExe
 		USING (
 			SELECT api_key_id FROM api_key_groups GROUP BY api_key_id HAVING COUNT(*) < 2
 		) AS single
-		WHERE ag.api_key_id = single.api_key_id`, nil)
+		WHERE ag.api_key_id = single.api_key_id`)
 	return err
 }
 
