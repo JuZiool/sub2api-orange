@@ -2351,7 +2351,12 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	// Some upstreams (e.g. other sub2api instances) may return SSE even when
 	// stream=false was requested. Without this conversion the client would
 	// receive raw SSE text or a terminal event with empty output.
-	if isEventStreamResponse(resp.Header) {
+	// The header alone is not trusted: some new-api style upstreams mislabel
+	// plain JSON non-streaming responses as text/event-stream, and parsing
+	// those as SSE silently drops the usage block (billed as 0). The actual
+	// body framing decides; real SSE with a missing/mislabeled CT is still
+	// caught by the parseSSEUsageFromBody fallback below.
+	if isEventStreamResponse(resp.Header) && bodyHasSSEFraming(body) {
 		return s.handlePassthroughSSEToJSON(resp, c, account, body, originalModel, mappedModel)
 	}
 
@@ -2372,7 +2377,10 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 
 	contentType := resp.Header.Get("Content-Type")
-	if contentType == "" {
+	// 上游 CT 声明 event-stream 时实际报文已被判定为 JSON（否则上面已走 SSE
+	// 路径），透传该头会误导按头判流式的下游中间层，对齐
+	// openai_gateway_chat_completions.go 的同类处理强制回 JSON 头。
+	if contentType == "" || strings.Contains(strings.ToLower(contentType), "text/event-stream") {
 		contentType = "application/json"
 	}
 	if originalModel != "" && mappedModel != "" && originalModel != mappedModel {
@@ -2388,6 +2396,11 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		return nil, fmt.Errorf("restore OpenAI Responses client tools: %w", err)
 	}
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
+		// 头部透传已把错标的 event-stream 头写进 writer，而 c.Data 仅在
+		// Content-Type 头不存在时才写入，无法覆盖，必须显式 Set。
+		if isEventStreamResponse(resp.Header) {
+			c.Writer.Header().Set("Content-Type", "application/json")
+		}
 		c.Data(resp.StatusCode, contentType, body)
 	}
 	return &openaiNonStreamingResultPassthrough{

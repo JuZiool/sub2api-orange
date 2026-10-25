@@ -1644,12 +1644,6 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		observer.ObserveOpenAI(body, strings.TrimSpace(gjson.GetBytes(body, "type").String()))
 	}
 
-	// Detect SSE responses for ALL account types via Content-Type header.
-	// Some OpenAI-compatible upstreams (including other sub2api instances)
-	// may return SSE even when stream=false was requested.
-	if isEventStreamResponse(resp.Header) {
-		return s.handleSSEToJSON(resp, c, account, body, originalModel, mappedModel)
-	}
 	// bodyLooksLikeSSE is a line-level heuristic: real SSE framing requires
 	// "data:"/"event:" field names at the very start of a physical line. A
 	// plain bytes.Contains scan would also match ordinary JSON responses
@@ -1657,6 +1651,17 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	// "event:" (e.g. compact tool output), causing those JSON bodies to be
 	// misrouted into handleSSEToJSON and lose their usage accounting.
 	bodyLooksLikeSSE := bodyHasSSEFraming(body)
+	// Detect SSE responses for ALL account types via Content-Type header.
+	// Some OpenAI-compatible upstreams (including other sub2api instances)
+	// may return SSE even when stream=false was requested. The header alone
+	// is not trusted: some new-api style upstreams mislabel plain JSON
+	// non-streaming responses as text/event-stream, and parsing those as
+	// SSE silently drops the whole usage block (billed as 0). The actual
+	// body framing decides; real SSE with a missing/mislabeled CT is still
+	// caught by the bodyLooksLikeSSE fallbacks below.
+	if isEventStreamResponse(resp.Header) && bodyLooksLikeSSE {
+		return s.handleSSEToJSON(resp, c, account, body, originalModel, mappedModel)
+	}
 
 	// For OAuth accounts, also fall back to a body-content heuristic because
 	// the upstream may omit the Content-Type header while still sending SSE.
@@ -1678,7 +1683,15 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		if bodyLooksLikeSSE {
 			return s.handleSSEToJSON(resp, c, account, body, originalModel, mappedModel)
 		}
-		return nil, fmt.Errorf("parse response: invalid json response")
+		// CT 错标为 event-stream 的合法 JSON 且无 usage：请求实际成功但无计费凭据，
+		// 按零用量成功透传并采样告警，保持与旧行为相同的可用性（旧行为走
+		// handleSSEToJSON 静默零用量，此处补上可观测性）。
+		if isEventStreamResponse(resp.Header) && gjson.ValidBytes(body) {
+			logOpenAISuccessMissingUsage(ctx, c, account, resp, &OpenAIUsage{}, "json", false)
+			usageValue = OpenAIUsage{}
+		} else {
+			return nil, fmt.Errorf("parse response: invalid json response")
+		}
 	}
 	usage := &usageValue
 	logOpenAISuccessMissingUsage(ctx, c, account, resp, usage, "json", false)
@@ -1708,12 +1721,21 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {
-		if upstreamType := resp.Header.Get("Content-Type"); upstreamType != "" {
+		// 上游 CT 声明 event-stream 时实际报文已被判定为 JSON（否则上面已走
+		// SSE 路径），透传该头会误导按头判流式的下游中间层，对齐
+		// openai_gateway_chat_completions.go 的同类处理强制回 JSON 头。
+		if upstreamType := resp.Header.Get("Content-Type"); upstreamType != "" &&
+			!strings.Contains(strings.ToLower(upstreamType), "text/event-stream") {
 			contentType = upstreamType
 		}
 	}
 
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
+		// WriteFilteredHeaders 已把错标的 event-stream 头透传进 writer，而
+		// c.Data 仅在 Content-Type 头不存在时才写入，无法覆盖，必须显式 Set。
+		if isEventStreamResponse(resp.Header) {
+			c.Writer.Header().Set("Content-Type", "application/json")
+		}
 		c.Data(resp.StatusCode, contentType, body)
 	}
 
