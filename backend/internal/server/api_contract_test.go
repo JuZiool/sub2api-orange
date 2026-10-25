@@ -250,7 +250,8 @@ func TestAPIContracts(t *testing.T) {
 					"window_7d_start": null,
 					"expires_at": null,
 					"created_at": "2025-01-02T03:04:05Z",
-					"updated_at": "2025-01-02T03:04:05Z"
+					"updated_at": "2025-01-02T03:04:05Z",
+					"groups": []
 				}
 			}`,
 		},
@@ -302,7 +303,8 @@ func TestAPIContracts(t *testing.T) {
 							"window_7d_start": null,
 							"expires_at": null,
 							"created_at": "2025-01-02T03:04:05Z",
-							"updated_at": "2025-01-02T03:04:05Z"
+							"updated_at": "2025-01-02T03:04:05Z",
+							"groups": []
 						}
 					],
 					"total": 1,

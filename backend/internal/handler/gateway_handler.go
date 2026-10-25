@@ -1312,7 +1312,8 @@ func (h *GatewayHandler) aggregateCodexModelIDs(ctx context.Context, apiKey *ser
 	return merged, true
 }
 
-func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *service.Group, platformOverride string) []string {	if h == nil || h.gatewayService == nil || group == nil {
+func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *service.Group, platformOverride string) []string {
+	if h == nil || h.gatewayService == nil || group == nil {
 		return nil
 	}
 

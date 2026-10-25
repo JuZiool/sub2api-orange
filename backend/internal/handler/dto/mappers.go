@@ -147,7 +147,8 @@ func apiKeyGroupEntriesFromService(entries []*service.APIKeyGroupEntry) []APIKey
 	return out
 }
 
-func GroupFromServiceShallow(g *service.Group) *Group {	if g == nil {
+func GroupFromServiceShallow(g *service.Group) *Group {
+	if g == nil {
 		return nil
 	}
 	out := groupFromServiceBase(g)

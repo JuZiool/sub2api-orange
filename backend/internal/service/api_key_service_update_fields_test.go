@@ -35,6 +35,10 @@ func (s *updateFieldsAPIKeyRepoStub) Update(_ context.Context, _ *APIKey, fields
 	return nil
 }
 
+func (s *updateFieldsAPIKeyRepoStub) ReplaceGroupChain(context.Context, int64, []int64) error {
+	panic("unexpected ReplaceGroupChain call")
+}
+
 func newUpdateFieldsAPIKeyService(key *APIKey) (*APIKeyService, *updateFieldsAPIKeyRepoStub) {
 	repo := &updateFieldsAPIKeyRepoStub{key: key}
 	return &APIKeyService{apiKeyRepo: repo}, repo

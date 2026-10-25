@@ -33,9 +33,9 @@ func NewAPIKeyHandler(apiKeyService *service.APIKeyService) *APIKeyHandler {
 
 // CreateAPIKeyRequest represents the create API key request payload
 type CreateAPIKeyRequest struct {
-	Name            string   `json:"name" binding:"required"`
-	GroupID         *int64   `json:"group_id"` // nullable
-	FallbackGroupID *int64   `json:"fallback_group_id"`
+	Name            string `json:"name" binding:"required"`
+	GroupID         *int64 `json:"group_id"` // nullable
+	FallbackGroupID *int64 `json:"fallback_group_id"`
 	// GroupIDs 是聚合密钥的分组优先级链（有序，index 0 为主分组）。
 	GroupIDs      []int64  `json:"group_ids"`
 	CustomKey     *string  `json:"custom_key"`      // 可选的自定义key
@@ -75,13 +75,13 @@ type UpdateAPIKeyRequest struct {
 	GroupID         *int64        `json:"group_id"`
 	FallbackGroupID optionalInt64 `json:"fallback_group_id"`
 	// GroupIDs 非 nil 时整体替换聚合分组链；空数组表示退出聚合模式。
-	GroupIDs        *[]int64      `json:"group_ids"`
-	Status          string        `json:"status" binding:"omitempty,oneof=active inactive"`
-	IPWhitelist     *[]string     `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
-	IPBlacklist     *[]string     `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
-	Quota           *float64      `json:"quota"`        // 配额限制 (USD), 0=无限制
-	ExpiresAt       *string       `json:"expires_at"`   // 过期时间 (ISO 8601)
-	ResetQuota      *bool         `json:"reset_quota"`  // 重置已用配额
+	GroupIDs    *[]int64  `json:"group_ids"`
+	Status      string    `json:"status" binding:"omitempty,oneof=active inactive"`
+	IPWhitelist *[]string `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
+	IPBlacklist *[]string `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
+	Quota       *float64  `json:"quota"`        // 配额限制 (USD), 0=无限制
+	ExpiresAt   *string   `json:"expires_at"`   // 过期时间 (ISO 8601)
+	ResetQuota  *bool     `json:"reset_quota"`  // 重置已用配额
 
 	// Rate limit fields (nil = no change, 0 = unlimited)
 	RateLimit5h         *float64 `json:"rate_limit_5h"`

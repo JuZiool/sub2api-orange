@@ -1045,7 +1045,8 @@ func (r *groupRepository) pruneAPIKeyGroupChain(ctx context.Context, exec sqlExe
 	return err
 }
 
-type groupAccountCounts struct {	Total       int64
+type groupAccountCounts struct {
+	Total       int64
 	Active      int64
 	RateLimited int64
 }

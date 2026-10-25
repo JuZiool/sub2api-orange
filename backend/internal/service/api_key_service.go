@@ -220,15 +220,15 @@ type APIKeyAuthCacheInvalidator interface {
 
 // CreateAPIKeyRequest 创建API Key请求
 type CreateAPIKeyRequest struct {
-	Name            string   `json:"name"`
-	GroupID         *int64   `json:"group_id"`
-	FallbackGroupID *int64   `json:"fallback_group_id"`
+	Name            string `json:"name"`
+	GroupID         *int64 `json:"group_id"`
+	FallbackGroupID *int64 `json:"fallback_group_id"`
 	// GroupIDs 是 Orange 聚合密钥的分组优先级链（有序，index 0 为主分组）。
 	// 非空时启用聚合语义：GroupID 由链首推导，FallbackGroupID 被忽略。
-	GroupIDs        []int64  `json:"group_ids"`
-	CustomKey       *string  `json:"custom_key"`   // 可选的自定义key
-	IPWhitelist     []string `json:"ip_whitelist"` // IP 白名单
-	IPBlacklist     []string `json:"ip_blacklist"` // IP 黑名单
+	GroupIDs    []int64  `json:"group_ids"`
+	CustomKey   *string  `json:"custom_key"`   // 可选的自定义key
+	IPWhitelist []string `json:"ip_whitelist"` // IP 白名单
+	IPBlacklist []string `json:"ip_blacklist"` // IP 黑名单
 
 	// Quota fields
 	Quota         float64 `json:"quota"`           // Quota limit in USD (0 = unlimited)
@@ -242,16 +242,16 @@ type CreateAPIKeyRequest struct {
 
 // UpdateAPIKeyRequest 更新API Key请求
 type UpdateAPIKeyRequest struct {
-	Name               *string   `json:"name"`
-	GroupID            *int64    `json:"group_id"`
-	FallbackGroupID    *int64    `json:"fallback_group_id"`
-	FallbackGroupIDSet bool      `json:"-"`
+	Name               *string `json:"name"`
+	GroupID            *int64  `json:"group_id"`
+	FallbackGroupID    *int64  `json:"fallback_group_id"`
+	FallbackGroupIDSet bool    `json:"-"`
 	// GroupIDs 非 nil 时整体替换聚合分组链；空切片表示退出聚合模式。
-	GroupIDs           []int64   `json:"group_ids"`
-	GroupIDsSet        bool      `json:"-"`
-	Status             *string   `json:"status"`
-	IPWhitelist        *[]string `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
-	IPBlacklist        *[]string `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
+	GroupIDs    []int64   `json:"group_ids"`
+	GroupIDsSet bool      `json:"-"`
+	Status      *string   `json:"status"`
+	IPWhitelist *[]string `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
+	IPBlacklist *[]string `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
 
 	// Quota fields
 	Quota           *float64   `json:"quota"`       // Quota limit in USD (nil = no change, 0 = unlimited)
