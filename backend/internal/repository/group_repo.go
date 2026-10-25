@@ -960,6 +960,14 @@ func (r *groupRepository) deleteCascade(ctx context.Context, id int64, requireEm
 		return nil, err
 	}
 
+	// 3.1 Orange 聚合密钥：移除该分组在链上的条目。若被删分组正是某个 Key
+	// 的主分组，则把主分组提升为剩余链上优先级最高者，避免 Key 永久报
+	// GROUP_DELETED；链上已无剩余分组时保持原样（与上游软删语义一致，
+	// 由鉴权层报告 GROUP_DELETED 提示用户重新绑定）。
+	if err := r.pruneAPIKeyGroupChain(ctx, exec, id); err != nil {
+		return nil, err
+	}
+
 	// 4. Soft-delete composite model routes owned by this group.
 	if _, err := exec.ExecContext(ctx, "UPDATE composite_model_routes SET deleted_at = NOW() WHERE group_id = $1 AND deleted_at IS NULL", id); err != nil {
 		return nil, err
@@ -1005,8 +1013,39 @@ func (r *groupRepository) deleteCascade(ctx context.Context, id int64, requireEm
 	return affectedUserIDs, nil
 }
 
-type groupAccountCounts struct {
-	Total       int64
+// pruneAPIKeyGroupChain 在分组删除事务内清理聚合密钥链（Orange 特有）。
+//
+// 顺序很重要：
+//  1. 删掉该分组在链上的条目；
+//  2. 主分组正好是被删分组的 Key，提升为剩余链上优先级最高者；
+//  3. 链上只剩 1 项的 Key 删除该唯一条目（等价普通密钥，避免残留）。
+func (r *groupRepository) pruneAPIKeyGroupChain(ctx context.Context, exec sqlExecutor, groupID int64) error {
+	if _, err := exec.ExecContext(ctx, "DELETE FROM api_key_groups WHERE group_id = $1", groupID); err != nil {
+		return err
+	}
+	if _, err := exec.ExecContext(ctx, `
+		UPDATE api_keys k
+		SET group_id = promoted.group_id, updated_at = NOW()
+		FROM (
+			SELECT DISTINCT ON (ag.api_key_id) ag.api_key_id, ag.group_id
+			FROM api_key_groups ag
+			JOIN api_keys ak ON ak.id = ag.api_key_id
+			WHERE ak.group_id = $1 AND ak.deleted_at IS NULL
+			ORDER BY ag.api_key_id, ag.priority ASC, ag.id ASC
+		) AS promoted
+		WHERE k.id = promoted.api_key_id`, groupID); err != nil {
+		return err
+	}
+	_, err := exec.ExecContext(ctx, `
+		DELETE FROM api_key_groups ag
+		USING (
+			SELECT api_key_id FROM api_key_groups GROUP BY api_key_id HAVING COUNT(*) < 2
+		) AS single
+		WHERE ag.api_key_id = single.api_key_id`, nil)
+	return err
+}
+
+type groupAccountCounts struct {	Total       int64
 	Active      int64
 	RateLimited int64
 }

@@ -533,7 +533,16 @@ func liveIdentityGroupMatches(recordGroupID int64, identity LiveCallIdentity) bo
 		return true
 	}
 	fallbackGroupID := liveGroupID(identity.FallbackGroupID)
-	return fallbackGroupID > 0 && fallbackGroupID != primaryGroupID && recordGroupID == fallbackGroupID
+	if fallbackGroupID > 0 && fallbackGroupID != primaryGroupID && recordGroupID == fallbackGroupID {
+		return true
+	}
+	// 聚合密钥：原始 Live 调用可能由链上任意一组承接。
+	for _, chainGroupID := range identity.ChainGroupIDs {
+		if chainGroupID > 0 && chainGroupID != primaryGroupID && recordGroupID == chainGroupID {
+			return true
+		}
+	}
+	return false
 }
 
 // ProxyLiveSideband 让认证后的客户端接管控制连接；媒体始终不经过这里。

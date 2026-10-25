@@ -36,11 +36,13 @@ type CreateAPIKeyRequest struct {
 	Name            string   `json:"name" binding:"required"`
 	GroupID         *int64   `json:"group_id"` // nullable
 	FallbackGroupID *int64   `json:"fallback_group_id"`
-	CustomKey       *string  `json:"custom_key"`      // 可选的自定义key
-	IPWhitelist     []string `json:"ip_whitelist"`    // IP 白名单
-	IPBlacklist     []string `json:"ip_blacklist"`    // IP 黑名单
-	Quota           *float64 `json:"quota"`           // 配额限制 (USD)
-	ExpiresInDays   *int     `json:"expires_in_days"` // 过期天数
+	// GroupIDs 是聚合密钥的分组优先级链（有序，index 0 为主分组）。
+	GroupIDs      []int64  `json:"group_ids"`
+	CustomKey     *string  `json:"custom_key"`      // 可选的自定义key
+	IPWhitelist   []string `json:"ip_whitelist"`    // IP 白名单
+	IPBlacklist   []string `json:"ip_blacklist"`    // IP 黑名单
+	Quota         *float64 `json:"quota"`           // 配额限制 (USD)
+	ExpiresInDays *int     `json:"expires_in_days"` // 过期天数
 
 	// Rate limit fields (0 = unlimited)
 	RateLimit5h *float64 `json:"rate_limit_5h"`
@@ -72,6 +74,8 @@ type UpdateAPIKeyRequest struct {
 	Name            string        `json:"name"`
 	GroupID         *int64        `json:"group_id"`
 	FallbackGroupID optionalInt64 `json:"fallback_group_id"`
+	// GroupIDs 非 nil 时整体替换聚合分组链；空数组表示退出聚合模式。
+	GroupIDs        *[]int64      `json:"group_ids"`
 	Status          string        `json:"status" binding:"omitempty,oneof=active inactive"`
 	IPWhitelist     *[]string     `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
 	IPBlacklist     *[]string     `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
@@ -222,6 +226,7 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 		Name:            req.Name,
 		GroupID:         req.GroupID,
 		FallbackGroupID: req.FallbackGroupID,
+		GroupIDs:        req.GroupIDs,
 		CustomKey:       req.CustomKey,
 		IPWhitelist:     req.IPWhitelist,
 		IPBlacklist:     req.IPBlacklist,
@@ -285,6 +290,10 @@ func (h *APIKeyHandler) Update(c *gin.Context) {
 		RateLimit1d:         req.RateLimit1d,
 		RateLimit7d:         req.RateLimit7d,
 		ResetRateLimitUsage: req.ResetRateLimitUsage,
+	}
+	if req.GroupIDs != nil {
+		svcReq.GroupIDs = *req.GroupIDs
+		svcReq.GroupIDsSet = true
 	}
 	if req.Name != "" {
 		svcReq.Name = &req.Name

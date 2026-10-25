@@ -771,6 +771,8 @@ export interface ApiKey {
   current_concurrency: number
   group?: Group
   fallback_group?: Group
+  // groups 是聚合密钥的分组优先级链（含主分组，按 priority 升序）；普通密钥为空数组。
+  groups: ApiKeyGroupEntry[]
   rate_limit_5h: number
   rate_limit_1d: number
   rate_limit_7d: number
@@ -785,10 +787,18 @@ export interface ApiKey {
   reset_7d_at: string | null
 }
 
-export interface CreateApiKeyRequest {
-  name: string
+// ApiKeyGroupEntry 是聚合密钥分组链上的一项。
+export interface ApiKeyGroupEntry {
+  group_id: number
+  priority: number
+  group?: Group
+}
+
+export interface CreateApiKeyRequest {  name: string
   group_id?: number | null
   fallback_group_id?: number | null
+  // group_ids 有序（index 0 为主分组）；非空时启用聚合语义，fallback_group_id 被忽略。
+  group_ids?: number[]
   custom_key?: string // Optional custom API Key
   ip_whitelist?: string[]
   ip_blacklist?: string[]
@@ -803,6 +813,8 @@ export interface UpdateApiKeyRequest {
   name?: string
   group_id?: number | null
   fallback_group_id?: number | null
+  // group_ids 非 undefined 时整体替换聚合分组链；空数组表示退出聚合模式。
+  group_ids?: number[]
   status?: 'active' | 'inactive'
   ip_whitelist?: string[]
   ip_blacklist?: string[]

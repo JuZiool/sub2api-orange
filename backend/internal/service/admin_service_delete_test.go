@@ -335,6 +335,10 @@ func (s *deleteGroupAPIKeyRepoStub) ListKeysByGroupID(ctx context.Context, group
 	return s.keys, nil
 }
 
+func (s *deleteGroupAPIKeyRepoStub) ReplaceGroupChain(ctx context.Context, apiKeyID int64, groupIDs []int64) error {
+	return nil
+}
+
 type proxyRepoStub struct {
 	deleteErr    error
 	countErr     error

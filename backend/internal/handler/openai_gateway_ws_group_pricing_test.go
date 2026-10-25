@@ -77,6 +77,10 @@ func (s *wsGroupPricingAPIKeyRepoStub) ListKeysByGroupID(ctx context.Context, gr
 	return []string{s.apiKey.Key}, nil
 }
 
+func (s *wsGroupPricingAPIKeyRepoStub) ReplaceGroupChain(ctx context.Context, apiKeyID int64, groupIDs []int64) error {
+	return nil
+}
+
 // adminUpdate 模拟管理端改 Key/分组后按分组失效认证缓存（与 admin 分组更新同一入口）。
 func (s *wsGroupPricingAPIKeyRepoStub) adminUpdate(apiKeyService *service.APIKeyService, fn func(apiKey *service.APIKey, group *service.Group)) error {
 	s.mu.Lock()

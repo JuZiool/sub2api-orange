@@ -16,6 +16,9 @@ type APIKeyAuthSnapshot struct {
 	User            APIKeyAuthUserSnapshot   `json:"user"`
 	Group           *APIKeyAuthGroupSnapshot `json:"group,omitempty"`
 	FallbackGroup   *APIKeyAuthGroupSnapshot `json:"fallback_group,omitempty"`
+	// Groups 是 Orange 聚合密钥的分组优先级链快照（含主分组，按 priority 升序）。
+	// 为空表示普通密钥；旧式单兜底密钥仍走 FallbackGroup 字段。
+	Groups []APIKeyAuthGroupEntrySnapshot `json:"groups,omitempty"`
 
 	// Quota fields for API Key independent quota feature
 	Quota     float64 `json:"quota"`      // Quota limit in USD (0 = unlimited)
@@ -58,8 +61,7 @@ type APIKeyAuthUserSnapshot struct {
 }
 
 // APIKeyAuthGroupSnapshot 分组快照
-type APIKeyAuthGroupSnapshot struct {
-	ID                              int64                         `json:"id"`
+type APIKeyAuthGroupSnapshot struct {	ID                              int64                         `json:"id"`
 	Name                            string                        `json:"name"`
 	Platform                        string                        `json:"platform"`
 	IsExclusive                     bool                          `json:"is_exclusive"`
@@ -149,4 +151,10 @@ type APIKeyAuthGroupSnapshot struct {
 type APIKeyAuthCacheEntry struct {
 	NotFound bool                `json:"not_found"`
 	Snapshot *APIKeyAuthSnapshot `json:"snapshot,omitempty"`
+}
+
+// APIKeyAuthGroupEntrySnapshot 是聚合密钥链上的一项：分组快照 + 优先级。
+type APIKeyAuthGroupEntrySnapshot struct {
+	Priority int                      `json:"priority"`
+	Group    *APIKeyAuthGroupSnapshot `json:"group"`
 }

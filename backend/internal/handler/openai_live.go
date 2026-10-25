@@ -171,6 +171,7 @@ func liveCallIdentity(
 		UserID:          userID,
 		GroupID:         apiKey.GroupID,
 		FallbackGroupID: apiKey.FallbackGroupID,
+		ChainGroupIDs:   apiKey.FallbackGroupIDs(),
 		SubscriptionID:  subscriptionID,
 		UserAgent:       c.GetHeader("User-Agent"),
 		IPAddress:       ip.GetClientIP(c),
@@ -219,6 +220,7 @@ func (h *OpenAIGatewayHandler) LiveSideband(c *gin.Context) {
 		UserID:          subject.UserID,
 		GroupID:         apiKey.GroupID,
 		FallbackGroupID: apiKey.FallbackGroupID,
+		ChainGroupIDs:   apiKey.FallbackGroupIDs(),
 	}
 	record, err := h.gatewayService.GetLiveCallForIdentity(c.Request.Context(), c.Param("call_id"), identity)
 	if err != nil {

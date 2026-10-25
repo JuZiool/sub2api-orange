@@ -111,6 +111,7 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		User:               UserFromServiceShallow(k.User),
 		Group:              GroupFromServiceShallow(k.Group),
 		FallbackGroup:      GroupFromServiceShallow(k.FallbackGroup),
+		Groups:             apiKeyGroupEntriesFromService(k.Groups),
 	}
 	if k.Window5hStart != nil && !service.IsWindowExpired(k.Window5hStart, service.RateLimitWindow5h) {
 		t := k.Window5hStart.Add(service.RateLimitWindow5h)
@@ -127,8 +128,26 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 	return out
 }
 
-func GroupFromServiceShallow(g *service.Group) *Group {
-	if g == nil {
+// apiKeyGroupEntriesFromService 转换聚合密钥分组链（Orange 特有）。
+func apiKeyGroupEntriesFromService(entries []*service.APIKeyGroupEntry) []APIKeyGroupEntry {
+	if len(entries) == 0 {
+		return []APIKeyGroupEntry{}
+	}
+	out := make([]APIKeyGroupEntry, 0, len(entries))
+	for _, entry := range entries {
+		if entry == nil || entry.Group == nil {
+			continue
+		}
+		out = append(out, APIKeyGroupEntry{
+			GroupID:  entry.Group.ID,
+			Priority: entry.Priority,
+			Group:    GroupFromServiceShallow(entry.Group),
+		})
+	}
+	return out
+}
+
+func GroupFromServiceShallow(g *service.Group) *Group {	if g == nil {
 		return nil
 	}
 	out := groupFromServiceBase(g)

@@ -116,6 +116,10 @@ type APIKeyRepository interface {
 	ListKeysByUserID(ctx context.Context, userID int64) ([]string, error)
 	ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error)
 
+	// ReplaceGroupChain 以 groupIDs（有序，index 0 为主分组）整体替换聚合分组链。
+	// 传空切片等价于清除链，回到普通密钥语义。
+	ReplaceGroupChain(ctx context.Context, apiKeyID int64, groupIDs []int64) error
+
 	// Quota methods
 	IncrementQuotaUsed(ctx context.Context, id int64, amount float64) (float64, error)
 	UpdateLastUsed(ctx context.Context, id int64, usedAt time.Time) error
@@ -219,6 +223,9 @@ type CreateAPIKeyRequest struct {
 	Name            string   `json:"name"`
 	GroupID         *int64   `json:"group_id"`
 	FallbackGroupID *int64   `json:"fallback_group_id"`
+	// GroupIDs 是 Orange 聚合密钥的分组优先级链（有序，index 0 为主分组）。
+	// 非空时启用聚合语义：GroupID 由链首推导，FallbackGroupID 被忽略。
+	GroupIDs        []int64  `json:"group_ids"`
 	CustomKey       *string  `json:"custom_key"`   // 可选的自定义key
 	IPWhitelist     []string `json:"ip_whitelist"` // IP 白名单
 	IPBlacklist     []string `json:"ip_blacklist"` // IP 黑名单
@@ -239,6 +246,9 @@ type UpdateAPIKeyRequest struct {
 	GroupID            *int64    `json:"group_id"`
 	FallbackGroupID    *int64    `json:"fallback_group_id"`
 	FallbackGroupIDSet bool      `json:"-"`
+	// GroupIDs 非 nil 时整体替换聚合分组链；空切片表示退出聚合模式。
+	GroupIDs           []int64   `json:"group_ids"`
+	GroupIDsSet        bool      `json:"-"`
 	Status             *string   `json:"status"`
 	IPWhitelist        *[]string `json:"ip_whitelist"` // IP 白名单（nil 不修改，空数组清空）
 	IPBlacklist        *[]string `json:"ip_blacklist"` // IP 黑名单（nil 不修改，空数组清空）
@@ -516,6 +526,52 @@ func validateAPIKeyFallbackGroup(primary, fallback *Group) error {
 	return nil
 }
 
+// ErrAPIKeyGroupChainInvalid 聚合密钥分组链不合法（少于 2 组、跨平台、含停用分组或重复）。
+var ErrAPIKeyGroupChainInvalid = infraerrors.BadRequest(
+	"API_KEY_GROUP_CHAIN_INVALID",
+	"aggregated key requires at least two active groups of the same platform",
+)
+
+// loadAPIKeyGroupChain 校验并加载聚合分组链。
+// groupIDs 有序，index 0 即主分组；所有分组必须同平台、激活且可由该用户绑定。
+func (s *APIKeyService) loadAPIKeyGroupChain(ctx context.Context, user *User, groupIDs []int64) ([]*Group, error) {
+	// 去重（保留首次出现顺序）
+	seen := make(map[int64]struct{}, len(groupIDs))
+	unique := make([]int64, 0, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if groupID <= 0 {
+			return nil, ErrAPIKeyGroupChainInvalid
+		}
+		if _, dup := seen[groupID]; dup {
+			continue
+		}
+		seen[groupID] = struct{}{}
+		unique = append(unique, groupID)
+	}
+	if len(unique) < 2 {
+		return nil, ErrAPIKeyGroupChainInvalid
+	}
+
+	groups := make([]*Group, 0, len(unique))
+	for _, groupID := range unique {
+		group, err := s.loadBindableAPIKeyGroup(ctx, user, groupID)
+		if err != nil {
+			return nil, err
+		}
+		if !group.IsActive() {
+			return nil, ErrAPIKeyGroupChainInvalid
+		}
+		groups = append(groups, group)
+	}
+	primaryPlatform := groups[0].Platform
+	for _, group := range groups[1:] {
+		if group.Platform != primaryPlatform {
+			return nil, ErrAPIKeyGroupChainInvalid
+		}
+	}
+	return groups, nil
+}
+
 // Create 创建API Key
 func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error) {
 	if err := validateCreateAPIKeyRequest(req); err != nil {
@@ -548,6 +604,18 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 		if err != nil {
 			return nil, err
 		}
+	}
+	// 聚合密钥：GroupIDs 非空时以链为准，主分组取链首，单兜底分组强制清空。
+	var chainGroups []*Group
+	if len(req.GroupIDs) > 0 {
+		chainGroups, err = s.loadAPIKeyGroupChain(ctx, user, req.GroupIDs)
+		if err != nil {
+			return nil, err
+		}
+		primaryGroupID := chainGroups[0].ID
+		primaryGroup = chainGroups[0]
+		req.GroupID = &primaryGroupID
+		req.FallbackGroupID = nil
 	}
 	var fallbackGroup *Group
 	if req.FallbackGroupID != nil {
@@ -624,6 +692,23 @@ func (s *APIKeyService) Create(ctx context.Context, userID int64, req CreateAPIK
 
 	if err := s.apiKeyRepo.Create(ctx, apiKey); err != nil {
 		return nil, fmt.Errorf("create api key: %w", err)
+	}
+
+	// 聚合链在 Key 落库后写入（需要 api_key_id）。
+	if len(chainGroups) > 1 {
+		groupIDs := make([]int64, 0, len(chainGroups))
+		for _, group := range chainGroups {
+			groupIDs = append(groupIDs, group.ID)
+		}
+		if err := s.apiKeyRepo.ReplaceGroupChain(ctx, apiKey.ID, groupIDs); err != nil {
+			// 链写入失败时删除刚创建的 Key，避免出现半成品。
+			_ = s.apiKeyRepo.Delete(ctx, apiKey.ID)
+			return nil, fmt.Errorf("create api key group chain: %w", err)
+		}
+		apiKey.Groups = make([]*APIKeyGroupEntry, 0, len(chainGroups))
+		for i, group := range chainGroups {
+			apiKey.Groups = append(apiKey.Groups, &APIKeyGroupEntry{Group: group, Priority: i + 1})
+		}
 	}
 
 	s.InvalidateAuthCacheByKey(ctx, apiKey.Key)
@@ -861,16 +946,34 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	// 所以用原始值比对来决定是否写 status，而不是只看 req.Status。
 	originalStatus := apiKey.Status
 
+	// 下面的分组链写入需要在主记录更新成功后执行，避免链与主记录不一致。
+	var chainInvalidated bool
+	var pendingChainGroups []*Group
+	var pendingChainGroupIDs []int64
+
 	// 更新字段
 	if req.Name != nil {
 		apiKey.Name = html.EscapeString(*req.Name)
 		fields.Name = true
 	}
 
-	if req.GroupID != nil || req.FallbackGroupIDSet {
+	if req.GroupID != nil || req.FallbackGroupIDSet || req.GroupIDsSet {
 		user, err := s.userRepo.GetByID(ctx, userID)
 		if err != nil {
 			return nil, fmt.Errorf("get user: %w", err)
+		}
+
+		// 聚合链整体替换：链首即主分组，单兜底被强制清空。
+		var chainGroups []*Group
+		if req.GroupIDsSet && len(req.GroupIDs) > 0 {
+			chainGroups, err = s.loadAPIKeyGroupChain(ctx, user, req.GroupIDs)
+			if err != nil {
+				return nil, err
+			}
+			primaryGroupID := chainGroups[0].ID
+			req.GroupID = &primaryGroupID
+			req.FallbackGroupIDSet = true
+			req.FallbackGroupID = nil
 		}
 
 		primaryGroup := apiKey.Group
@@ -903,6 +1006,21 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 			apiKey.FallbackGroupID = req.FallbackGroupID
 			apiKey.FallbackGroup = fallbackGroup
 			fields.FallbackGroupID = true
+		}
+
+		if req.GroupIDsSet {
+			groupIDs := make([]int64, 0, len(chainGroups))
+			for _, group := range chainGroups {
+				groupIDs = append(groupIDs, group.ID)
+			}
+			chainInvalidated = true
+			pendingChainGroups = chainGroups
+			pendingChainGroupIDs = groupIDs
+		} else if req.GroupID != nil && len(apiKey.GroupChain()) > 1 {
+			// 只改主分组却没给链：链首将与主分组脱节，直接清链回到普通密钥语义。
+			chainInvalidated = true
+			pendingChainGroups = nil
+			pendingChainGroupIDs = nil
 		}
 	}
 
@@ -987,6 +1105,15 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		return nil, fmt.Errorf("update api key: %w", err)
 	}
 
+	if chainInvalidated {
+		if err := s.apiKeyRepo.ReplaceGroupChain(ctx, apiKey.ID, pendingChainGroupIDs); err != nil {
+			return nil, fmt.Errorf("update api key group chain: %w", err)
+		}
+		apiKey.Groups = make([]*APIKeyGroupEntry, 0, len(pendingChainGroups))
+		for i, group := range pendingChainGroups {
+			apiKey.Groups = append(apiKey.Groups, &APIKeyGroupEntry{Group: group, Priority: i + 1})
+		}
+	}
 	s.InvalidateAuthCacheByKey(ctx, apiKey.Key)
 	s.compileAPIKeyIPRules(apiKey)
 

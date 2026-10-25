@@ -2151,15 +2151,28 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 	requiredCapability OpenAIImagesCapability,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	selection, decision, err := s.selectAccountForImagesInGroup(ctx, groupID, sessionHash, requestedModel, excludedIDs, requiredCapability)
-	fallbackGroup, fallbackCtx, ok := apiKeyFallbackGroupForSelection(ctx, groupID, err)
-	if !ok {
-		return selection, decision, err
-	}
-	fallbackGroupID := fallbackGroup.ID
-	selection, decision, err = s.selectAccountForImagesInGroup(fallbackCtx, &fallbackGroupID, sessionHash, requestedModel, excludedIDs, requiredCapability)
-	if err == nil {
-		markAPIKeyFallbackSelection(ctx, selection, fallbackGroupID)
-		s.logAPIKeyGroupFallbackSelected(groupID, fallbackGroupID, requestedModel, selection)
+
+	// 聚合密钥可能有多级候选：按链顺序继续尝试，直到命中或链尾。
+	currentGroupID := groupID
+	currentCtx := ctx
+	for attempt := 0; attempt < maxAPIKeyGroupChainAttempts; attempt++ {
+		if err == nil {
+			break
+		}
+		fallbackGroup, fallbackCtx, ok := apiKeyGroupChainStep(currentCtx, currentGroupID, err)
+		if !ok {
+			break
+		}
+		fallbackGroupID := fallbackGroup.ID
+		selection, decision, err = s.selectAccountForImagesInGroup(fallbackCtx, &fallbackGroupID, sessionHash, requestedModel, excludedIDs, requiredCapability)
+		if err == nil {
+			markAPIKeyFallbackSelection(ctx, selection, fallbackGroupID)
+			s.logAPIKeyGroupFallbackSelected(groupID, fallbackGroupID, requestedModel, selection)
+			break
+		}
+		nextGroupID := fallbackGroupID
+		currentGroupID = &nextGroupID
+		currentCtx = fallbackCtx
 	}
 	return selection, decision, err
 }
@@ -2199,19 +2212,32 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerAndAPIKeyFallback(
 	useUpstreamTokenCost bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	selection, decision, err := s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
-	fallbackGroup, fallbackCtx, ok := apiKeyFallbackGroupForSelection(ctx, groupID, err)
-	if !ok {
-		return selection, decision, err
-	}
-	fallbackGroupID := fallbackGroup.ID
-	slog.Info("api_key_group_fallback_attempt",
-		"primary_group_id", derefGroupID(groupID),
-		"fallback_group_id", fallbackGroupID,
-		"model", requestedModel)
-	selection, decision, err = s.selectAccountWithScheduler(fallbackCtx, &fallbackGroupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
-	if err == nil {
-		markAPIKeyFallbackSelection(ctx, selection, fallbackGroupID)
-		s.logAPIKeyGroupFallbackSelected(groupID, fallbackGroupID, requestedModel, selection)
+
+	// 聚合密钥可能有多级候选：按链顺序继续尝试，直到命中或链尾。
+	currentGroupID := groupID
+	currentCtx := ctx
+	for attempt := 0; attempt < maxAPIKeyGroupChainAttempts; attempt++ {
+		if err == nil {
+			break
+		}
+		fallbackGroup, fallbackCtx, ok := apiKeyGroupChainStep(currentCtx, currentGroupID, err)
+		if !ok {
+			break
+		}
+		fallbackGroupID := fallbackGroup.ID
+		slog.Info("api_key_group_fallback_attempt",
+			"primary_group_id", derefGroupID(groupID),
+			"fallback_group_id", fallbackGroupID,
+			"model", requestedModel)
+		selection, decision, err = s.selectAccountWithScheduler(fallbackCtx, &fallbackGroupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+		if err == nil {
+			markAPIKeyFallbackSelection(ctx, selection, fallbackGroupID)
+			s.logAPIKeyGroupFallbackSelected(groupID, fallbackGroupID, requestedModel, selection)
+			break
+		}
+		nextGroupID := fallbackGroupID
+		currentGroupID = &nextGroupID
+		currentCtx = fallbackCtx
 	}
 	return selection, decision, err
 }
