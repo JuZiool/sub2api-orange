@@ -21,6 +21,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/apikeygroup"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	"github.com/Wei-Shaw/sub2api/ent/batchimageevent"
@@ -66,6 +67,8 @@ type Client struct {
 	Schema *migrate.Schema
 	// APIKey is the client for interacting with the APIKey builders.
 	APIKey *APIKeyClient
+	// APIKeyGroup is the client for interacting with the APIKeyGroup builders.
+	APIKeyGroup *APIKeyGroupClient
 	// Account is the client for interacting with the Account builders.
 	Account *AccountClient
 	// AccountGroup is the client for interacting with the AccountGroup builders.
@@ -156,6 +159,7 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.APIKey = NewAPIKeyClient(c.config)
+	c.APIKeyGroup = NewAPIKeyGroupClient(c.config)
 	c.Account = NewAccountClient(c.config)
 	c.AccountGroup = NewAccountGroupClient(c.config)
 	c.AccountProxy = NewAccountProxyClient(c.config)
@@ -288,6 +292,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ctx:                           ctx,
 		config:                        cfg,
 		APIKey:                        NewAPIKeyClient(cfg),
+		APIKeyGroup:                   NewAPIKeyGroupClient(cfg),
 		Account:                       NewAccountClient(cfg),
 		AccountGroup:                  NewAccountGroupClient(cfg),
 		AccountProxy:                  NewAccountProxyClient(cfg),
@@ -347,6 +352,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ctx:                           ctx,
 		config:                        cfg,
 		APIKey:                        NewAPIKeyClient(cfg),
+		APIKeyGroup:                   NewAPIKeyGroupClient(cfg),
 		Account:                       NewAccountClient(cfg),
 		AccountGroup:                  NewAccountGroupClient(cfg),
 		AccountProxy:                  NewAccountProxyClient(cfg),
@@ -415,9 +421,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.APIKey, c.Account, c.AccountGroup, c.AccountProxy, c.Announcement,
-		c.AnnouncementRead, c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent,
-		c.BatchImageItem, c.BatchImageJob, c.ChannelMonitor,
+		c.APIKey, c.APIKeyGroup, c.Account, c.AccountGroup, c.AccountProxy,
+		c.Announcement, c.AnnouncementRead, c.AuthIdentity, c.AuthIdentityChannel,
+		c.BatchImageEvent, c.BatchImageItem, c.BatchImageJob, c.ChannelMonitor,
 		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.CompositeModelRoute, c.ErrorPassthroughRule,
 		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
@@ -435,9 +441,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.APIKey, c.Account, c.AccountGroup, c.AccountProxy, c.Announcement,
-		c.AnnouncementRead, c.AuthIdentity, c.AuthIdentityChannel, c.BatchImageEvent,
-		c.BatchImageItem, c.BatchImageJob, c.ChannelMonitor,
+		c.APIKey, c.APIKeyGroup, c.Account, c.AccountGroup, c.AccountProxy,
+		c.Announcement, c.AnnouncementRead, c.AuthIdentity, c.AuthIdentityChannel,
+		c.BatchImageEvent, c.BatchImageItem, c.BatchImageJob, c.ChannelMonitor,
 		c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
 		c.ChannelMonitorRequestTemplate, c.CompositeModelRoute, c.ErrorPassthroughRule,
 		c.Group, c.IdempotencyRecord, c.IdentityAdoptionDecision, c.PaymentAuditLog,
@@ -456,6 +462,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *APIKeyMutation:
 		return c.APIKey.mutate(ctx, m)
+	case *APIKeyGroupMutation:
+		return c.APIKeyGroup.mutate(ctx, m)
 	case *AccountMutation:
 		return c.Account.mutate(ctx, m)
 	case *AccountGroupMutation:
@@ -735,6 +743,171 @@ func (c *APIKeyClient) mutate(ctx context.Context, m *APIKeyMutation) (Value, er
 		return (&APIKeyDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown APIKey mutation op: %q", m.Op())
+	}
+}
+
+// APIKeyGroupClient is a client for the APIKeyGroup schema.
+type APIKeyGroupClient struct {
+	config
+}
+
+// NewAPIKeyGroupClient returns a client for the APIKeyGroup from the given config.
+func NewAPIKeyGroupClient(c config) *APIKeyGroupClient {
+	return &APIKeyGroupClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `apikeygroup.Hooks(f(g(h())))`.
+func (c *APIKeyGroupClient) Use(hooks ...Hook) {
+	c.hooks.APIKeyGroup = append(c.hooks.APIKeyGroup, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `apikeygroup.Intercept(f(g(h())))`.
+func (c *APIKeyGroupClient) Intercept(interceptors ...Interceptor) {
+	c.inters.APIKeyGroup = append(c.inters.APIKeyGroup, interceptors...)
+}
+
+// Create returns a builder for creating a APIKeyGroup entity.
+func (c *APIKeyGroupClient) Create() *APIKeyGroupCreate {
+	mutation := newAPIKeyGroupMutation(c.config, OpCreate)
+	return &APIKeyGroupCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of APIKeyGroup entities.
+func (c *APIKeyGroupClient) CreateBulk(builders ...*APIKeyGroupCreate) *APIKeyGroupCreateBulk {
+	return &APIKeyGroupCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *APIKeyGroupClient) MapCreateBulk(slice any, setFunc func(*APIKeyGroupCreate, int)) *APIKeyGroupCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &APIKeyGroupCreateBulk{err: fmt.Errorf("calling to APIKeyGroupClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*APIKeyGroupCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &APIKeyGroupCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for APIKeyGroup.
+func (c *APIKeyGroupClient) Update() *APIKeyGroupUpdate {
+	mutation := newAPIKeyGroupMutation(c.config, OpUpdate)
+	return &APIKeyGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *APIKeyGroupClient) UpdateOne(_m *APIKeyGroup) *APIKeyGroupUpdateOne {
+	mutation := newAPIKeyGroupMutation(c.config, OpUpdateOne, withAPIKeyGroup(_m))
+	return &APIKeyGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *APIKeyGroupClient) UpdateOneID(id int64) *APIKeyGroupUpdateOne {
+	mutation := newAPIKeyGroupMutation(c.config, OpUpdateOne, withAPIKeyGroupID(id))
+	return &APIKeyGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for APIKeyGroup.
+func (c *APIKeyGroupClient) Delete() *APIKeyGroupDelete {
+	mutation := newAPIKeyGroupMutation(c.config, OpDelete)
+	return &APIKeyGroupDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *APIKeyGroupClient) DeleteOne(_m *APIKeyGroup) *APIKeyGroupDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *APIKeyGroupClient) DeleteOneID(id int64) *APIKeyGroupDeleteOne {
+	builder := c.Delete().Where(apikeygroup.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &APIKeyGroupDeleteOne{builder}
+}
+
+// Query returns a query builder for APIKeyGroup.
+func (c *APIKeyGroupClient) Query() *APIKeyGroupQuery {
+	return &APIKeyGroupQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeAPIKeyGroup},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a APIKeyGroup entity by its id.
+func (c *APIKeyGroupClient) Get(ctx context.Context, id int64) (*APIKeyGroup, error) {
+	return c.Query().Where(apikeygroup.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *APIKeyGroupClient) GetX(ctx context.Context, id int64) *APIKeyGroup {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryAPIKey queries the api_key edge of a APIKeyGroup.
+func (c *APIKeyGroupClient) QueryAPIKey(_m *APIKeyGroup) *APIKeyQuery {
+	query := (&APIKeyClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(apikeygroup.Table, apikeygroup.FieldID, id),
+			sqlgraph.To(apikey.Table, apikey.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, apikeygroup.APIKeyTable, apikeygroup.APIKeyColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryGroup queries the group edge of a APIKeyGroup.
+func (c *APIKeyGroupClient) QueryGroup(_m *APIKeyGroup) *GroupQuery {
+	query := (&GroupClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(apikeygroup.Table, apikeygroup.FieldID, id),
+			sqlgraph.To(group.Table, group.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, apikeygroup.GroupTable, apikeygroup.GroupColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *APIKeyGroupClient) Hooks() []Hook {
+	return c.hooks.APIKeyGroup
+}
+
+// Interceptors returns the client interceptors.
+func (c *APIKeyGroupClient) Interceptors() []Interceptor {
+	return c.inters.APIKeyGroup
+}
+
+func (c *APIKeyGroupClient) mutate(ctx context.Context, m *APIKeyGroupMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&APIKeyGroupCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&APIKeyGroupUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&APIKeyGroupUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&APIKeyGroupDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown APIKeyGroup mutation op: %q", m.Op())
 	}
 }
 
@@ -7045,9 +7218,9 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		APIKey, Account, AccountGroup, AccountProxy, Announcement, AnnouncementRead,
-		AuthIdentity, AuthIdentityChannel, BatchImageEvent, BatchImageItem,
-		BatchImageJob, ChannelMonitor, ChannelMonitorDailyRollup,
+		APIKey, APIKeyGroup, Account, AccountGroup, AccountProxy, Announcement,
+		AnnouncementRead, AuthIdentity, AuthIdentityChannel, BatchImageEvent,
+		BatchImageItem, BatchImageJob, ChannelMonitor, ChannelMonitorDailyRollup,
 		ChannelMonitorHistory, ChannelMonitorRequestTemplate, CompositeModelRoute,
 		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
 		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,
@@ -7057,9 +7230,9 @@ type (
 		UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
-		APIKey, Account, AccountGroup, AccountProxy, Announcement, AnnouncementRead,
-		AuthIdentity, AuthIdentityChannel, BatchImageEvent, BatchImageItem,
-		BatchImageJob, ChannelMonitor, ChannelMonitorDailyRollup,
+		APIKey, APIKeyGroup, Account, AccountGroup, AccountProxy, Announcement,
+		AnnouncementRead, AuthIdentity, AuthIdentityChannel, BatchImageEvent,
+		BatchImageItem, BatchImageJob, ChannelMonitor, ChannelMonitorDailyRollup,
 		ChannelMonitorHistory, ChannelMonitorRequestTemplate, CompositeModelRoute,
 		ErrorPassthroughRule, Group, IdempotencyRecord, IdentityAdoptionDecision,
 		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PendingAuthSession,

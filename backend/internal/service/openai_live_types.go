@@ -48,6 +48,9 @@ type LiveCallIdentity struct {
 	// primary GroupID, while the original Live call may have been created in
 	// this fallback group.
 	FallbackGroupID *int64
+	// ChainGroupIDs 是聚合密钥链上除主分组外的全部分组 ID（Orange 特有）。
+	// sideband 重新鉴权时主分组仍是链首，而原始 Live 调用可能落在链上任意一组。
+	ChainGroupIDs   []int64
 	SubscriptionID  *int64
 	UserAgent       string
 	IPAddress       string

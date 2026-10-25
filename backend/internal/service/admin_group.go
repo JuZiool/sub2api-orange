@@ -1451,6 +1451,13 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 		return nil, fmt.Errorf("update api key: %w", err)
 	}
 
+	// 管理员改了主分组：聚合链首已与主分组脱节，清链回到普通密钥语义。
+	// （链上其余分组仍各自保留自己的权限，不影响用户后续手动重新配置。）
+	if err := s.apiKeyRepo.ReplaceGroupChain(ctx, apiKey.ID, nil); err != nil {
+		logger.LegacyPrintf("service.admin", "clear api key group chain failed: key=%d err=%v", apiKey.ID, err)
+	}
+	apiKey.Groups = nil
+
 	// 失效认证缓存
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, apiKey.Key)

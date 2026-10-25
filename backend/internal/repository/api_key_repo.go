@@ -12,6 +12,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/apikeygroup"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
@@ -88,7 +89,11 @@ func (r *apiKeyRepository) GetByID(ctx context.Context, id int64) (*service.APIK
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	out := apiKeyEntityToService(m)
+	if err := r.attachGroupChain(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // GetKeyAndOwnerID 根据 API Key ID 获取其 key 与所有者（用户）ID。
@@ -127,7 +132,11 @@ func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.A
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	out := apiKeyEntityToService(m)
+	if err := r.attachGroupChains(ctx, []*service.APIKey{out}); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
@@ -247,7 +256,11 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	out := apiKeyEntityToService(m)
+	if err := r.attachGroupChain(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fields service.APIKeyUpdateFields) error {
@@ -499,6 +512,9 @@ func (r *apiKeyRepository) ListByUserID(ctx context.Context, userID int64, param
 	if err := r.attachLastUsedIPs(ctx, outKeys); err != nil {
 		return nil, nil, err
 	}
+	if err := r.attachGroupChainsPointer(ctx, outKeys); err != nil {
+		return nil, nil, err
+	}
 
 	return outKeys, paginationResultFromTotal(int64(total), params), nil
 }
@@ -520,7 +536,122 @@ func (r *apiKeyRepository) ListAllByUserID(ctx context.Context, userID int64, fi
 	if err := r.attachLastUsedIPs(ctx, outKeys); err != nil {
 		return nil, err
 	}
+	if err := r.attachGroupChainsPointer(ctx, outKeys); err != nil {
+		return nil, err
+	}
 	return outKeys, nil
+}
+
+// attachGroupChain 为单个 Key 装载聚合分组链（Orange 特有）。
+// 链上分组缺失或已软删时跳过；调用方据 Groups 长度判断是否启用聚合语义。
+func (r *apiKeyRepository) attachGroupChain(ctx context.Context, key *service.APIKey) error {
+	if key == nil {
+		return nil
+	}
+	return r.attachGroupChains(ctx, []*service.APIKey{key})
+}
+
+// attachGroupChains 批量装载聚合分组链，避免 N+1 查询。
+func (r *apiKeyRepository) attachGroupChains(ctx context.Context, keys []*service.APIKey) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(keys))
+	for _, key := range keys {
+		if key != nil && key.ID > 0 {
+			ids = append(ids, key.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+
+	rows, err := r.client.APIKeyGroup.Query().
+		Where(apikeygroup.APIKeyIDIn(ids...)).
+		WithGroup().
+		Order(dbent.Asc(apikeygroup.FieldPriority), dbent.Asc(apikeygroup.FieldID)).
+		All(ctx)
+	if err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+
+	byKey := make(map[int64][]*service.APIKeyGroupEntry, len(ids))
+	for _, row := range rows {
+		if row.Edges.Group == nil || row.Edges.Group.DeletedAt != nil {
+			continue
+		}
+		group := groupEntityToService(row.Edges.Group)
+		if group == nil {
+			continue
+		}
+		priority := row.Priority
+		if priority <= 0 {
+			priority = 1
+		}
+		byKey[row.APIKeyID] = append(byKey[row.APIKeyID], &service.APIKeyGroupEntry{
+			Group:    group,
+			Priority: priority,
+		})
+	}
+	for _, key := range keys {
+		if key == nil {
+			continue
+		}
+		if chain := byKey[key.ID]; len(chain) > 0 {
+			key.Groups = chain
+		}
+	}
+	return nil
+}
+
+// attachGroupChainsPointer 是 []service.APIKey 值切片的链装载适配器：
+// 统一转成指针切片后复用 attachGroupChains。
+func (r *apiKeyRepository) attachGroupChainsPointer(ctx context.Context, keys []service.APIKey) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	ptrs := make([]*service.APIKey, 0, len(keys))
+	for i := range keys {
+		ptrs = append(ptrs, &keys[i])
+	}
+	return r.attachGroupChains(ctx, ptrs)
+}
+
+// ReplaceGroupChain 以 groupIDs（有序，index 0 为主分组）整体替换聚合分组链。
+// 先删后插，保持 priority = 1..N；空切片清除链。
+func (r *apiKeyRepository) ReplaceGroupChain(ctx context.Context, apiKeyID int64, groupIDs []int64) error {
+	if apiKeyID <= 0 {
+		return service.ErrAPIKeyNotFound
+	}
+	client := clientFromContext(ctx, r.client)
+	if _, err := client.APIKeyGroup.Delete().
+		Where(apikeygroup.APIKeyIDEQ(apiKeyID)).
+		Exec(ctx); err != nil {
+		return err
+	}
+	// 去重并保留首次出现顺序（即前端给定优先级）。
+	seen := make(map[int64]struct{}, len(groupIDs))
+	builders := make([]*dbent.APIKeyGroupCreate, 0, len(groupIDs))
+	for i, groupID := range groupIDs {
+		if groupID <= 0 {
+			continue
+		}
+		if _, dup := seen[groupID]; dup {
+			continue
+		}
+		seen[groupID] = struct{}{}
+		builders = append(builders, client.APIKeyGroup.Create().
+			SetAPIKeyID(apiKeyID).
+			SetGroupID(groupID).
+			SetPriority(i+1))
+	}
+	if len(builders) == 0 {
+		return nil
+	}
+	return client.APIKeyGroup.CreateBulk(builders...).Exec(ctx)
 }
 
 func (r *apiKeyRepository) attachLastUsedIPs(ctx context.Context, keys []service.APIKey) error {
@@ -772,8 +903,26 @@ func (r *apiKeyRepository) ListKeysByUserID(ctx context.Context, userID int64) (
 }
 
 func (r *apiKeyRepository) ListKeysByGroupID(ctx context.Context, groupID int64) ([]string, error) {
+	// Orange 聚合密钥：分组也可能只出现在链上（非主分组），
+	// 这类 Key 的认证快照同样缓存了该分组的配置，必须一起失效。
+	// APIKey 上没有到 api_key_groups 的反向 edge，这里分两步查询。
+	chainRows, err := r.client.APIKeyGroup.Query().
+		Where(apikeygroup.GroupIDEQ(groupID)).
+		Select(apikeygroup.FieldAPIKeyID).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	chainKeyIDs := make([]int64, 0, len(chainRows))
+	for _, row := range chainRows {
+		chainKeyIDs = append(chainKeyIDs, row.APIKeyID)
+	}
+	groupPred := apikey.Or(apikey.GroupIDEQ(groupID), apikey.FallbackGroupIDEQ(groupID))
+	if len(chainKeyIDs) > 0 {
+		groupPred = apikey.Or(groupPred, apikey.IDIn(chainKeyIDs...))
+	}
 	keys, err := r.activeQuery().
-		Where(apikey.Or(apikey.GroupIDEQ(groupID), apikey.FallbackGroupIDEQ(groupID))).
+		Where(groupPred).
 		Select(apikey.FieldKey).
 		Strings(ctx)
 	if err != nil {

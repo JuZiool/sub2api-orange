@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 26 // v26: api key fallback group snapshot fields
+const apiKeyAuthSnapshotVersion = 27 // v27: Orange aggregated key group chain snapshot
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -384,6 +384,23 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 	if apiKey.FallbackGroup != nil && apiKey.FallbackGroup.IsActive() && s.canUserBindGroup(ctx, apiKey.User, apiKey.FallbackGroup) {
 		snapshot.FallbackGroup = apiKeyAuthGroupSnapshotFromGroup(apiKey.FallbackGroup)
 	}
+	// 聚合密钥链：按 priority 升序写入；链上不可绑定或已停用的分组直接丢弃，
+	// 避免请求时调度到用户无权访问的分组。若丢弃后不足 2 项，按普通密钥处理。
+	if chain := apiKey.GroupChain(); len(chain) > 1 {
+		entries := make([]APIKeyAuthGroupEntrySnapshot, 0, len(chain))
+		for _, entry := range chain {
+			if entry.Group == nil || !entry.Group.IsActive() || !s.canUserBindGroup(ctx, apiKey.User, entry.Group) {
+				continue
+			}
+			entries = append(entries, APIKeyAuthGroupEntrySnapshot{
+				Priority: entry.Priority,
+				Group:    apiKeyAuthGroupSnapshotFromGroup(entry.Group),
+			})
+		}
+		if len(entries) > 1 {
+			snapshot.Groups = entries
+		}
+	}
 	return snapshot
 }
 
@@ -497,6 +514,16 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 	}
 	if snapshot.FallbackGroup != nil {
 		apiKey.FallbackGroup = apiKeyAuthGroupFromSnapshot(snapshot.FallbackGroup)
+	}
+	if len(snapshot.Groups) > 0 {
+		apiKey.Groups = make([]*APIKeyGroupEntry, 0, len(snapshot.Groups))
+		for _, entry := range snapshot.Groups {
+			group := apiKeyAuthGroupFromSnapshot(entry.Group)
+			if group == nil {
+				continue
+			}
+			apiKey.Groups = append(apiKey.Groups, &APIKeyGroupEntry{Group: group, Priority: entry.Priority})
+		}
 	}
 	s.compileAPIKeyIPRules(apiKey)
 	return apiKey

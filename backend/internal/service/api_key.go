@@ -47,7 +47,10 @@ type APIKey struct {
 	User                *User
 	Group               *Group
 	FallbackGroup       *Group
-	CurrentConcurrency  int
+	// Groups 是 Orange 聚合密钥的分组优先级链（含主分组，按 priority 升序）。
+	// 为空表示普通密钥或旧式单兜底密钥；Group/FallbackGroup 仍按原有语义填充。
+	Groups             []*APIKeyGroupEntry
+	CurrentConcurrency int
 
 	// Quota fields
 	Quota     float64    // Quota limit in USD (0 = unlimited)
@@ -68,6 +71,57 @@ type APIKey struct {
 
 func (k *APIKey) IsActive() bool {
 	return k.Status == StatusActive
+}
+
+// APIKeyGroupEntry 是聚合密钥分组链上的一项。
+type APIKeyGroupEntry struct {
+	Group    *Group
+	Priority int
+}
+
+// IsAggregated 报告该 Key 是否启用了聚合分组链（链上至少 2 个分组）。
+// 聚合密钥自带多级候选，不再叠加任何分组级兜底。
+func (k *APIKey) IsAggregated() bool {
+	return len(k.GroupChain()) > 1
+}
+
+// GroupChain 返回按 priority 升序的去重分组链；未配置聚合链时返回 nil。
+// 主分组（api_keys.group_id）始终是链上的第一项。
+func (k *APIKey) GroupChain() []*APIKeyGroupEntry {
+	if k == nil || len(k.Groups) == 0 {
+		return nil
+	}
+	chain := make([]*APIKeyGroupEntry, 0, len(k.Groups))
+	for _, entry := range k.Groups {
+		if entry == nil || entry.Group == nil || entry.Group.ID <= 0 {
+			continue
+		}
+		chain = append(chain, entry)
+	}
+	if len(chain) == 0 {
+		return nil
+	}
+	return chain
+}
+
+// FallbackGroupIDs 返回聚合链上除主分组外的分组 ID，按优先级升序。
+func (k *APIKey) FallbackGroupIDs() []int64 {
+	chain := k.GroupChain()
+	if len(chain) < 2 {
+		return nil
+	}
+	primaryID := chain[0].Group.ID
+	if k != nil && k.GroupID != nil {
+		primaryID = *k.GroupID
+	}
+	out := make([]int64, 0, len(chain)-1)
+	for _, entry := range chain {
+		if entry.Group.ID == primaryID {
+			continue
+		}
+		out = append(out, entry.Group.ID)
+	}
+	return out
 }
 
 // HasRateLimits returns true if any rate limit window is configured

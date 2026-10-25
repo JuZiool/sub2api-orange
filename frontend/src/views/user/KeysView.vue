@@ -156,6 +156,34 @@
 
           <template #cell-group="{ row }">
             <div class="flex flex-col gap-1">
+            <!-- 聚合密钥：按优先级展示分组链，不展示兜底 -->
+            <div v-if="isAggregatedKey(row)" class="flex flex-col gap-1" data-test="aggregate-group-chain-cell">
+              <div
+                v-for="entry in sortedKeyGroups(row)"
+                :key="`agg-${row.id}-${entry.group_id}`"
+                class="flex items-center gap-1.5"
+              >
+                <span
+                  class="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-primary-50 text-[10px] font-semibold text-primary-700 dark:bg-primary-500/15 dark:text-primary-300"
+                >
+                  {{ entry.priority }}
+                </span>
+                <GroupBadge
+                  v-if="entry.group"
+                  :name="entry.group.name"
+                  :platform="entry.group.platform"
+                  :subscription-type="entry.group.subscription_type"
+                  :rate-multiplier="entry.group.rate_multiplier"
+                  :user-rate-multiplier="userGroupRates[entry.group.id]"
+                  :peak-rate-enabled="entry.group.peak_rate_enabled"
+                  :peak-start="entry.group.peak_start"
+                  :peak-end="entry.group.peak_end"
+                  :peak-rate-multiplier="entry.group.peak_rate_multiplier"
+                />
+                <span v-else class="text-sm text-gray-500 dark:text-gray-400">#{{ entry.group_id }}</span>
+              </div>
+            </div>
+            <template v-else>
             <div class="group/dropdown relative">
               <button
                 :ref="(el) => setGroupButtonRef(row.id, 'primary', el)"
@@ -246,6 +274,7 @@
                 </svg>
               </button>
             </div>
+            </template>
             </div>
           </template>
 
@@ -587,7 +616,130 @@
           </p>
         </fieldset>
 
-        <div>
+        <!-- 聚合密钥开关：开启后按分组链顺序依次尝试，兜底分组不再生效 -->
+        <div class="flex items-start justify-between gap-3 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
+          <div class="min-w-0">
+            <div class="text-sm font-medium text-gray-900 dark:text-gray-100">
+              {{ t('keys.aggregateModeLabel') }}
+            </div>
+            <p class="mt-0.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
+              {{ t('keys.aggregateModeHint') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            data-test="aggregate-mode-toggle"
+            @click="toggleAggregateMode"
+            :class="[
+              'relative mt-0.5 inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+              formData.aggregate_mode ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                formData.aggregate_mode ? 'translate-x-4' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+
+        <!-- 聚合分组链编辑器 -->
+        <div v-if="formData.aggregate_mode" class="space-y-2" data-test="aggregate-group-chain">
+          <label class="input-label">{{ t('keys.aggregateGroupChainLabel') }}</label>
+          <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">
+            {{ t('keys.aggregateGroupChainHint') }}
+          </p>
+          <div
+            v-for="(_, index) in formData.aggregate_group_ids"
+            :key="`chain-${index}`"
+            class="flex items-center gap-2"
+          >
+            <span
+              class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary-50 text-xs font-semibold text-primary-700 dark:bg-primary-500/15 dark:text-primary-300"
+            >
+              {{ index + 1 }}
+            </span>
+            <Select
+              class="min-w-0 flex-1"
+              :model-value="formData.aggregate_group_ids[index]"
+              :options="aggregateGroupOptions(index)"
+              :placeholder="t('keys.selectGroup')"
+              :searchable="true"
+              :search-placeholder="t('keys.searchGroup')"
+              @update:model-value="(value: any) => setAggregateGroup(index, value)"
+            >
+              <template #selected="{ option }">
+                <GroupBadge
+                  v-if="option"
+                  :name="(option as unknown as GroupOption).label"
+                  :platform="(option as unknown as GroupOption).platform"
+                  :subscription-type="(option as unknown as GroupOption).subscriptionType"
+                  :rate-multiplier="(option as unknown as GroupOption).rate"
+                  :user-rate-multiplier="(option as unknown as GroupOption).userRate"
+                  :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
+                  :peak-start="(option as unknown as GroupOption).peakStart"
+                  :peak-end="(option as unknown as GroupOption).peakEnd"
+                  :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
+                />
+                <span v-else class="text-gray-400">{{ t('keys.selectGroup') }}</span>
+              </template>
+              <template #option="{ option, selected }">
+                <GroupOptionItem
+                  :name="(option as unknown as GroupOption).label"
+                  :platform="(option as unknown as GroupOption).platform"
+                  :subscription-type="(option as unknown as GroupOption).subscriptionType"
+                  :rate-multiplier="(option as unknown as GroupOption).rate"
+                  :user-rate-multiplier="(option as unknown as GroupOption).userRate"
+                  :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
+                  :peak-start="(option as unknown as GroupOption).peakStart"
+                  :peak-end="(option as unknown as GroupOption).peakEnd"
+                  :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
+                  :description="(option as unknown as GroupOption).description"
+                  :selected="selected"
+                />
+              </template>
+            </Select>
+            <button
+              type="button"
+              class="rounded p-1 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-dark-700"
+              :disabled="index === 0"
+              :title="t('keys.aggregateMoveUp')"
+              @click="moveAggregateGroup(index, -1)"
+            >
+              <Icon name="chevronUp" size="sm" />
+            </button>
+            <button
+              type="button"
+              class="rounded p-1 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-dark-700"
+              :disabled="index === formData.aggregate_group_ids.length - 1"
+              :title="t('keys.aggregateMoveDown')"
+              @click="moveAggregateGroup(index, 1)"
+            >
+              <Icon name="chevronDown" size="sm" />
+            </button>
+            <button
+              type="button"
+              class="rounded p-1 text-red-500 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-900/20"
+              :disabled="formData.aggregate_group_ids.length <= 2"
+              :title="t('keys.aggregateRemoveGroup')"
+              @click="removeAggregateGroup(index)"
+            >
+              <Icon name="trash" size="sm" />
+            </button>
+          </div>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            data-test="aggregate-add-group"
+            @click="addAggregateGroup"
+          >
+            <Icon name="plus" size="sm" class="mr-1" />
+            {{ t('keys.aggregateAddGroup') }}
+          </button>
+        </div>
+
+        <div v-else>
           <label class="input-label" for="key-form-group">{{ t('keys.groupLabel') }}</label>
           <Select
             :key="showEditModal ? 'edit' : createProvider"
@@ -634,7 +786,7 @@
           </Select>
         </div>
 
-        <div>
+        <div v-if="!formData.aggregate_mode">
           <label class="input-label">{{ t('keys.fallbackGroupLabel') }}</label>
           <Select
             v-model="formData.fallback_group_id"
@@ -1562,6 +1714,9 @@ const formData = ref({
   name: '',
   group_id: null as number | null,
   fallback_group_id: null as number | null,
+  // 聚合密钥：启用后按 aggregate_group_ids 顺序依次尝试分组，兜底分组不再生效。
+  aggregate_mode: false,
+  aggregate_group_ids: [] as Array<number | null>,
   status: 'active' as 'active' | 'inactive',
   use_custom_key: false,
   custom_key: '',
@@ -1679,6 +1834,12 @@ const formGroupOptions = computed(() => showEditModal.value
   : groupOptions.value.filter((group) => getKeyGroupProvider(group.platform) === createProvider.value)
 )
 
+// 聚合密钥判定与链展示（Orange 特有）：链上超过 1 个分组即为聚合密钥。
+const isAggregatedKey = (key: ApiKey) => (key.groups?.length ?? 0) > 1
+
+const sortedKeyGroups = (key: ApiKey) =>
+  [...(key.groups ?? [])].sort((a, b) => a.priority - b.priority)
+
 // 兜底分组选项：与所选主分组同平台、非主分组本身，另含"不设置兜底分组"
 const fallbackGroupOptions = computed(() => {
   const primary = groups.value.find((group) => group.id === formData.value.group_id)
@@ -1695,6 +1856,63 @@ const selectCreateProvider = (provider: KeyGroupProvider) => {
   if (createProvider.value === provider) return
   createProvider.value = provider
   formData.value.group_id = null
+  // 聚合链与供应商绑定：切换供应商即清空链，避免残留跨平台选择。
+  formData.value.aggregate_group_ids = []
+}
+
+// ===== 聚合密钥（Orange 特有）=====
+// 聚合链候选分组：编辑模式不限供应商；创建模式限定为当前供应商。
+const aggregateGroupBaseOptions = computed(() => formGroupOptions.value)
+
+// 指定链位可选的候选：排除其他链位已选的分组（避免同一分组重复出现）。
+const aggregateGroupOptions = (index: number) => {
+  const taken = new Set(
+    formData.value.aggregate_group_ids.filter((_, i) => i !== index && _ !== null) as number[]
+  )
+  return aggregateGroupBaseOptions.value.filter((option) => !taken.has(option.value))
+}
+
+const toggleAggregateMode = () => {
+  const next = !formData.value.aggregate_mode
+  formData.value.aggregate_mode = next
+  if (next) {
+    // 进入聚合模式：沿用当前主分组作为链首，并补一个空位。
+    const current = formData.value.group_id
+    formData.value.aggregate_group_ids = current ? [current, null] : [null, null]
+    // 聚合密钥不使用单兜底分组。
+    formData.value.fallback_group_id = null
+  } else {
+    // 退出聚合模式：主分组保留链首，链清空。
+    formData.value.group_id = formData.value.aggregate_group_ids[0] ?? null
+    formData.value.aggregate_group_ids = []
+  }
+}
+
+const setAggregateGroup = (index: number, value: number | null) => {
+  formData.value.aggregate_group_ids[index] = value
+  // 链首即主分组，保持同步，供非聚合路径与展示使用。
+  if (index === 0) {
+    formData.value.group_id = value
+  }
+}
+
+const addAggregateGroup = () => {
+  formData.value.aggregate_group_ids.push(null)
+}
+
+const removeAggregateGroup = (index: number) => {
+  if (formData.value.aggregate_group_ids.length <= 2) return
+  formData.value.aggregate_group_ids.splice(index, 1)
+  formData.value.group_id = formData.value.aggregate_group_ids[0] ?? null
+}
+
+const moveAggregateGroup = (index: number, offset: number) => {
+  const target = index + offset
+  const list = formData.value.aggregate_group_ids
+  if (target < 0 || target >= list.length) return
+  const [item] = list.splice(index, 1)
+  list.splice(target, 0, item)
+  formData.value.group_id = list[0] ?? null
 }
 
 // Also handles groups arriving after the create dialog has already opened.
@@ -1865,10 +2083,15 @@ const editKey = (key: ApiKey) => {
   selectedKey.value = key
   const hasIPRestriction = (key.ip_whitelist?.length > 0) || (key.ip_blacklist?.length > 0)
   const hasExpiration = !!key.expires_at
+  const chain = key.groups ?? []
   formData.value = {
     name: key.name,
     group_id: key.group_id,
     fallback_group_id: key.fallback_group_id ?? null,
+    aggregate_mode: chain.length > 1,
+    aggregate_group_ids: chain.length > 1
+      ? [...chain].sort((a, b) => a.priority - b.priority).map((entry) => entry.group_id)
+      : (key.group_id ? [key.group_id] : []),
     status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
     use_custom_key: false,
     custom_key: '',
@@ -2053,8 +2276,8 @@ const handleSubmit = async () => {
     rate_limit_7d: formData.value.rate_limit_7d && formData.value.rate_limit_7d > 0 ? formData.value.rate_limit_7d : 0,
   } : { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 }
 
-  // 校验兜底分组：必须与主分组不同且同平台
-  if (formData.value.fallback_group_id !== null) {
+  // 校验兜底分组：必须与主分组不同且同平台（聚合模式下不校验兜底）
+  if (!formData.value.aggregate_mode && formData.value.fallback_group_id !== null) {
     const primary = groups.value.find((group) => group.id === formData.value.group_id)
     const fallback = groups.value.find((group) => group.id === formData.value.fallback_group_id)
     if (
@@ -2068,13 +2291,35 @@ const handleSubmit = async () => {
     }
   }
 
+  // 聚合链校验：至少 2 组、同平台、无重复
+  let aggregateGroupIds: number[] | undefined
+  if (formData.value.aggregate_mode) {
+    const ids = formData.value.aggregate_group_ids.filter((id) => id !== null) as number[]
+    if (new Set(ids).size !== ids.length) {
+      appStore.showError(t('keys.aggregateGroupDuplicate'))
+      return
+    }
+    if (ids.length < 2) {
+      appStore.showError(t('keys.aggregateGroupTooFew'))
+      return
+    }
+    const platforms = new Set(
+      ids.map((id) => groups.value.find((group) => group.id === id)?.platform).filter(Boolean)
+    )
+    if (platforms.size > 1) {
+      appStore.showError(t('keys.aggregateGroupPlatformMismatch'))
+      return
+    }
+    aggregateGroupIds = ids
+  }
+
   submitting.value = true
   try {
     if (showEditModal.value && selectedKey.value) {
       const updates: UpdateApiKeyRequest = {
         name: formData.value.name,
-        group_id: formData.value.group_id,
-        fallback_group_id: formData.value.fallback_group_id,
+        group_id: aggregateGroupIds ? aggregateGroupIds[0] : formData.value.group_id,
+        fallback_group_id: aggregateGroupIds ? null : formData.value.fallback_group_id,
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: quota,
@@ -2083,6 +2328,8 @@ const handleSubmit = async () => {
         rate_limit_1d: rateLimitData.rate_limit_1d,
         rate_limit_7d: rateLimitData.rate_limit_7d,
       }
+      // 编辑时始终提交 group_ids：聚合模式传链，非聚合模式传空数组以清除旧链。
+      updates.group_ids = aggregateGroupIds ?? []
       if (shouldSubmitEditStatus(selectedKey.value, formData.value.status)) {
         updates.status = formData.value.status
       }
@@ -2092,14 +2339,15 @@ const handleSubmit = async () => {
       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
       await keysAPI.create(
         formData.value.name,
-        formData.value.group_id,
-        formData.value.fallback_group_id,
+        aggregateGroupIds ? aggregateGroupIds[0] : formData.value.group_id,
+        aggregateGroupIds ? null : formData.value.fallback_group_id,
         customKey,
         ipWhitelist,
         ipBlacklist,
         quota,
         expiresInDays,
-        rateLimitData
+        rateLimitData,
+        aggregateGroupIds
       )
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
@@ -2146,6 +2394,8 @@ const closeModals = () => {
     name: '',
     group_id: null,
     fallback_group_id: null,
+    aggregate_mode: false,
+    aggregate_group_ids: [],
     status: 'active',
     use_custom_key: false,
     custom_key: '',

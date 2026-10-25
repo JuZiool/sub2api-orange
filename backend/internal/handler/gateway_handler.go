@@ -638,7 +638,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	currentSubscription := subscription
 	currentRateResolution := rateResolution
 	var fallbackGroupID *int64
-	if apiKey.Group != nil {
+	// 聚合密钥自带多级候选链，不再叠加分组级"无效请求"兜底。
+	if apiKey.Group != nil && !apiKey.IsAggregated() {
 		fallbackGroupID = apiKey.Group.FallbackGroupIDOnInvalidRequest
 	}
 	fallbackUsed := false

@@ -107,6 +107,10 @@ func (s *authRepoStub) ListKeysByGroupID(ctx context.Context, groupID int64) ([]
 	return s.listKeysByGroupID(ctx, groupID)
 }
 
+func (s *authRepoStub) ReplaceGroupChain(ctx context.Context, apiKeyID int64, groupIDs []int64) error {
+	return nil
+}
+
 func (s *authRepoStub) IncrementQuotaUsed(ctx context.Context, id int64, amount float64) (float64, error) {
 	panic("unexpected IncrementQuotaUsed call")
 }

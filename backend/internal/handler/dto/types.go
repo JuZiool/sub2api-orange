@@ -90,6 +90,16 @@ type APIKey struct {
 	User          *User  `json:"user,omitempty"`
 	Group         *Group `json:"group,omitempty"`
 	FallbackGroup *Group `json:"fallback_group,omitempty"`
+	// Groups 是聚合密钥的分组优先级链（含主分组，按 priority 升序）。
+	// 普通密钥为空数组。
+	Groups []APIKeyGroupEntry `json:"groups"`
+}
+
+// APIKeyGroupEntry 是聚合密钥分组链上的一项。
+type APIKeyGroupEntry struct {
+	GroupID  int64  `json:"group_id"`
+	Priority int    `json:"priority"`
+	Group    *Group `json:"group,omitempty"`
 }
 
 type Group struct {

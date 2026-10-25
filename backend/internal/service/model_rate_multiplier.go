@@ -41,9 +41,11 @@ type RateResolution struct {
 	MatchedModel   string
 	Source         string
 
-	// Freeze both routes before selection; billing chooses without mutating either snapshot.
-	fallbackGroupID int64
-	fallback        *RateResolution
+	// Freeze every route in the API key's group chain before selection; billing
+	// chooses without mutating any snapshot. fallbacks[i] corresponds to
+	// fallbackGroupIDs[i]; the primary group's resolution is this struct itself.
+	fallbackGroupIDs []int64
+	fallbacks        []*RateResolution
 }
 
 func ResolveModelRateMultiplier(model string, rules []ModelRateMultiplierRule) (float64, string, bool) {
