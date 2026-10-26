@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -95,8 +96,30 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		zap.String("img_size", parsed.Size),
 	)
 
-	if !service.GroupAllowsImageGeneration(apiKey.Group) {
+	// 聚合密钥/旧式单兜底的模型目录合并整条链，生图开关却是分组级策略：
+	// 只要链上还有分组允许生图，就由请求级分组策略挑出合法候选，而不是被
+	// 链首主分组的开关直接拒绝。单分组密钥行为与原先完全一致。
+	if !service.ChainAllowsImageGeneration(apiKey) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
+		return
+	}
+
+	// 请求级生图分组策略：按优先级筛出“允许生图 + 自己白名单允许该模型”的候选分组，
+	// 并为每个候选预解析渠道映射与生图能力，保证命中后组时不会沿用首组的映射。
+	imagePolicy, aggregatedImageRouting := service.ResolveImageGenerationGroupPolicy(
+		apiKey,
+		requestModel,
+		func(group *service.Group) (service.ChannelMappingResult, service.OpenAIImagesCapability) {
+			groupID := group.ID
+			mapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), &groupID, routingModel)
+			return mapping, parsed.RequiredCapabilityForModel(mapping.MappedModel)
+		},
+	)
+	if aggregatedImageRouting && len(imagePolicy.Groups) == 0 {
+		// 链上存在允许生图的分组，但它们的模型白名单都不允许该模型：这是模型级
+		// 权限问题，不能退化成“全链无生图权限”。
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+		h.errorResponse(c, http.StatusNotFound, "not_found_error", fmt.Sprintf("Model %q is not available for this group", clientRequestModel))
 		return
 	}
 	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIImages, requestModel, parsed.ModerationBody()); decision != nil && !decision.AllowNextStage {
@@ -116,6 +139,19 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	rateResolution := openAIRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, requestModel)
 
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, routingModel)
+	if aggregatedImageRouting {
+		// 聚合链的首个候选可能不是主分组：沿用策略里为该分组预解析的映射，
+		// 而不是主分组的映射。
+		if primaryID := apiKey.GroupID; primaryID != nil {
+			if policyMapping, ok := imagePolicy.MappingFor(*primaryID); ok {
+				channelMapping = policyMapping
+			} else if len(imagePolicy.Groups) > 0 {
+				if policyMapping, ok := imagePolicy.MappingFor(imagePolicy.Groups[0].ID); ok {
+					channelMapping = policyMapping
+				}
+			}
+		}
+	}
 
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
@@ -158,6 +194,9 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 
 	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
 	requestCtx := service.WithOpenAIImagesEndpoint(service.WithOpenAIImageGenerationIntent(c.Request.Context()))
+	if aggregatedImageRouting {
+		requestCtx = service.WithImageGenerationGroupPolicy(requestCtx, imagePolicy)
+	}
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -189,6 +228,12 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
+			if errors.Is(err, service.ErrImageGenerationNotAllowed) {
+				// 策略在入口已确认链上存在允许生图的分组，走到这里说明并发期间分组
+				// 被停用/改配置：保留权限拒绝语义，不误报为容量不足。
+				h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
+				return
+			}
 			if len(failedAccountIDs) == 0 {
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, clientRequestModel, routingModel, service.PlatformOpenAI)
 				if !cls.ModelNotFound {
@@ -235,6 +280,19 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		reqLog.Debug("openai.images.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
+		// 命中后组时 apiKey.GroupID 已被请求级路由切到实际分组：渠道映射必须跟着
+		// 换成该分组的映射，不能继续沿用首组已经解析出的映射。优先使用入口预解析
+		// 的结果（同一请求内一致），缺失时按实际分组重新解析。
+		routedGroupID := apiKey.GroupID
+		routedMapping := channelMapping
+		if aggregatedImageRouting && routedGroupID != nil {
+			if policyMapping, ok := imagePolicy.MappingFor(*routedGroupID); ok {
+				routedMapping = policyMapping
+			} else {
+				routedMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), routedGroupID, routingModel)
+			}
+		}
+
 		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, parsed.Stream, &streamStarted, reqLog)
 		if slotResult == openAISlotAcquireProfitVetoed {
 			// Images 调度不装利润门，此分支实际不可达；防御性排除重选并受同一否决上限约束。
@@ -261,7 +319,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.ForwardImages(requestCtx, c, account, body, parsed, channelMapping.MappedModel)
+			return h.gatewayService.ForwardImages(requestCtx, c, account, body, parsed, routedMapping.MappedModel)
 		}()
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
@@ -421,7 +479,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				QuotaPlatform:      quotaPlatform,
 				SessionID:          sessionID,
 				RateResolution:     rateResolution,
-				ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, requestModel, upstreamModel),
+				ChannelUsageFields: clientRequestedUsageFields(c, routedMapping, requestModel, upstreamModel),
 			}); err != nil {
 				logger.L().With(
 					zap.String("component", "handler.openai_gateway.images"),

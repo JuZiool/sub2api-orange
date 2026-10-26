@@ -72,10 +72,17 @@ func GroupModelAllowlist() gin.HandlerFunc {
 
 		blocked := ""
 		for _, candidate := range models {
-			if !allowlist.Allows(candidate) {
-				blocked = candidate
-				break
+			if allowlist.Allows(candidate) {
+				continue
 			}
+			// 聚合/旧式兜底密钥：生图模型的入口准入改用链上候选并集，避免链首
+			// 白名单提前堵死仅后组允许的生图模型。这只放宽入口判断，真正执行
+			// 请求的分组仍由自己的白名单与生图开关裁决（见调度器策略筛选）。
+			if groupModelAllowlistAggregateImageAdmission(c, apiKey, candidate) {
+				continue
+			}
+			blocked = candidate
+			break
 		}
 		if blocked == "" {
 			c.Next()
@@ -87,6 +94,23 @@ func GroupModelAllowlist() gin.HandlerFunc {
 		groupModelAllowlistErrorWriter(c)(c, http.StatusNotFound, fmt.Sprintf("Model %q is not available for this group", blocked))
 		c.Abort()
 	}
+}
+
+// groupModelAllowlistAggregateImageAdmission 报告聚合/旧式兜底密钥是否应因链上
+// 其它分组允许该生图模型而放行入口准入。
+//
+// 只对显式生图请求生效：请求体已在 groupModelAllowlistModelsFromBody 阶段读入并
+// 回填，这里零拷贝复用。非生图请求、普通密钥、链路失效时一律返回 false，保持
+// 既有白名单语义。
+func groupModelAllowlistAggregateImageAdmission(c *gin.Context, apiKey *service.APIKey, model string) bool {
+	if c == nil || c.Request == nil || apiKey == nil || len(apiKey.Groups) == 0 {
+		return false
+	}
+	body, err := httputil.ReadRequestBodyWithPrealloc(c.Request)
+	if err != nil || len(body) == 0 {
+		return false
+	}
+	return service.AggregateImageAdmissionAllowed(apiKey, c.Request.URL.Path, model, body)
 }
 
 // isResponsesWebSocketRoute 判断当前请求是否命中 OpenAI Responses WebSocket

@@ -129,7 +129,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	rateResolution := openAIRateSnapshot(c.Request.Context(), h.gatewayService, apiKey, clientRequestedModel(c, requestModel))
 
 	if endpoint.IsGenerationRequest() {
-		if !service.GroupAllowsImageGeneration(apiKey.Group) {
+		// 聚合密钥/旧式单兜底：链上只要还有分组允许生图就不在这里拒绝；
+		// 图片端点还会按请求级分组策略筛候选，禁止生图的分组不会被选中。
+		if !service.ChainAllowsImageGeneration(apiKey) {
 			h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 			return
 		}
@@ -207,6 +209,19 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	// 范围内：显式豁免，防止 service 层防御性装门按文本 D 误过滤媒体请求，
 	// 也防止已计费的在途视频任务因绑定账号被门排除而查询返回伪 404。
 	requestCtx := service.WithOpenAIProfitControlSuppressed(c.Request.Context())
+	if endpoint == service.GrokMediaEndpointImagesGenerations || endpoint == service.GrokMediaEndpointImagesEdits {
+		// 图片生成按请求级分组策略筛候选：聚合链上禁用生图或白名单不含该模型
+		// 的分组不会被选中。视频/语音端点不受生图开关约束，保持原调度。
+		imagePolicy, policyOK := service.ResolveImageGenerationGroupPolicy(apiKey, requestModel, nil)
+		if policyOK {
+			if len(imagePolicy.Groups) == 0 {
+				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+				h.errorResponse(c, http.StatusNotFound, "not_found_error", "Model is not available for this group")
+				return
+			}
+			requestCtx = service.WithImageGenerationGroupPolicy(requestCtx, imagePolicy)
+		}
+	}
 	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)

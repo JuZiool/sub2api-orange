@@ -1536,6 +1536,8 @@ func modelListingSource(platform string, availableModels, fallbackModels []strin
 //   - 顺序按 priority 升序，保持首次出现位置，客户端看到的首个模型仍是主分组的。
 //   - 分组级模型白名单按各自分组分别过滤：聚合链要求同平台，但各分组白名单可能
 //     不同，只合并每个分组真正可调用的模型。
+//   - 生图模型还要求该分组开启生图：/v1/models 是“配置可见模型集合”，但把组级
+//     策略禁止调用的生图模型列出来会误导客户端，因此与分组白名单同口径过滤。
 func aggregateAvailableModels(
 	ctx context.Context,
 	gateway *service.GatewayService,
@@ -1563,6 +1565,9 @@ func aggregateAvailableModels(
 		for _, model := range source {
 			model = strings.TrimSpace(model)
 			if model == "" {
+				continue
+			}
+			if !service.GroupAllowsImageGenerationModel(group, model) {
 				continue
 			}
 			key := strings.ToLower(model)

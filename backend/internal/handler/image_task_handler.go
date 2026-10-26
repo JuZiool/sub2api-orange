@@ -66,7 +66,9 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "Images API is not supported for this platform")
 		return
 	}
-	if !service.GroupAllowsImageGeneration(apiKey.Group) {
+	// 聚合密钥/旧式单兜底：链上只要还有分组允许生图就不在这里拒绝，
+	// 具体候选分组由后续 /v1/images/* handler 的请求级策略筛选。
+	if !service.ChainAllowsImageGeneration(apiKey) {
 		imageTaskJSONError(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}

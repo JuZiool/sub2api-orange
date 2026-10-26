@@ -2150,6 +2150,13 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 	excludedIDs map[int64]struct{},
 	requiredCapability OpenAIImagesCapability,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	// 聚合密钥/旧式单兜底：handler 已按“允许生图 + 自己的白名单允许该模型”筛出
+	// 请求级候选链。只在这些分组内推进，避免把生图请求送进禁用生图的分组，
+	// 也避免借其他分组的权限在该分组执行。
+	if policy, ok := ImageGenerationGroupPolicyFromContext(ctx); ok {
+		return s.selectAccountForImagesInPolicy(ctx, policy, groupID, sessionHash, requestedModel, excludedIDs, requiredCapability)
+	}
+
 	selection, decision, err := s.selectAccountForImagesInGroup(ctx, groupID, sessionHash, requestedModel, excludedIDs, requiredCapability)
 
 	// 聚合密钥可能有多级候选：按链顺序继续尝试，直到命中或链尾。
@@ -2196,6 +2203,71 @@ func (s *OpenAIGatewayService) selectAccountForImagesInGroup(
 	return selection, decision, err
 }
 
+// selectAccountForImagesInPolicy 按请求级生图分组策略推进候选分组。
+//
+// 策略内的分组已在入口按“允许生图 + 自己的白名单允许该模型”筛过，因此这里的推进
+// 不会越过任何分组的生图权限。仅选号容量类错误（ErrNoAvailableAccounts /
+// ErrNoAvailableCompactAccounts）才继续下一个候选分组；其他错误立即返回，避免把
+// 任意上游/配置错误伪装成分组兜底。
+func (s *OpenAIGatewayService) selectAccountForImagesInPolicy(
+	ctx context.Context,
+	policy ImageGenerationGroupPolicy,
+	primaryGroupID *int64,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requiredCapability OpenAIImagesCapability,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	candidates := imagePolicyCandidateGroups(policy)
+	if len(candidates) == 0 {
+		// 链上没有任何分组允许这次生图请求：保留清晰的权限拒绝语义。
+		return nil, OpenAIAccountScheduleDecision{}, ErrImageGenerationNotAllowed
+	}
+	// 从当前主分组在策略内的位置开始；主分组已被筛掉时退回策略首位。
+	start := 0
+	if primaryGroupID != nil && *primaryGroupID > 0 {
+		for i, group := range candidates {
+			if group.ID == *primaryGroupID {
+				start = i
+				break
+			}
+		}
+	}
+	var lastErr error
+	for _, group := range candidates[start:] {
+		groupID := group.ID
+		selection, decision, err := s.selectAccountForImagesInGroup(
+			ctx,
+			&groupID,
+			sessionHash,
+			requestedModel,
+			excludedIDs,
+			policy.CapabilityFor(groupID, requiredCapability),
+		)
+		if err == nil && selection != nil && selection.Account != nil {
+			if primaryGroupID == nil || *primaryGroupID != groupID {
+				markAPIKeyFallbackSelection(ctx, selection, groupID)
+				s.logAPIKeyGroupFallbackSelected(primaryGroupID, groupID, requestedModel, selection)
+			}
+			return selection, decision, nil
+		}
+		// 无错误但也没有账号：按容量不足继续下一个候选分组。
+		if err == nil {
+			err = ErrNoAvailableAccounts
+		}
+		// 仅容量类错误继续推进；其他错误立即返回，避免把任意上游/配置错误
+		// 伪装成分组兜底。
+		if !errors.Is(err, ErrNoAvailableAccounts) && !errors.Is(err, ErrNoAvailableCompactAccounts) {
+			return selection, decision, err
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = ErrNoAvailableAccounts
+	}
+	return nil, OpenAIAccountScheduleDecision{}, lastErr
+}
+
 func (s *OpenAIGatewayService) selectAccountWithSchedulerAndAPIKeyFallback(
 	ctx context.Context,
 	groupID *int64,
@@ -2211,6 +2283,13 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerAndAPIKeyFallback(
 	previousResponseCanMove bool,
 	useUpstreamTokenCost bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	// 生图请求的聚合链已由 handler 按“允许生图 + 自己的白名单允许该模型”筛出
+	// 请求级候选：只在候选内推进，绝不把生图请求送进禁用生图的分组。
+	if policy, ok := ImageGenerationGroupPolicyFromContext(ctx); ok {
+		selection, decision, err := s.selectAccountWithSchedulerInImagePolicy(ctx, policy, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+		return selection, decision, err
+	}
+
 	selection, decision, err := s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
 
 	// 聚合密钥可能有多级候选：按链顺序继续尝试，直到命中或链尾。
@@ -2240,6 +2319,86 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerAndAPIKeyFallback(
 		currentCtx = fallbackCtx
 	}
 	return selection, decision, err
+}
+
+// selectAccountWithSchedulerInImagePolicy 在请求级生图分组策略的候选内推进选号。
+//
+// 候选分组已在入口按“允许生图 + 自己的模型白名单允许该模型”筛过，因此推进不会
+// 越过任何分组的生图权限，也不会借其他组的权限在禁用组执行。仅容量类错误
+// （ErrNoAvailableAccounts / ErrNoAvailableCompactAccounts）继续下一个候选；
+// 其他错误立即返回，保持既有重试边界。
+func (s *OpenAIGatewayService) selectAccountWithSchedulerInImagePolicy(
+	ctx context.Context,
+	policy ImageGenerationGroupPolicy,
+	primaryGroupID *int64,
+	previousResponseID string,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{},
+	requiredTransport OpenAIUpstreamTransport,
+	requiredCapability OpenAIEndpointCapability,
+	requiredImageCapability OpenAIImagesCapability,
+	requireCompact bool,
+	platform string,
+	previousResponseCanMove bool,
+	useUpstreamTokenCost bool,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	candidates := imagePolicyCandidateGroups(policy)
+	if len(candidates) == 0 {
+		return nil, OpenAIAccountScheduleDecision{}, ErrImageGenerationNotAllowed
+	}
+	start := 0
+	if primaryGroupID != nil && *primaryGroupID > 0 {
+		for i, group := range candidates {
+			if group.ID == *primaryGroupID {
+				start = i
+				break
+			}
+		}
+	}
+	var (
+		lastSelection *AccountSelectionResult
+		lastDecision  OpenAIAccountScheduleDecision
+		lastErr       error
+	)
+	for _, group := range candidates[start:] {
+		groupID := group.ID
+		selection, decision, err := s.selectAccountWithScheduler(
+			ctx,
+			&groupID,
+			previousResponseID,
+			sessionHash,
+			requestedModel,
+			excludedIDs,
+			requiredTransport,
+			requiredCapability,
+			policy.CapabilityFor(groupID, requiredImageCapability),
+			requireCompact,
+			platform,
+			previousResponseCanMove,
+			useUpstreamTokenCost,
+		)
+		lastSelection, lastDecision = selection, decision
+		if err == nil && selection != nil && selection.Account != nil {
+			if primaryGroupID == nil || *primaryGroupID != groupID {
+				markAPIKeyFallbackSelection(ctx, selection, groupID)
+				s.logAPIKeyGroupFallbackSelected(primaryGroupID, groupID, requestedModel, selection)
+			}
+			return selection, decision, nil
+		}
+		if err == nil {
+			err = ErrNoAvailableAccounts
+		}
+		if !errors.Is(err, ErrNoAvailableAccounts) && !errors.Is(err, ErrNoAvailableCompactAccounts) {
+			return selection, decision, err
+		}
+		lastErr = err
+	}
+	if lastErr == nil {
+		lastErr = ErrNoAvailableAccounts
+	}
+	// 容量不足时把最后一次的选号结果一并返回，让上层沿用既有“无可用账号”分类。
+	return lastSelection, lastDecision, lastErr
 }
 
 func (s *OpenAIGatewayService) logAPIKeyGroupFallbackSelected(primaryGroupID *int64, fallbackGroupID int64, requestedModel string, selection *AccountSelectionResult) {

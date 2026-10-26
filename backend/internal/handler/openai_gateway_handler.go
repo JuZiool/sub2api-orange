@@ -556,9 +556,33 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// Codex 在所有请求中被动声明 image_gen namespace，宽泛检测会导致禁了生图的
 	// 分组中所有 Codex 请求被 403（#4447），并误占生图并发槽位。
 	imageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, body)
-	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
-		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
-		return
+	// 聚合密钥/旧式单兜底的模型目录合并整条链，生图开关却是分组级策略：只要链上
+	// 还有分组允许生图，就由请求级分组策略挑出合法候选，而不是被链首主分组拒绝。
+	var imagePolicy service.ImageGenerationGroupPolicy
+	aggregatedImageRouting := false
+	if imageIntent {
+		if !service.ChainAllowsImageGeneration(apiKey) {
+			h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
+			return
+		}
+		var policyOK bool
+		imagePolicy, policyOK = service.ResolveImageGenerationGroupPolicy(
+			apiKey,
+			reqModel,
+			func(group *service.Group) (service.ChannelMappingResult, service.OpenAIImagesCapability) {
+				groupID := group.ID
+				mapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), &groupID, reqModel)
+				return mapping, ""
+			},
+		)
+		aggregatedImageRouting = policyOK
+		if aggregatedImageRouting && len(imagePolicy.Groups) == 0 {
+			// 链上存在允许生图的分组，但它们的模型白名单都不允许该模型：属于模型级
+			// 权限问题，不能退化成“全链无生图权限”，也不能被中间件的首组白名单提前拒绝。
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
+			h.errorResponse(c, http.StatusNotFound, "not_found_error", fmt.Sprintf("Model %q is not available for this group", reqModel))
+			return
+		}
 	}
 	var imageReleaseFunc func()
 	if imageIntent {
@@ -574,6 +598,18 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	if aggregatedImageRouting {
+		// 聚合链的首个候选可能不是主分组：沿用策略里为该分组预解析的映射。
+		if groupID := apiKey.GroupID; groupID != nil {
+			if policyMapping, ok := imagePolicy.MappingFor(*groupID); ok {
+				channelMapping = policyMapping
+			} else if len(imagePolicy.Groups) > 0 {
+				if policyMapping, ok := imagePolicy.MappingFor(imagePolicy.Groups[0].ID); ok {
+					channelMapping = policyMapping
+				}
+			}
+		}
+	}
 	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
 	seedOpenAIForwardImageIntentHint(c, channelMapping.Mapped, imageIntent)
 	forwardModel := openAIChannelForwardModel(channelMapping, reqModel)
@@ -669,6 +705,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	if shouldEnableCodexQuotaOverdraftForResponses(legacyCompact, nativeV2, imageIntent) {
 		requestCtx = service.WithCodexQuotaOverdraftScheduling(requestCtx)
 	}
+	if aggregatedImageRouting {
+		// 请求级生图分组策略只影响候选分组范围，不改写 API Key 的分组链。
+		requestCtx = service.WithImageGenerationGroupPolicy(requestCtx, imagePolicy)
+	}
 	pricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(requestCtx, apiKey.GroupID)
 	rateResolution := openAIRateSnapshot(pricingCtx, h.gatewayService, apiKey, reqModel)
 	c.Request = c.Request.WithContext(pricingCtx)
@@ -680,6 +720,20 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if !openAIRequestAllowsFailoverReplay(c) {
 			return
 		}
+		// 聚合生图链可能命中后组：本次迭代按当前生效分组（上一轮路由结果）计算
+		// 选号用的转发模型，命中后组时下一轮会跟随实际分组重新计算。
+		attemptChannelMapping := channelMapping
+		attemptForwardModel := forwardModel
+		if aggregatedImageRouting {
+			if groupID := apiKey.GroupID; groupID != nil {
+				if policyMapping, ok := imagePolicy.MappingFor(*groupID); ok {
+					attemptChannelMapping = policyMapping
+				} else {
+					attemptChannelMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), groupID, reqModel)
+				}
+				attemptForwardModel = openAIChannelForwardModel(attemptChannelMapping, reqModel)
+			}
+		}
 		// Select account supporting the requested model
 		reqLog.Debug("openai.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
 		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
@@ -687,7 +741,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			apiKey.GroupID,
 			previousResponseID,
 			sessionHash,
-			forwardModel,
+			attemptForwardModel,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportAny,
 			requiredCapability,
@@ -794,10 +848,37 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 用扣除非语义心跳字节的口径快照：心跳注释不构成语义响应，
 		// 不能因心跳字节变化而放弃 failover 换号（#3887）。
 		writerSizeBeforeForward := service.OpenAICompactKeepaliveAdjustedWrittenSize(c)
-		// 跨 passthrough 边界的 failover：从 Kiro 等透传账号切到 Bedrock 等非透传账号前，
-		// 从不可变的 canonical forwardBody 派生本次尝试 body 并整块剔除上游私有的加密
+		// 实际生效分组的映射与转发模型：命中后组时必须随之切换，否则会继续使用
+		// 首组已解析的映射/价格。非聚合链按原有单次解析结果不变。
+		routedMapping := attemptChannelMapping
+		routedForwardModel := attemptForwardModel
+		if aggregatedImageRouting {
+			if groupID := apiKey.GroupID; groupID != nil {
+				if policyMapping, ok := imagePolicy.MappingFor(*groupID); ok {
+					routedMapping = policyMapping
+				} else {
+					routedMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), groupID, reqModel)
+				}
+				routedForwardModel = openAIChannelForwardModel(routedMapping, reqModel)
+			}
+		}
+		routedForwardBody := forwardBody
+		if aggregatedImageRouting {
+			if groupID := apiKey.GroupID; groupID != nil {
+				if policyMapping, ok := imagePolicy.MappingFor(*groupID); ok {
+					routedMapping = policyMapping
+				} else {
+					routedMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), groupID, reqModel)
+				}
+				routedForwardModel = openAIChannelForwardModel(routedMapping, reqModel)
+				if routedMapping.Mapped != channelMapping.Mapped || routedMapping.MappedModel != channelMapping.MappedModel {
+					routedForwardBody = openAIModelMappedBody(body, routedMapping.Mapped, routedMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+				}
+			}
+		}
+		// 跨 passthrough 边界的 failover：从不可变的 canonical forwardBody 派生本次尝试 body 并整块剔除上游私有的加密
 		// reasoning item（含耦合的 id/summary），避免非透传上游 400 拒绝 Kiro reasoning 形态。
-		attemptBody := h.deriveOpenAIForwardAttemptBody(reqLog, forwardBody, account, &passthroughFailoverState)
+		attemptBody := h.deriveOpenAIForwardAttemptBody(reqLog, routedForwardBody, account, &passthroughFailoverState)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {
@@ -810,7 +891,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockBodyHTTP = sessionHashBody
 		}
-		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockBodyHTTP, clientRequestedUsageFields(c, channelMapping, reqModel, ""), service.HashUsageRequestPayload(body))
+		h.recordCyberPolicyIfMarked(c, apiKey, account, subscription, reqModel, err != nil, cyberBlockBodyHTTP, clientRequestedUsageFields(c, routedMapping, reqModel, ""), service.HashUsageRequestPayload(body))
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
 		responseLatencyMs := forwardDurationMs
@@ -851,7 +932,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					APIKeyService:      h.apiKeyService,
 					QuotaPlatform:      quotaPlatform,
 					SessionID:          sessionID,
-					ChannelUsageFields: clientRequestedUsageFields(c, channelMapping, reqModel, res.UpstreamModel),
+					ChannelUsageFields: clientRequestedUsageFields(c, routedMapping, reqModel, res.UpstreamModel),
 					PricingAt:          pricingAt,
 					RateResolution:     rateResolution,
 					CyberBlocked:       cyberBlocked,
@@ -912,7 +993,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						streamStarted = true
 					}
 					if failoverErr.ShouldReportAccountScheduleFailure() {
-						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, nil), false, nil, err)
+						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, routedForwardModel, requireCompact, nil), false, nil, err)
 					}
 					if !failoverErr.ShouldRetryNextAccount() {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
@@ -974,7 +1055,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					reqLog.Warn("openai.upstream_failover_switching", failoverSwitchFields...)
 					continue
 				}
-				h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, result), false, nil, err)
+				h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, routedForwardModel, requireCompact, result), false, nil, err)
 				upstreamErrorAlreadyCommunicated := openAIForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
@@ -1000,9 +1081,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
 				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
 			}
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, result), openAIForwardSucceededForScheduling(result), result.FirstTokenMs)
+			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, routedForwardModel, requireCompact, result), openAIForwardSucceededForScheduling(result), result.FirstTokenMs)
 		} else {
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, forwardModel, requireCompact, result), openAIForwardSucceededForScheduling(result), nil)
+			h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, routedForwardModel, requireCompact, result), openAIForwardSucceededForScheduling(result), nil)
 		}
 
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
