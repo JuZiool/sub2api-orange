@@ -68,7 +68,7 @@ func TestUpdateOpenCodeGoUsageSnapshotWritesSnapshotOnly(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-// 与 lockAndMergeAccountProbeExtra 的 SELECT 列保持一致，包含 OpenCode 和 Codex 受管状态。
+// 与 lockAndMergeAccountProbeExtra 的 SELECT 列保持一致，包含 OpenCode、Codex 和 Grok 受管状态。
 func openCodeGoMergeMockColumns() []string {
 	return []string{
 		"identity_unchanged", "ollama_group_unchanged", "ollama_proxy_unchanged",
@@ -76,6 +76,7 @@ func openCodeGoMergeMockColumns() []string {
 		"ollama_session", "ollama_auto", "ollama_snapshot",
 		"opencode_group_unchanged", "opencode_auto", "opencode_snapshot",
 		"codex_fingerprint_seed", "codex_client_identity",
+		"grok_observed_models", "upstream_model_metadata",
 	}
 }
 
@@ -188,7 +189,7 @@ func TestLockAndMergeAccountProbeExtraPreservesOpenCodeGoManagedState(t *testing
 			mock.ExpectQuery(`(?s)`+regexp.QuoteMeta("SELECT")+`.*`+regexp.QuoteMeta("FOR NO KEY UPDATE")).
 				WithArgs(tt.account.ID, tt.account.Platform, tt.account.Type, string(credentials), nil).
 				WillReturnRows(sqlmock.NewRows(openCodeGoMergeMockColumns()).
-					AddRow(false, false, tt.proxyUnchanged, nil, nil, nil, nil, nil, nil, tt.groupUnchanged, tt.databaseAuto, tt.databaseSnapshot, nil, nil))
+					AddRow(false, false, tt.proxyUnchanged, nil, nil, nil, nil, nil, nil, tt.groupUnchanged, tt.databaseAuto, tt.databaseSnapshot, nil, nil, nil, nil))
 
 			got, err := lockAndMergeAccountProbeExtra(context.Background(), client, tt.account, nil, nil)
 			require.NoError(t, err)
