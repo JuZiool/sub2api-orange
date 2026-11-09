@@ -4,10 +4,16 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -140,5 +146,118 @@ func TestAPIKeyFallbackRateSnapshotBilling(t *testing.T) {
 				require.Equal(t, originalRate, resolution.Multiplier, "route selection must not mutate the captured snapshot")
 			})
 		}
+	}
+}
+
+// Combine the official mixed-TTL response fixture with Orange's real group-chain
+// activation, so TTL prices and the actual routed group's frozen rate are billed
+// together even when an administrator changes both group rates in flight.
+func TestAPIKeyFallbackRateSnapshotBillingWithCacheWriteTTL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		name         string
+		fallbackRate float64
+	}{
+		{name: "fallback_default", fallbackRate: 2.5},
+		{name: "fallback_free", fallbackRate: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const (
+				primaryID      int64 = 101
+				fallbackID     int64 = 102
+				channelID      int64 = 201
+				requestedModel       = "client-alias"
+				forwardedModel       = "gpt-6-luna"
+			)
+			primary := &Group{ID: primaryID, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, RateMultiplier: 1.5}
+			fallback := &Group{ID: fallbackID, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, RateMultiplier: tc.fallbackRate}
+			user := &User{ID: 103}
+			key := &APIKey{
+				ID: 104, UserID: user.ID, User: user, GroupID: i64p(primaryID), Group: primary,
+				Groups: []*APIKeyGroupEntry{{Group: primary, Priority: 1}, {Group: fallback, Priority: 2}},
+			}
+			ctx := WithAPIKeyGroupFallbackRouting(context.WithValue(context.Background(), ctxkey.Group, primary), key)
+			rates := &fallbackBillingRateRepo{rates: map[int64]float64{}}
+			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+			userRepo := &openAIRecordUsageUserRepoStub{}
+			svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, rates)
+			var pricing ChannelModelPricing
+			require.NoError(t, json.Unmarshal([]byte(`{"platform":"openai","models":["gpt-6-luna"],"billing_mode":"token","input_price":0.00000065,"output_price":0.00000325,"cache_write_price":0.0000008125,"cache_write_12h_price":0.000001625,"cache_read_price":0.000000065}`), &pricing))
+			channel := Channel{
+				ID: channelID, Status: StatusActive, GroupIDs: []int64{fallbackID},
+				ModelPricing: []ChannelModelPricing{pricing}, ApplyPricingToAccountStats: true,
+				BillingModelSource: BillingModelSourceChannelMapped,
+				ModelMapping:       map[string]map[string]string{PlatformOpenAI: {requestedModel: forwardedModel}},
+			}
+			svc.channelService = &ChannelService{}
+			svc.channelService.cache.Store(populateChannelCache([]Channel{channel}, map[int64]string{fallbackID: PlatformOpenAI}))
+			svc.resolver = NewModelPricingResolver(svc.channelService, svc.billingService)
+			svc.cfg.Gateway.MaxLineSize = defaultMaxLineSize
+			resolution := svc.ResolveRateResolution(ctx, user.ID, primary, requestedModel)
+			require.Equal(t, 1.5, resolution.Multiplier)
+
+			// Neither the routed group object nor the rate repository can reprice
+			// this request after its primary and fallback snapshots were captured.
+			primary.RateMultiplier, fallback.RateMultiplier = 9, 9
+			rates.rates[primaryID], rates.rates[fallbackID] = 9, 9
+			account := &Account{ID: 105, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+			var visited []int64
+			selected, err := selectAccountWithAPIKeyGroupFallback(ctx, key.GroupID, requestedModel, func(_ context.Context, groupID *int64) (*Account, error) {
+				visited = append(visited, *groupID)
+				if *groupID == primaryID {
+					return nil, ErrNoAvailableAccounts
+				}
+				return account, nil
+			})
+			require.NoError(t, err)
+			require.Same(t, account, selected)
+			require.Equal(t, []int64{primaryID, fallbackID}, visited)
+			require.Equal(t, fallbackID, *key.GroupID)
+			mapping := svc.channelService.ResolveChannelMapping(ctx, *key.GroupID, requestedModel)
+			require.True(t, mapping.Mapped)
+			require.Equal(t, forwardedModel, mapping.MappedModel)
+			require.Equal(t, channelID, mapping.ChannelID)
+
+			response := `{"id":"resp_ttl_fallback","object":"response","model":"gpt-6-luna","status":"completed","output":[],"usage":{"input_tokens":2402,"input_tokens_details":{"cached_tokens":0,"cache_write_tokens":2399,"cache_write_tokens_details":{"ttl_30m_tokens":9,"ttl_12h_tokens":2390}},"output_tokens":5,"total_tokens":2407}}`
+			resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(response))}
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			parsed, err := svc.handleNonStreamingResponse(ctx, resp, c, account, requestedModel, mapping.MappedModel)
+			require.NoError(t, err)
+			require.NotNil(t, parsed.usage)
+			require.NoError(t, svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+				APIKey: key, User: user, Account: account, RateResolution: resolution,
+				ChannelUsageFields: mapping.ToUsageFields(requestedModel, mapping.MappedModel),
+				Result: &OpenAIForwardResult{
+					RequestID: "resp_ttl_fallback", Model: mapping.MappedModel,
+					UpstreamModel: mapping.MappedModel, Usage: *parsed.usage,
+				},
+			}))
+
+			log := usageRepo.lastLog
+			require.NotNil(t, log)
+			require.Equal(t, fallbackID, *log.GroupID)
+			require.NotNil(t, log.ChannelID)
+			require.Equal(t, channelID, *log.ChannelID)
+			require.NotNil(t, log.ModelMappingChain)
+			require.Equal(t, requestedModel+"→"+forwardedModel, *log.ModelMappingChain)
+			require.Equal(t, 3, log.InputTokens)
+			require.Equal(t, 5, log.OutputTokens)
+			require.Equal(t, 2399, log.CacheCreationTokens)
+			require.Equal(t, 9, log.CacheCreation30mTokens)
+			require.Equal(t, 2390, log.CacheCreation12hTokens)
+			require.Zero(t, log.CacheCreation5mTokens)
+			require.Zero(t, log.CacheCreation1hTokens)
+			cacheCost := (9*0.8125 + 2390*1.625) / 1e6
+			totalCost := cacheCost + 3*0.65/1e6 + 5*3.25/1e6
+			require.InDelta(t, cacheCost, log.CacheCreationCost, 1e-12)
+			require.InDelta(t, totalCost, log.TotalCost, 1e-12)
+			require.Equal(t, tc.fallbackRate, log.RateMultiplier)
+			require.InDelta(t, totalCost*tc.fallbackRate, log.ActualCost, 1e-12)
+			require.InDelta(t, totalCost*tc.fallbackRate, userRepo.lastAmount, 1e-12)
+			require.NotNil(t, log.AccountStatsCost)
+			require.InDelta(t, totalCost, *log.AccountStatsCost, 1e-12)
+			require.Equal(t, 1.5, resolution.Multiplier, "actual fallback billing must preserve the primary snapshot")
+		})
 	}
 }

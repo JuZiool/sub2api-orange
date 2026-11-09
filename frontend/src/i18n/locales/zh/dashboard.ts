@@ -395,7 +395,6 @@ export default {
     accountCost: '成本',
     userBilled: '用户扣费',
     accountBilled: '账号计费',
-    overdraft: '透支',
     estimatedCost: '约',
     usedCost: '已用',
     remainingCost: '剩余',

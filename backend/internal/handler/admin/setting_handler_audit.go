@@ -491,9 +491,6 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OpenAICodexVersionAutoSyncEnabled != after.OpenAICodexVersionAutoSyncEnabled {
 		changed = append(changed, "openai_codex_version_auto_sync_enabled")
 	}
-	if before.CodexQuotaOverdraftEnabled != after.CodexQuotaOverdraftEnabled {
-		changed = append(changed, service.SettingKeyCodexQuotaOverdraftEnabled)
-	}
 	if before.ClaudeCodeClientVersion != after.ClaudeCodeClientVersion {
 		changed = append(changed, "claude_code_client_version")
 	}

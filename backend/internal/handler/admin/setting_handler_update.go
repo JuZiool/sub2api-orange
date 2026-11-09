@@ -257,7 +257,6 @@ type UpdateSettingsRequest struct {
 	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
 	OpenAICodexClientVersion               *string `json:"openai_codex_client_version"`
 	OpenAICodexVersionAutoSyncEnabled      *bool   `json:"openai_codex_version_auto_sync_enabled"`
-	CodexQuotaOverdraftEnabled             *bool   `json:"codex_quota_overdraft_enabled"`
 	ClaudeCodeClientVersion                *string `json:"claude_code_client_version"`
 	ClaudeCodeVersionAutoSyncEnabled       *bool   `json:"claude_code_version_auto_sync_enabled"`
 
@@ -1792,12 +1791,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexVersionAutoSyncEnabled
 		}(),
-		CodexQuotaOverdraftEnabled: func() bool {
-			if req.CodexQuotaOverdraftEnabled != nil {
-				return *req.CodexQuotaOverdraftEnabled
-			}
-			return previousSettings.CodexQuotaOverdraftEnabled
-		}(),
 		ClaudeCodeClientVersion: func() string {
 			if req.ClaudeCodeClientVersion != nil {
 				return *req.ClaudeCodeClientVersion
@@ -2364,7 +2357,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexClientVersion:                               updatedSettings.OpenAICodexClientVersion,
 		OpenAICodexClientVersionSynced:                         updatedSettings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      updatedSettings.OpenAICodexVersionAutoSyncEnabled,
-		CodexQuotaOverdraftEnabled:                             updatedSettings.CodexQuotaOverdraftEnabled,
 		ClaudeCodeClientVersion:                                updatedSettings.ClaudeCodeClientVersion,
 		ClaudeCodeClientVersionSynced:                          updatedSettings.ClaudeCodeClientVersionSynced,
 		ClaudeCodeVersionAutoSyncEnabled:                       updatedSettings.ClaudeCodeVersionAutoSyncEnabled,

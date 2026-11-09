@@ -270,6 +270,161 @@ func TestImagePolicy_F_AllowsImageButAllowlistForbidsModel(t *testing.T) {
 	require.Empty(t, repo.visits())
 }
 
+// 渠道映射属于候选分组：账号模型白名单必须按实际组的映射名检查。
+// Images 与带生图意图的 Responses 都经真实调度入口选中账号，覆盖首组及后组。
+func TestImagePolicy_SchedulesWithCandidateGroupModelMapping(t *testing.T) {
+	for _, endpoint := range []string{"images", "responses"} {
+		for _, tc := range []struct {
+			name         string
+			fallback     bool
+			emptyMapping bool
+		}{
+			{name: "primary_mapping"},
+			{name: "fallback_uses_own_mapping", fallback: true},
+			{name: "empty_mapping_keeps_requested_model", emptyMapping: true},
+		} {
+			t.Run(endpoint+"/"+tc.name, func(t *testing.T) {
+				const requestedModel = "gpt-image-2"
+				groupA := newImagePolicyChainGroup(1551, true)
+				groupB := newImagePolicyChainGroup(1552, true)
+				key := newAggregatedImageKey(groupA, groupB)
+				mappedModels := map[int64]string{groupA.ID: "channel-image-a", groupB.ID: "channel-image-b"}
+				accountA := newImagePolicyChainAccount(46, groupA.ID)
+				accountB := newImagePolicyChainAccount(47, groupB.ID)
+				allowedA := mappedModels[groupA.ID]
+				if tc.fallback {
+					allowedA = "unrelated-model"
+				}
+				if tc.emptyMapping {
+					mappedModels[groupA.ID] = "  "
+					allowedA = requestedModel
+				}
+				accountA.Credentials["model_mapping"] = map[string]any{allowedA: allowedA}
+				accountB.Credentials["model_mapping"] = map[string]any{mappedModels[groupB.ID]: mappedModels[groupB.ID]}
+				svc, repo := newImagePolicyChainService([]Account{accountA, accountB})
+				policy, ok := ResolveImageGenerationGroupPolicy(key, requestedModel, func(group *Group) (ChannelMappingResult, OpenAIImagesCapability) {
+					return ChannelMappingResult{Mapped: true, MappedModel: mappedModels[group.ID]}, OpenAIImagesCapabilityBasic
+				})
+				require.True(t, ok)
+				ctx := WithAPIKeyGroupFallbackRouting(context.Background(), key)
+				ctx = WithImageGenerationGroupPolicy(ctx, policy)
+				var (
+					selection *AccountSelectionResult
+					err       error
+				)
+				if endpoint == "images" {
+					selection, _, err = svc.SelectAccountWithSchedulerForImages(ctx, key.GroupID, "", requestedModel, nil, OpenAIImagesCapabilityBasic)
+				} else {
+					selection, _, err = svc.SelectAccountWithSchedulerForCapability(ctx, key.GroupID, "", "", requestedModel, nil, OpenAIUpstreamTransportHTTPSSE, OpenAIEndpointCapabilityResponses, false, false, false)
+				}
+				require.NoError(t, err)
+				require.NotNil(t, selection)
+				require.NotNil(t, selection.Account)
+				if selection.ReleaseFunc != nil {
+					t.Cleanup(selection.ReleaseFunc)
+				}
+				wantAccount, wantGroup := accountA.ID, groupA.ID
+				wantVisits := []int64{groupA.ID}
+				if tc.fallback {
+					wantAccount, wantGroup = accountB.ID, groupB.ID
+					wantVisits = append(wantVisits, groupB.ID)
+					require.True(t, selection.UsedAPIKeyFallback)
+					require.Equal(t, groupB.ID, selection.RoutedGroupID)
+				}
+				require.Equal(t, wantAccount, selection.Account.ID)
+				require.Equal(t, wantGroup, *key.GroupID)
+				require.Equal(t, wantVisits, repo.visits())
+			})
+		}
+	}
+}
+
+// 上游模型限制须沿用当前候选组的渠道→账号→compact 映射链。
+// 首组模型留在 ctx 会同时造成后组误拒与误放；这里使用真实渠道缓存覆盖两个方向。
+func TestImagePolicy_CandidateMappingRespectsUpstreamChannelRestriction(t *testing.T) {
+	for _, endpoint := range []struct {
+		name    string
+		images  bool
+		compact bool
+	}{
+		{name: "images", images: true},
+		{name: "responses"},
+		{name: "responses_compact", compact: true},
+	} {
+		for _, allowed := range []bool{true, false} {
+			name := "rejects_fallback_upstream"
+			if allowed {
+				name = "allows_only_fallback_upstream"
+			}
+			t.Run(endpoint.name+"/"+name, func(t *testing.T) {
+				const requestedModel = "gpt-image-2"
+				groupA := newImagePolicyChainGroup(1561, true)
+				groupB := newImagePolicyChainGroup(1562, true)
+				key := newAggregatedImageKey(groupA, groupB)
+				account := newImagePolicyChainAccount(48, groupB.ID)
+				account.Credentials["model_mapping"] = map[string]any{
+					"channel-image-a": "upstream-image-a", "channel-image-b": "upstream-image-b",
+				}
+				account.Credentials["compact_model_mapping"] = map[string]any{
+					"channel-image-a": "compact-image-a", "channel-image-b": "compact-image-b",
+				}
+				svc, _ := newImagePolicyChainService([]Account{account})
+				pricedModel := "upstream-image-b"
+				if !allowed {
+					pricedModel = "upstream-image-a"
+				}
+				if endpoint.compact {
+					pricedModel = "compact-image-b"
+					if !allowed {
+						pricedModel = "compact-image-a"
+					}
+				}
+				svc.channelService = &ChannelService{}
+				svc.channelService.cache.Store(populateChannelCache([]Channel{
+					{ID: 71, Status: StatusActive, GroupIDs: []int64{groupA.ID}, ModelMapping: map[string]map[string]string{PlatformOpenAI: {requestedModel: "channel-image-a"}}},
+					{
+						ID: 72, Status: StatusActive, GroupIDs: []int64{groupB.ID},
+						RestrictModels: true, BillingModelSource: BillingModelSourceUpstream,
+						ModelMapping: map[string]map[string]string{PlatformOpenAI: {requestedModel: "channel-image-b"}},
+						ModelPricing: []ChannelModelPricing{{Platform: PlatformOpenAI, Models: []string{pricedModel}}},
+					},
+				}, map[int64]string{groupA.ID: PlatformOpenAI, groupB.ID: PlatformOpenAI}))
+				policy, ok := ResolveImageGenerationGroupPolicy(key, requestedModel, func(group *Group) (ChannelMappingResult, OpenAIImagesCapability) {
+					groupID := group.ID
+					mapping, _ := svc.ResolveChannelMappingAndRestrict(context.Background(), &groupID, requestedModel)
+					return mapping, OpenAIImagesCapabilityBasic
+				})
+				require.True(t, ok)
+				ctx := WithAPIKeyGroupFallbackRouting(context.Background(), key)
+				ctx = WithImageGenerationGroupPolicy(ctx, policy)
+				ctx = WithOpenAIForwardModel(ctx, "channel-image-a", endpoint.compact)
+				var (
+					selection *AccountSelectionResult
+					err       error
+				)
+				if endpoint.images {
+					selection, _, err = svc.SelectAccountWithSchedulerForImages(ctx, key.GroupID, "", requestedModel, nil, OpenAIImagesCapabilityBasic)
+				} else {
+					selection, _, err = svc.SelectAccountWithSchedulerForCapability(ctx, key.GroupID, "", "", requestedModel, nil, OpenAIUpstreamTransportHTTPSSE, OpenAIEndpointCapabilityResponses, endpoint.compact, false, false)
+				}
+				if !allowed {
+					require.ErrorIs(t, err, ErrNoAvailableAccounts)
+					require.Nil(t, selection)
+					require.Equal(t, groupA.ID, *key.GroupID)
+					return
+				}
+				require.NoError(t, err)
+				require.NotNil(t, selection)
+				require.Equal(t, account.ID, selection.Account.ID)
+				require.Equal(t, groupB.ID, *key.GroupID)
+				if selection.ReleaseFunc != nil {
+					t.Cleanup(selection.ReleaseFunc)
+				}
+			})
+		}
+	}
+}
+
 // H. 普通单组 Key 禁用生图仍拒绝；普通文本 Key 不受影响；旧式单兜底沿用同一能力筛选语义。
 func TestImagePolicy_H_SingleGroupAndLegacyFallbackSemantics(t *testing.T) {
 	t.Run("single_disabled_group_rejected", func(t *testing.T) {

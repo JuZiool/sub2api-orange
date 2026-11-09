@@ -51,7 +51,7 @@ function makeAccount(overrides: Partial<Account>): Account {
 }
 
 describe('AccountStatusIndicator', () => {
-  it('普通临时不可调度（非透支来源）仍显示通用文案', () => {
+  it('普通临时不可调度显示通用文案', () => {
     const wrapper = mount(AccountStatusIndicator, {
       props: {
         account: makeAccount({

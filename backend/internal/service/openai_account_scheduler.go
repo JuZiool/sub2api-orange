@@ -1447,7 +1447,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	filtered := make([]*Account, 0, len(accounts))
 	loadReq := make([]AccountWithConcurrency, 0, len(accounts))
 	for i := range accounts {
-		account := normalizeCodexQuotaOverdraftAccountForScheduling(ctx, &accounts[i])
+		account := &accounts[i]
 		if req.ExcludedIDs != nil {
 			if _, excluded := req.ExcludedIDs[account.ID]; excluded {
 				filterStats.exclude("excluded")
@@ -2237,11 +2237,22 @@ func (s *OpenAIGatewayService) selectAccountForImagesInPolicy(
 	var lastErr error
 	for _, group := range candidates[start:] {
 		groupID := group.ID
+		candidateModel := requestedModel
+		if mapping, ok := policy.MappingFor(groupID); ok {
+			if mapped := strings.TrimSpace(mapping.MappedModel); mapped != "" {
+				candidateModel = mapped
+			}
+		}
+		useCompactModelMapping := false
+		if forwardModel, ok := openAIForwardModelFromContext(ctx); ok {
+			useCompactModelMapping = forwardModel.useCompactModelMapping
+		}
+		candidateCtx := WithOpenAIForwardModel(ctx, candidateModel, useCompactModelMapping)
 		selection, decision, err := s.selectAccountForImagesInGroup(
-			ctx,
+			candidateCtx,
 			&groupID,
 			sessionHash,
-			requestedModel,
+			candidateModel,
 			excludedIDs,
 			policy.CapabilityFor(groupID, requiredCapability),
 		)
@@ -2364,12 +2375,23 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerInImagePolicy(
 	)
 	for _, group := range candidates[start:] {
 		groupID := group.ID
+		candidateModel := requestedModel
+		if mapping, ok := policy.MappingFor(groupID); ok {
+			if mapped := strings.TrimSpace(mapping.MappedModel); mapped != "" {
+				candidateModel = mapped
+			}
+		}
+		useCompactModelMapping := requireCompact
+		if forwardModel, ok := openAIForwardModelFromContext(ctx); ok {
+			useCompactModelMapping = forwardModel.useCompactModelMapping
+		}
+		candidateCtx := WithOpenAIForwardModel(ctx, candidateModel, useCompactModelMapping)
 		selection, decision, err := s.selectAccountWithScheduler(
-			ctx,
+			candidateCtx,
 			&groupID,
 			previousResponseID,
 			sessionHash,
-			requestedModel,
+			candidateModel,
 			excludedIDs,
 			requiredTransport,
 			requiredCapability,

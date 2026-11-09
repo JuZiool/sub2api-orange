@@ -1203,7 +1203,13 @@ func (s *OpenAIGatewayService) updateCodexUsageSnapshot(ctx context.Context, acc
 		return
 	}
 
-	s.processCodexQuotaOverdraftUsageSnapshot(ctx, accountID, now, updates)
+	go func() {
+		updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.accountRepo.UpdateExtra(updateCtx, accountID, updates); err == nil {
+			notifyOpenAIAutoReset(accountID)
+		}
+	}()
 }
 
 func (s *OpenAIGatewayService) UpdateCodexUsageSnapshotFromHeaders(ctx context.Context, accountID int64, headers http.Header) {

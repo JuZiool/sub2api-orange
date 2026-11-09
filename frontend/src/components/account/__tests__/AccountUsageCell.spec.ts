@@ -2084,59 +2084,14 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('7d S')
     expect(wrapper.text()).not.toContain('7d F')
   })
-  it('OpenAI OAuth 将 5h/7d 透支统计汇总到同一行并保留窗口数据', async () => {
-    getUsage.mockResolvedValue({
-      codex_quota_overdraft: { status: 'passed' },
-      five_hour: {
-        utilization: 100,
-        resets_at: '2099-03-07T12:00:00Z',
-        remaining_seconds: 3600,
-        window_stats: { requests: 10, tokens: 1000, cost: 5 },
-        overdraft_active: true,
-        overdraft_stats: { requests: 3, tokens: 300, cost: 1.5 }
-      },
-      seven_day: {
-        utilization: 100,
-        resets_at: '2099-03-13T12:00:00Z',
-        remaining_seconds: 3600,
-        window_stats: { requests: 40, tokens: 4000, cost: 10 },
-        overdraft_active: false,
-        overdraft_stats: null
-      }
-    })
 
-    const wrapper = mount(AccountUsageCell, {
-      props: {
-        account: makeAccount({ id: 2030, platform: 'openai', type: 'oauth' })
-      },
-      global: {
-        stubs: {
-          UsageProgressBar: {
-            props: ['label', 'utilization', 'windowStats', 'color', 'estimatedTotalCost', 'estimatedUsedCost'],
-            template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
-          },
-          AccountQuotaInfo: true
-        }
-      }
-    })
-
-    await flushPromises()
-
-    expect(wrapper.findAll('[data-testid="overdraft-stats"]')).toHaveLength(1)
-    expect(wrapper.get('[data-testid="overdraft-stats"] [data-window="5h"]').text()).toContain('5h')
-    expect(wrapper.find('[data-testid="overdraft-stats"] [data-window="7d"]').exists()).toBe(false)
-    expect(wrapper.get('[data-testid="overdraft-stats"]').text()).toContain('3 req')
-    expect(wrapper.get('[data-testid="overdraft-stats"]').text()).toContain('300')
-  })
-
-  it('OpenAI OAuth 估算成本不重复计算透支成本', async () => {
+  it('OpenAI OAuth 按完整窗口成本估算七日额度', async () => {
     getUsage.mockResolvedValue({
       seven_day: {
         utilization: 50,
         resets_at: '2099-03-13T12:00:00Z',
         remaining_seconds: 3600,
-        window_stats: { requests: 40, tokens: 4000, cost: 10 },
-        overdraft_stats: { requests: 4, tokens: 400, cost: 4 }
+        window_stats: { requests: 40, tokens: 4000, cost: 10 }
       }
     })
 
@@ -2157,7 +2112,7 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    // 已用成本 = 10 - 4 = 6；估算总额 = 6 / 50% = 12
-    expect(wrapper.text()).toContain('7d|used=6|total=12')
+    // 已用成本 = 10；估算总额 = 10 / 50% = 20
+    expect(wrapper.text()).toContain('7d|used=10|total=20')
   })
 })

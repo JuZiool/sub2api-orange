@@ -29,9 +29,10 @@ import (
 type imageChainAccountRepo struct {
 	service.AccountRepository
 
-	mu              sync.Mutex
-	accountsByGroup map[int64][]service.Account
-	visitedGroups   []int64
+	mu                  sync.Mutex
+	accountsByGroup     map[int64][]service.Account
+	visitedGroups       []int64
+	availabilityByGroup map[int64][]service.Account
 }
 
 func (r *imageChainAccountRepo) GetByID(_ context.Context, id int64) (*service.Account, error) {
@@ -90,8 +91,11 @@ func (r *imageChainAccountRepo) ListSchedulableUngroupedByPlatform(_ context.Con
 
 // ListModelAvailabilityCandidates 只服务“无可用账号”错误分类，不参与调度，
 // 因此不记录访问序列（否则诊断查询会被误算成一次调度尝试）。
-func (r *imageChainAccountRepo) ListModelAvailabilityCandidates(_ context.Context, _ *int64, _ []string, _ bool) ([]service.Account, error) {
-	return nil, nil
+func (r *imageChainAccountRepo) ListModelAvailabilityCandidates(_ context.Context, groupID *int64, _ []string, _ bool) ([]service.Account, error) {
+	if groupID == nil {
+		return nil, nil
+	}
+	return r.availabilityByGroup[*groupID], nil
 }
 
 func (r *imageChainAccountRepo) visits() []int64 {

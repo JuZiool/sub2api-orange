@@ -306,10 +306,6 @@ func openAIResponsesRequiredCapabilityForRequest(imageIntent bool, needsResponse
 	return openAIResponsesRequiredCapability(imageIntent, platform)
 }
 
-func shouldEnableCodexQuotaOverdraftForResponses(legacyCompact, nativeV2, imageIntent bool) bool {
-	return !legacyCompact && !nativeV2 && !imageIntent
-}
-
 func allowOpenAICompatibleMessagesDispatch(c *gin.Context, apiKey *service.APIKey) bool {
 	if apiKey == nil || apiKey.Group == nil {
 		return true
@@ -711,9 +707,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	if imageSizeRouted {
 		requestCtx = service.WithOpenAIImageSizeRouting(requestCtx, imageSize)
 	}
-	if shouldEnableCodexQuotaOverdraftForResponses(legacyCompact, nativeV2, imageIntent) {
-		requestCtx = service.WithCodexQuotaOverdraftScheduling(requestCtx)
-	}
 	if aggregatedImageRouting {
 		// 请求级生图分组策略只影响候选分组范围，不改写 API Key 的分组链。
 		requestCtx = service.WithImageGenerationGroupPolicy(requestCtx, imagePolicy)
@@ -892,6 +885,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				}
 			}
 		}
+		c.Request = c.Request.WithContext(service.WithOpenAIForwardModel(
+			c.Request.Context(), routedForwardModel, legacyCompact,
+		))
 		// 跨 passthrough 边界的 failover：从不可变的 canonical forwardBody 派生本次尝试 body 并整块剔除上游私有的加密
 		// reasoning item（含耦合的 id/summary），避免非透传上游 400 拒绝 Kiro reasoning 形态。
 		attemptBody := h.deriveOpenAIForwardAttemptBody(reqLog, routedForwardBody, account, &passthroughFailoverState)
@@ -1405,7 +1401,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	effectiveMappedModel := preferredMappedModel
 
 	// 分组利润控制：Messages 文本入口同样请求级装门并固定 pricingAt。
-	msgPricingCtx := service.WithCodexQuotaOverdraftScheduling(c.Request.Context())
+	msgPricingCtx := c.Request.Context()
 	msgPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(msgPricingCtx, apiKey.GroupID)
 	rateResolution := openAIRateSnapshot(msgPricingCtx, h.gatewayService, apiKey, reqModel)
 	c.Request = c.Request.WithContext(msgPricingCtx)
@@ -2770,10 +2766,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage())
 		return
-	}
-	if !imageIntent {
-		ctx = service.WithCodexQuotaOverdraftScheduling(ctx)
-		c.Request = c.Request.WithContext(ctx)
 	}
 
 	// The first response.create frame is available here, so explicit IDs are

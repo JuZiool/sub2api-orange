@@ -78,3 +78,48 @@ func TestAPIKeyAuthSnapshotRequirePrivacySetRoundtrip(t *testing.T) {
 	require.True(t, used)
 	require.True(t, materialized.Group.RequirePrivacySet)
 }
+
+// Orange 聚合链与官方 privacy 配置共用 v29 认证快照，主组和后组须各自保真。
+func TestAPIKeyAuthSnapshotGroupChainRequirePrivacySetRoundtrip(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		primaryPrivacy  bool
+		fallbackPrivacy bool
+	}{
+		{name: "primary_requires_privacy", primaryPrivacy: true},
+		{name: "fallback_requires_privacy", fallbackPrivacy: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &APIKeyService{}
+			apiKey := profitAuthTestAPIKey()
+			apiKey.Group.RequirePrivacySet = tc.primaryPrivacy
+			fallback := &Group{
+				ID: 51, Name: "privacy-fallback", Platform: PlatformOpenAI,
+				Status: StatusActive, Hydrated: true, SubscriptionType: SubscriptionTypeStandard,
+				RequirePrivacySet: tc.fallbackPrivacy,
+			}
+			apiKey.Groups = []*APIKeyGroupEntry{
+				{Group: apiKey.Group, Priority: 1},
+				{Group: fallback, Priority: 2},
+			}
+			payload, err := json.Marshal(&APIKeyAuthCacheEntry{Snapshot: svc.snapshotFromAPIKey(context.Background(), apiKey)})
+			require.NoError(t, err)
+			var cached APIKeyAuthCacheEntry
+			require.NoError(t, json.Unmarshal(payload, &cached))
+			require.NotNil(t, cached.Snapshot)
+			require.Equal(t, 29, cached.Snapshot.Version)
+			require.Equal(t, apiKeyAuthSnapshotVersion, cached.Snapshot.Version)
+			materialized, used, err := svc.applyAuthCacheEntry(apiKey.Key, &cached)
+			require.NoError(t, err)
+			require.True(t, used)
+			require.NotNil(t, materialized.Group)
+			require.Equal(t, tc.primaryPrivacy, materialized.Group.RequirePrivacySet)
+			chain := materialized.GroupChain()
+			require.Len(t, chain, 2)
+			require.Equal(t, apiKey.Group.ID, chain[0].Group.ID)
+			require.Equal(t, fallback.ID, chain[1].Group.ID)
+			require.Equal(t, tc.primaryPrivacy, chain[0].Group.RequirePrivacySet)
+			require.Equal(t, tc.fallbackPrivacy, chain[1].Group.RequirePrivacySet)
+		})
+	}
+}

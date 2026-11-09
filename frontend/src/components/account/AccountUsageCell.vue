@@ -145,14 +145,6 @@
           :show-now-when-idle="true"
           color="emerald"
         />
-        <CodexOverdraftPanel
-          :five-hour-active="usageInfo?.five_hour?.overdraft_active"
-          :five-hour-stats="usageInfo?.five_hour?.overdraft_stats"
-          :seven-day-active="usageInfo?.seven_day?.overdraft_active"
-          :seven-day-stats="usageInfo?.seven_day?.overdraft_stats"
-          :status="codexOverdraftStatusLabel"
-          :status-class="codexOverdraftStatusClass"
-        />
         <!--
           Upstream codex /wham/usage quota query + reset. The local active-sampling
           refresh button is rendered via the pre-actions slot so the user sees a
@@ -766,7 +758,6 @@ import { formatCompactNumber } from '@/utils/format'
 import { isOfficialGeminiBaseUrl } from '@/utils/geminiExplicitCache'
 import { supportsAccountQuota } from '@/utils/accountQuota'
 import UsageProgressBar from './UsageProgressBar.vue'
-import CodexOverdraftPanel from './CodexOverdraftPanel.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import ClaudeResetCreditsCell from './ClaudeResetCreditsCell.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
@@ -1294,34 +1285,11 @@ interface GrokQuotaBarInfo {
 
 const grokBilling = computed(() => usageInfo.value?.grok_billing || null)
 
-const codexOverdraftStatusLabel = computed(() => {
-  const status = usageInfo.value?.codex_quota_overdraft?.status
-  const labels: Record<string, string> = {
-    pending: t('admin.accounts.openai.codexQuotaOverdraftPending'),
-    passed: t('admin.accounts.openai.codexQuotaOverdraftPassed'),
-    failed: t('admin.accounts.openai.codexQuotaOverdraftFailed'),
-    inconclusive: t('admin.accounts.openai.codexQuotaOverdraftInconclusive'),
-    recovered: t('admin.accounts.openai.codexQuotaOverdraftRecovered')
-  }
-  return status ? labels[status] || '' : ''
-})
-
-const codexOverdraftStatusClass = computed(() => {
-  switch (usageInfo.value?.codex_quota_overdraft?.status) {
-    case 'passed': return 'text-amber-600 dark:text-amber-400'
-    case 'failed': return 'text-red-600 dark:text-red-400'
-    case 'pending': case 'inconclusive': return 'text-blue-600 dark:text-blue-400'
-    case 'recovered': return 'text-emerald-600 dark:text-emerald-400'
-    default: return 'text-gray-500 dark:text-gray-400'
-  }
-})
-
 const sevenDayUsedCost = computed(() => {
   const progress = usageInfo.value?.seven_day
   const total = progress?.window_stats?.cost
-  const overdraft = progress?.overdraft_stats?.cost ?? 0
   if (total == null || !Number.isFinite(total)) return null
-  return Math.max(0, total - overdraft)
+  return Math.max(0, total)
 })
 
 const sevenDayEstimatedCost = computed(() => {

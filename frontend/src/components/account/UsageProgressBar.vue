@@ -234,7 +234,7 @@ const formatResetTime = computed(() => {
 const formatEstimatedTotalCost = computed(() => (props.estimatedTotalCost ?? 0).toFixed(2))
 const formatEstimatedUsedCost = computed(() => (props.estimatedUsedCost ?? 0).toFixed(2))
 
-// Orange 特有：沿用现有估算口径，仅展示剩余额度，不改变计费或透支逻辑。
+// Orange 特有：沿用现有估算口径，仅展示剩余额度，不改变计费逻辑。
 const formatEstimatedRemainingCost = computed(() => {
   const total = props.estimatedTotalCost
   const used = props.estimatedUsedCost

@@ -217,7 +217,6 @@ type SystemSettings struct {
 	OpenAICodexClientVersion               string `json:"openai_codex_client_version"`
 	OpenAICodexClientVersionSynced         string `json:"openai_codex_client_version_synced"`
 	OpenAICodexVersionAutoSyncEnabled      bool   `json:"openai_codex_version_auto_sync_enabled"`
-	CodexQuotaOverdraftEnabled             bool   `json:"codex_quota_overdraft_enabled"`
 	ClaudeCodeClientVersion                string `json:"claude_code_client_version"`
 	ClaudeCodeClientVersionSynced          string `json:"claude_code_client_version_synced"`
 	ClaudeCodeVersionAutoSyncEnabled       bool   `json:"claude_code_version_auto_sync_enabled"`

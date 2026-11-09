@@ -390,7 +390,6 @@ export default {
     accountCost: 'Cost',
     userBilled: 'User billed',
     accountBilled: 'Account billed',
-    overdraft: 'Overdraft',
     estimatedCost: 'Est.',
     usedCost: 'Used',
     remainingCost: 'Remaining',

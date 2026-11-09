@@ -151,7 +151,6 @@ type AccountTestService struct {
 	modelMetadataRegistryMu   sync.Mutex
 	modelMetadataRegistry     map[string]modelsDevProvider
 	modelMetadataRegistryAt   time.Time
-	codexQuotaOverdraft       codexQuotaOverdraftAccountTestCoordinator
 	pluginManager             *PluginManager
 	openaiGatewayService      *OpenAIGatewayService
 	agentIdentityTaskMu       sync.Mutex
@@ -270,9 +269,6 @@ func NewAccountTestService(
 	cfg *config.Config,
 	tlsFPProfileService *TLSFingerprintProfileService,
 ) *AccountTestService {
-	if cfg != nil {
-		ensureCodexQuotaOverdraftEnabledFallback(cfg.Gateway.CodexQuotaOverdraftEnabled)
-	}
 	return &AccountTestService{
 		accountRepo:               accountRepo,
 		geminiTokenProvider:       geminiTokenProvider,
@@ -908,7 +904,6 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		return s.sendErrorAndEnd(c, identityErr.Error())
 	}
 	payloadBytes, _ := json.Marshal(payload)
-	ctx, payloadBytes, overdraftInjected := s.prepareCodexQuotaOverdraftTestRequest(ctx, credentialAccount, payloadBytes)
 
 	// Send test_start event once. A task-invalid Agent Identity response may
 	// restart this probe after registering a replacement task.
@@ -998,9 +993,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 			return s.testOpenAIAccountConnection(c, account, modelID, prompt, mode)
 		}
 		if resp.StatusCode == http.StatusTooManyRequests {
-			if !s.handleCodexQuotaOverdraftTest429(ctx, credentialAccount, resp.Header, body, upstreamTestModelID) {
-				s.reconcileOpenAI429State(ctx, account, resp.Header, body)
-			}
+			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
 		}
 		// 401 Unauthorized: 标记账号为永久错误
 		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
@@ -1011,11 +1004,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	}
 
 	// Process SSE stream
-	if err := s.processOpenAIStream(c, resp.Body); err != nil {
-		return err
-	}
-	s.observeCodexQuotaOverdraftTestResult(credentialAccount, upstreamTestModelID, overdraftInjected)
-	return nil
+	return s.processOpenAIStream(c, resp.Body)
 }
 
 // testGrokAccountConnection routes Grok admin connectivity tests by explicit mode first,

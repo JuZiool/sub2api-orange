@@ -5793,29 +5793,6 @@
                 </p>
               </div>
 
-              <!-- Orange 特有：Codex 额度透支全局开关 -->
-              <div class="flex items-center justify-between">
-                <div>
-                  <label
-                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                  >
-                    {{
-                      t(
-                        "admin.settings.gatewayForwarding.codexQuotaOverdraft",
-                      )
-                    }}
-                  </label>
-                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{
-                      t(
-                        "admin.settings.gatewayForwarding.codexQuotaOverdraftHint",
-                      )
-                    }}
-                  </p>
-                </div>
-                <Toggle v-model="form.codex_quota_overdraft_enabled" />
-              </div>
-
               <!-- Codex 版本号自动同步 -->
               <div class="flex items-center justify-between">
                 <div>
@@ -10018,8 +9995,6 @@ const form = reactive<SettingsForm>({
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
   openai_codex_client_version_synced: "",
   openai_codex_version_auto_sync_enabled: true,
-  // Orange 特有：Codex 额度透支全局开关，缺省开启
-  codex_quota_overdraft_enabled: true,
   claude_code_client_version: "",
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
   claude_code_client_version_synced: "",
@@ -11672,8 +11647,6 @@ async function saveSettings() {
         form.openai_codex_client_version?.trim() || "",
       openai_codex_version_auto_sync_enabled:
         form.openai_codex_version_auto_sync_enabled,
-      codex_quota_overdraft_enabled:
-        form.codex_quota_overdraft_enabled !== false,
       claude_code_client_version: form.claude_code_client_version?.trim() || "",
       claude_code_version_auto_sync_enabled:
         form.claude_code_version_auto_sync_enabled,

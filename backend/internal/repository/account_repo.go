@@ -58,7 +58,6 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 	"codex_5h_",
 	"codex_7d_",
 	"codex_reset_credit_",
-	"codex_quota_overdraft_",
 	"passive_usage_",
 	"upstream_billing_probe",
 	"upstream_billing_rate_sync",
@@ -3574,7 +3573,6 @@ func tempUnschedulablePredicate(ctx context.Context) dbpredicate.Account {
 			entsql.IsNull(s.C("temp_unschedulable_until")),
 			entsql.LTE(s.C("temp_unschedulable_until"), entsql.Expr("NOW()")),
 		}
-		predicates = extendCodexQuotaOverdraftTempUnschedulablePredicates(ctx, s, predicates)
 		s.Where(entsql.Or(predicates...))
 	})
 }

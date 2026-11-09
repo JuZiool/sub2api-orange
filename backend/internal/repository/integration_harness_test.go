@@ -50,6 +50,10 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	if dsn := strings.TrimSpace(os.Getenv("ORANGE_REPOSITORY_TEST_DSN")); dsn != "" {
+		os.Exit(runOrangeExternalRepositoryTests(ctx, m, dsn))
+	}
+
 	if !dockerIsAvailable(ctx) {
 		// In CI we expect Docker to be available so integration tests should fail loudly.
 		if os.Getenv("CI") != "" {
@@ -247,6 +251,7 @@ func testEntSQLTx(t *testing.T) (*dbent.Client, *sql.Tx) {
 
 func testRedis(t *testing.T) *redisclient.Client {
 	t.Helper()
+	require.NotNil(t, integrationRedis, "Redis integration tests require ORANGE_REPOSITORY_TEST_REDIS_URL in external database mode")
 
 	prefix := fmt.Sprintf(
 		"it:%s:%d:%d:",

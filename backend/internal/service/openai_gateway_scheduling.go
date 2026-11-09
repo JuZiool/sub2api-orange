@@ -539,9 +539,6 @@ func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) 
 	if account == nil || !account.IsOpenAI() {
 		return false, openAIQuotaAutoPauseDecision{}
 	}
-	if codexQuotaOverdraftBypassesSchedulingThreshold(ctx, account) {
-		return false, openAIQuotaAutoPauseDecision{}
-	}
 	// 自动用卡有独立阈值：达到消费阈值时必须先退出调度；仅达到普通暂停阈值时，
 	// 只有仍允许自动用卡的窗口才可因新鲜可用卡继续调度。
 	if config := ResolveOpenAIAutoResetCreditConfig(account); config.Enabled {
@@ -1519,15 +1516,11 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string) ([]Account, error) {
 	platform = NormalizeOpenAICompatiblePlatform(platform)
-	if accounts, handled, err := s.listCodexQuotaOverdraftSchedulableAccounts(ctx, groupID, platform); handled {
-		return accounts, err
-	}
 	if s.schedulerSnapshot != nil {
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, false)
 		if err != nil {
 			return accounts, err
 		}
-		accounts = normalizeCodexQuotaOverdraftAccountsForScheduling(ctx, accounts)
 		accounts = s.filterOpenAIAccountsBySchedulingThreshold(ctx, accounts)
 		if platform == PlatformGrok {
 			accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
@@ -1546,7 +1539,6 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
-	accounts = normalizeCodexQuotaOverdraftAccountsForScheduling(ctx, accounts)
 	accounts = s.filterOpenAIAccountsBySchedulingThreshold(ctx, accounts)
 	if platform == PlatformGrok {
 		accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
@@ -1592,7 +1584,6 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 		}
 		fresh = current
 	}
-	fresh = normalizeCodexQuotaOverdraftAccountForScheduling(ctx, fresh)
 
 	if !isOpenAICompatibleAccountEligibleForRequestBeforeProfit(ctx, fresh, platform, requestedModel, requireCompact, requiredCapability) {
 		return nil
@@ -1665,7 +1656,6 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIAccountFromDBBeforeProfit(ct
 	if err != nil || latest == nil {
 		return nil
 	}
-	latest = normalizeCodexQuotaOverdraftAccountForScheduling(ctx, latest)
 	if !s.openAIAccountMatchesSchedulingGroup(latest, groupID) {
 		return nil
 	}
@@ -1710,7 +1700,6 @@ func (s *OpenAIGatewayService) getSchedulableAccount(ctx context.Context, accoun
 	if err != nil || account == nil {
 		return account, err
 	}
-	account = normalizeCodexQuotaOverdraftAccountForScheduling(ctx, account)
 	if s.isOpenAIAccountBlockedBySchedulingThreshold(ctx, account) {
 		return nil, nil
 	}
@@ -1749,9 +1738,6 @@ func (s *OpenAIGatewayService) filterOpenAIAccountsBySchedulingThreshold(ctx con
 
 func (s *OpenAIGatewayService) isOpenAIAccountBlockedBySchedulingThreshold(ctx context.Context, account *Account) bool {
 	if s == nil || s.rateLimitService == nil || account == nil {
-		return false
-	}
-	if codexQuotaOverdraftBypassesSchedulingThreshold(ctx, account) {
 		return false
 	}
 	return s.rateLimitService.ApplyAccountSchedulingThreshold(ctx, account)
