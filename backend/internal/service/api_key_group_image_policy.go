@@ -188,31 +188,6 @@ func ResolveImageGenerationGroupPolicy(
 	return policy, true
 }
 
-// apiKeyImagePolicyChainStep 返回请求级生图策略内、当前分组之后的下一个候选分组。
-//
-// currentGroupID 为 nil 或不在策略内时从策略首位开始；策略已走完返回 false。
-// 该函数是纯请求级计算，不读写共享状态。
-func apiKeyImagePolicyChainStep(policy ImageGenerationGroupPolicy, currentGroupID *int64) (*Group, bool) {
-	if len(policy.Groups) == 0 {
-		return nil, false
-	}
-	start := 0
-	if currentGroupID != nil && *currentGroupID > 0 {
-		for i, group := range policy.Groups {
-			if group != nil && group.ID == *currentGroupID {
-				start = i + 1
-				break
-			}
-		}
-	}
-	for _, group := range policy.Groups[start:] {
-		if group != nil && group.ID > 0 && group.IsActive() {
-			return group, true
-		}
-	}
-	return nil, false
-}
-
 // imagePolicyCandidateGroups 返回策略内可尝试的分组序列（含主分组，按优先级）。
 func imagePolicyCandidateGroups(policy ImageGenerationGroupPolicy) []*Group {
 	out := make([]*Group, 0, len(policy.Groups))
