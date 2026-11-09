@@ -52,11 +52,11 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 
 	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
 	if err != nil {
-		if maxErr, ok := extractMaxBytesError(err); ok {
-			h.errorResponse(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+		if handleRequestBodyReadError(c, reqLog, err) {
 			return
 		}
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
+		status, message := requestBodyReadFailure(reqLog, c.Request, err)
+		h.errorResponse(c, status, "invalid_request_error", message)
 		return
 	}
 	if len(body) == 0 {
@@ -132,7 +132,7 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 	routingStart := time.Now()
 
 	// 分组利润控制：alpha search 文本入口请求级装门并固定 pricingAt
-	//（记录路径经 service.OpenAIPricingAtFromContext 从请求 ctx 回读）。
+	//（记录路径直接使用请求开始捕获的定价时刻和倍率快照）。
 	asPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
 	rateResolution := openAIRateSnapshot(asPricingCtx, h.gatewayService, apiKey, requestedModel)
 	c.Request = c.Request.WithContext(asPricingCtx)

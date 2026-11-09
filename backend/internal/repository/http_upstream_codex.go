@@ -45,7 +45,7 @@ func (s *httpUpstreamService) doCodexRequest(req *http.Request, proxyURL string,
 	}
 	wire := req.Clone(req.Context())
 	wire.GetBody = nil // Also prohibit 307/308 replay by http.Client itself.
-	resp, err := doUpstreamRequest(&client, wire)
+	resp, err := doUpstreamRequest(&client, wire, s.upstreamDrainTimeout())
 	if err != nil {
 		finish()
 		if !codextransport.IsError(err) && !codextransport.IsFailure(err) {

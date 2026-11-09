@@ -106,8 +106,8 @@ func TestAccountTestPromptAntigravityDefaultsAndCustom(t *testing.T) {
 			want   string
 			limit  int64
 		}{
-			{"", ".", 1},
-			{" \n", ".", 1},
+			{"", "hi", 256},
+			{" \n", "hi", 256},
 			{"  中文\"🙂\"\n", "  中文\"🙂\"\n", 1024},
 		} {
 			raw, err := builder.build("test-project", builder.model, tc.prompt)

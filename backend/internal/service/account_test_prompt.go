@@ -45,5 +45,5 @@ func resolveAntigravityTestPrompt(prompts ...string) (string, int) {
 	if len(prompts) > 0 && strings.TrimSpace(prompts[0]) != "" {
 		return prompts[0], 1024
 	}
-	return ".", 1
+	return defaultGeminiTextTestPrompt, antigravityTestMaxOutputTokens
 }

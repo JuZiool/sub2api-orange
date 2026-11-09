@@ -468,7 +468,7 @@ func testConnectionHandleError(
 }
 
 // buildGeminiTestRequestWithPrompt 构建 Gemini 格式测试请求
-// 文本留空使用最小探针，自定义提示词允许完整输出；图片模型使用图片生成配置。
+// 文本留空使用默认问候并为思考模型预留输出，自定义提示词允许完整输出；图片模型使用图片生成配置。
 func (s *AntigravityGatewayService) buildGeminiTestRequestWithPrompt(projectID, model, prompt string) ([]byte, error) {
 	if isImageGenerationModel(model) {
 		imagePrompt := strings.TrimSpace(prompt)
@@ -530,16 +530,19 @@ func (s *AntigravityGatewayService) buildGeminiTestRequestWithPrompt(projectID, 
 }
 
 // buildClaudeTestRequest 构建 Claude 格式测试请求并转换为 Gemini 格式
-// 留空使用最小探针；自定义提示词允许输出完整文本。
+// 留空使用默认问候；自定义提示词允许输出完整文本。
 func (s *AntigravityGatewayService) buildClaudeTestRequest(projectID, mappedModel string, prompts ...string) ([]byte, error) {
 	testPrompt, outputLimit := resolveAntigravityTestPrompt(prompts...)
-	content, _ := json.Marshal(testPrompt)
+	content, err := json.Marshal(testPrompt)
+	if err != nil {
+		return nil, err
+	}
 	claudeReq := &antigravity.ClaudeRequest{
 		Model: mappedModel,
 		Messages: []antigravity.ClaudeMessage{
 			{
 				Role:    "user",
-				Content: content,
+				Content: json.RawMessage(content),
 			},
 		},
 		MaxTokens: outputLimit,
@@ -557,6 +560,10 @@ func (s *AntigravityGatewayService) getClaudeTransformOptions(ctx context.Contex
 	opts.IdentityPatch = s.settingService.GetIdentityPatchPrompt(ctx)
 	return opts
 }
+
+// antigravityTestMaxOutputTokens leaves a thinking model room to think and still answer a short
+// test prompt. It was 1, so gemini-4-argon / gemini-3.8-flash returned no text at all.
+const antigravityTestMaxOutputTokens = 256
 
 // extractContentFromSSEResponse 从 SSE 流式响应中提取文本和内联图片
 func extractContentFromSSEResponse(respBody []byte) (string, []TestConnectionImage) {
@@ -644,20 +651,32 @@ func injectIdentityPatchToGeminiRequest(body []byte) ([]byte, error) {
 		return nil, fmt.Errorf("解析 Gemini 请求失败: %w", err)
 	}
 
+	identityFound := false
+	systemChanged := false
 	// 检查现有 systemInstruction 是否已包含身份提示词
 	if sysInst, ok := request["systemInstruction"].(map[string]any); ok {
 		if parts, ok := sysInst["parts"].([]any); ok {
 			for _, part := range parts {
 				if partMap, ok := part.(map[string]any); ok {
 					if text, ok := partMap["text"].(string); ok {
-						if strings.Contains(text, "You are Antigravity") {
-							// 已包含身份提示词，直接返回原始请求
-							return body, nil
+						neutral := antigravity.NeutralizeSystemIdentity(text)
+						if neutral != text {
+							partMap["text"] = neutral
+							systemChanged = true
+						}
+						if strings.Contains(neutral, "You are Antigravity") {
+							identityFound = true
 						}
 					}
 				}
 			}
 		}
+	}
+	if identityFound {
+		if systemChanged {
+			return json.Marshal(request)
+		}
+		return body, nil
 	}
 
 	// 获取默认身份提示词
