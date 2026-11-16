@@ -48,6 +48,7 @@ const messages: Record<string, string> = {
   'admin.groups.usageToday': 'Today',
   'admin.groups.usageYesterday': 'Yesterday',
   'admin.groups.usageTotal': 'Total',
+  'admin.groups.usageProfit': 'Profit',
 }
 
 vi.mock('@/api/admin', () => ({
@@ -435,5 +436,28 @@ describe('admin GroupsView column settings', () => {
     expect(text).toContain('Total$9.75')
     expect(text.indexOf('Today')).toBeLessThan(text.indexOf('Yesterday'))
     expect(text.indexOf('Yesterday')).toBeLessThan(text.indexOf('Total'))
+  })
+
+  // 回归：利润字段曾在 loadUsageSummary 的逐字段拷贝中被漏掉，
+  // 导致模板拿到 undefined 被 ?? 0 兜成 0，表格永远显示 $0.00。
+  it('renders profit from usage summary', async () => {
+    getUsageSummary.mockResolvedValue([
+      {
+        group_id: 1,
+        today_cost: 1.25,
+        yesterday_cost: 2.5,
+        total_cost: 9.75,
+        today_profit: 0.25,
+        yesterday_profit: 0.5,
+        total_profit: 1.95,
+        upstream_rate_multiplier: 0.8,
+      },
+    ])
+
+    const wrapper = await mountView()
+    const text = wrapper.get('[data-test="usage-cell"]').text()
+
+    expect(text).toContain('Profit$1.95')
+    expect(text).not.toContain('Profit$0.00')
   })
 })

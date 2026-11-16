@@ -5800,10 +5800,16 @@ const loadUsageSummary = async () => {
     const data = await adminAPI.groups.getUsageSummary();
     const map = new Map<number, GroupUsageSummary>();
     for (const item of data) {
+      // 显式逐个字段拷贝：新增字段必须同步到这里，否则模板取到 undefined
+      // 会被 ?? 0 兜成 0（利润为 0 的典型症状）。
       map.set(item.group_id, {
         today_cost: item.today_cost,
         yesterday_cost: item.yesterday_cost,
         total_cost: item.total_cost,
+        today_profit: item.today_profit,
+        yesterday_profit: item.yesterday_profit,
+        total_profit: item.total_profit,
+        upstream_rate_multiplier: item.upstream_rate_multiplier,
       });
     }
     usageMap.value = map;
