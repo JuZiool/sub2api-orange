@@ -237,6 +237,7 @@ export default {
     remembered: '已记住所有输入',
     resetAll: '全部重置',
     rateGroups: '倍率组',
+    addGroup: '添加分组',
     groupName: '倍率组 {number}',
     clearGroup: '清空本组',
     upstreamRate: '上游倍率',

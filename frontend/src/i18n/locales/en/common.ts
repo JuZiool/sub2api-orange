@@ -237,6 +237,7 @@ export default {
     remembered: 'Inputs are remembered',
     resetAll: 'Reset all',
     rateGroups: 'Rate groups',
+    addGroup: 'Add group',
     groupName: 'Rate group {number}',
     clearGroup: 'Clear group',
     upstreamRate: 'Upstream rate',

@@ -149,6 +149,14 @@
             </p>
           </div>
         </article>
+        <button
+          type="button"
+          class="flex min-h-[260px] w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 p-4 text-sm font-medium text-gray-600 transition-colors hover:border-primary-500 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-dark-700 dark:text-gray-400 dark:hover:text-primary-400"
+          @click="addGroup"
+        >
+          <Icon name="plus" size="md" />
+          <span>{{ t('rateCalculator.addGroup') }}</span>
+        </button>
       </section>
 
       <details class="text-sm text-gray-500 dark:text-gray-400">
@@ -164,14 +172,19 @@
 import { computed, onMounted, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import Icon from '@/components/icons/Icon.vue'
 import { calculateRates, formatCents } from './calculator'
 
 const STORAGE_KEY = 'rateCalc.shared.v2'
 const presets = [10, 20, 50, 100, 500, 1000]
 const { t } = useI18n()
 
-function createGroups() {
-  return Array.from({ length: 7 }, (_, index) => ({ index, name: '', cost: '', sell: '' }))
+function createGroup(index: number) {
+  return { index, name: '', cost: '', sell: '' }
+}
+
+function createGroups(count = 7) {
+  return Array.from({ length: count }, (_, index) => createGroup(index))
 }
 
 const state = reactive({
@@ -223,6 +236,10 @@ function clearGroup(index: number) {
   state.groups[index].sell = ''
 }
 
+function addGroup() {
+  state.groups.push(createGroup(state.groups.length))
+}
+
 function clearSaved() {
   try {
     localStorage.removeItem(STORAGE_KEY)
@@ -255,6 +272,9 @@ function restore() {
     if (typeof data.pay === 'string') state.pay = data.pay
     if (Array.isArray(data.rates)) {
       const savedRates = data.rates as unknown[]
+      while (state.groups.length < savedRates.length) {
+        state.groups.push(createGroup(state.groups.length))
+      }
       state.groups.forEach((group, index) => {
         const rate = savedRates[index]
         if (!rate || typeof rate !== 'object') return
