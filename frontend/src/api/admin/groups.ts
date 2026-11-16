@@ -449,12 +449,25 @@ export async function clearGroupRPMOverrides(id: number): Promise<{ message: str
  * Get usage summary (today + yesterday + cumulative cost) for all groups
  * @returns Array of group usage summaries
  */
-export async function getUsageSummary(): Promise<
-  { group_id: number; today_cost: number; yesterday_cost: number; total_cost: number }[]
-> {
-  const { data } = await apiClient.get<
-    { group_id: number; today_cost: number; yesterday_cost: number; total_cost: number }[]
-  >('/admin/groups/usage-summary')
+export type GroupUsageSummaryResponse = {
+  group_id: number
+  today_cost: number
+  yesterday_cost: number
+  total_cost: number
+  // Orange 特有：官方原价合计与利润（利润 = 收入 - 原价 * 上游倍率）
+  today_gross_cost?: number
+  yesterday_gross_cost?: number
+  total_gross_cost?: number
+  today_profit?: number
+  yesterday_profit?: number
+  total_profit?: number
+  upstream_rate_multiplier?: number
+}
+
+export async function getUsageSummary(): Promise<GroupUsageSummaryResponse[]> {
+  const { data } = await apiClient.get<GroupUsageSummaryResponse[]>(
+    '/admin/groups/usage-summary',
+  )
   return data
 }
 

@@ -267,6 +267,12 @@
             >
           </template>
 
+          <template #cell-upstream_multiplier="{ row }">
+            <span class="text-sm text-gray-700 dark:text-gray-300"
+              >{{ row.upstream_rate_multiplier }}x</span
+            >
+          </template>
+
           <template #cell-is_exclusive="{ value }">
             <span :class="['badge', value ? 'badge-primary' : 'badge-gray']">
               {{
@@ -362,6 +368,24 @@
                 <span class="ml-1 font-medium text-gray-700 dark:text-gray-300"
                   >${{
                     formatCost(usageMap.get(row.id)?.total_cost ?? 0)
+                  }}</span
+                >
+              </div>
+              <!-- Orange 特有：利润 = 收入 - 成本（成本 = 官方原价 * 上游倍率）。
+                   负利润标红，方便一眼看出亏本分组。 -->
+              <div class="text-gray-500 dark:text-gray-400">
+                <span class="text-gray-400 dark:text-gray-500">{{
+                  t("admin.groups.usageProfit")
+                }}</span>
+                <span
+                  class="ml-1 font-medium"
+                  :class="
+                    (usageMap.get(row.id)?.total_profit ?? 0) < 0
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-emerald-600 dark:text-emerald-400'
+                  "
+                  >${{
+                    formatCost(usageMap.get(row.id)?.total_profit ?? 0)
                   }}</span
                 >
               </div>
@@ -625,6 +649,21 @@
             data-tour="group-form-multiplier"
           />
           <p class="input-hint">{{ t("admin.groups.rateMultiplierHint") }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{
+            t("admin.groups.form.upstreamRateMultiplier")
+          }}</label>
+          <input
+            v-model.number="createForm.upstream_rate_multiplier"
+            type="number"
+            step="0.001"
+            min="0"
+            class="input"
+          />
+          <p class="input-hint">
+            {{ t("admin.groups.upstreamRateMultiplierHint") }}
+          </p>
         </div>
         <ModelRateMultiplierEditor v-model="createForm.model_rate_multipliers" />
         <div>
@@ -2278,6 +2317,21 @@
             class="input"
             data-tour="group-form-multiplier"
           />
+        </div>
+        <div>
+          <label class="input-label">{{
+            t("admin.groups.form.upstreamRateMultiplier")
+          }}</label>
+          <input
+            v-model.number="editForm.upstream_rate_multiplier"
+            type="number"
+            step="0.001"
+            min="0"
+            class="input"
+          />
+          <p class="input-hint">
+            {{ t("admin.groups.upstreamRateMultiplierHint") }}
+          </p>
         </div>
         <ModelRateMultiplierEditor v-model="editForm.model_rate_multipliers" />
         <div>
@@ -4516,6 +4570,7 @@ const allColumns = computed<Column[]>(() => {
     ...basic.slice(0, 3),
     { key: "billing_type", label: t("admin.groups.columns.billingType"), sortable: true },
     { key: "rate_multiplier", label: t("admin.groups.columns.rateMultiplier"), sortable: true },
+    { key: "upstream_multiplier", label: t("admin.groups.columns.upstreamMultiplier"), sortable: true },
     { key: "is_exclusive", label: t("admin.groups.columns.type"), sortable: true },
     basic[3],
     { key: "capacity", label: t("admin.groups.columns.capacity"), sortable: false },
@@ -4822,6 +4877,11 @@ type GroupUsageSummary = {
   today_cost: number;
   yesterday_cost: number;
   total_cost: number;
+  // Orange 特有：利润 = 收入 - 官方原价 * 上游倍率（后端算好，负数表示亏本）。
+  today_profit?: number;
+  yesterday_profit?: number;
+  total_profit?: number;
+  upstream_rate_multiplier?: number;
 };
 
 const usageMap = ref<Map<number, GroupUsageSummary>>(new Map());
@@ -4981,6 +5041,8 @@ const createForm = reactive({
   i18n: {} as GroupI18n,
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  // Orange 特有：上游成本倍率（我方采购价），0 = 免费上游
+  upstream_rate_multiplier: 1.0,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -5348,6 +5410,8 @@ const editForm = reactive({
   i18n: {} as GroupI18n,
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  // Orange 特有：上游成本倍率（我方采购价），0 = 免费上游
+  upstream_rate_multiplier: 1.0,
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
@@ -5826,6 +5890,7 @@ const closeCreateModal = () => {
   createForm.i18n = {};
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
+  createForm.upstream_rate_multiplier = 1.0;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
@@ -6146,6 +6211,7 @@ const handleEdit = async (group: AdminGroup) => {
   );
   editForm.platform = group.platform;
   editForm.rate_multiplier = group.rate_multiplier;
+  editForm.upstream_rate_multiplier = group.upstream_rate_multiplier ?? 1;
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";

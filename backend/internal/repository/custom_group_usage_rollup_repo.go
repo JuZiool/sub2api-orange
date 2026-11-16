@@ -94,9 +94,13 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 			SELECT
 				rollup.group_id,
 				COALESCE(SUM(rollup.actual_cost), 0) AS actual_cost,
+				COALESCE(SUM(rollup.total_cost), 0) AS gross_cost,
 				COALESCE(SUM(rollup.actual_cost) FILTER (
 					WHERE rollup.bucket_date = $3::date
-				), 0) AS yesterday_cost
+				), 0) AS yesterday_cost,
+				COALESCE(SUM(rollup.total_cost) FILTER (
+					WHERE rollup.bucket_date = $3::date
+				), 0) AS yesterday_gross_cost
 			FROM usage_group_daily_rollups rollup
 			WHERE $4::boolean
 				AND rollup.bucket_date >= $5::date
@@ -107,11 +111,17 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 			SELECT
 				ul.group_id,
 				COALESCE(SUM(ul.actual_cost), 0) AS actual_cost,
+				COALESCE(SUM(ul.total_cost), 0) AS gross_cost,
 				COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $1), 0) AS today_cost,
+				COALESCE(SUM(ul.total_cost) FILTER (WHERE ul.created_at >= $1), 0) AS today_gross_cost,
 				COALESCE(SUM(ul.actual_cost) FILTER (
 					WHERE ul.created_at >= $2
 						AND ul.created_at < $1
-				), 0) AS yesterday_cost
+				), 0) AS yesterday_cost,
+				COALESCE(SUM(ul.total_cost) FILTER (
+					WHERE ul.created_at >= $2
+						AND ul.created_at < $1
+				), 0) AS yesterday_gross_cost
 			FROM usage_logs ul
 			WHERE ul.created_at >= $7
 			GROUP BY ul.group_id
@@ -120,7 +130,14 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 			g.id AS group_id,
 			COALESCE(historical.actual_cost, 0) + COALESCE(tail.actual_cost, 0) AS total_cost,
 			COALESCE(tail.today_cost, 0) AS today_cost,
-			COALESCE(historical.yesterday_cost, 0) + COALESCE(tail.yesterday_cost, 0) AS yesterday_cost
+			COALESCE(historical.yesterday_cost, 0) + COALESCE(tail.yesterday_cost, 0) AS yesterday_cost,
+			-- Orange 特有：官方原价合计（成本基数），乘 groups.upstream_rate_multiplier 得到成本。
+			COALESCE(historical.gross_cost, 0) + COALESCE(tail.gross_cost, 0) AS total_gross_cost,
+			COALESCE(tail.today_gross_cost, 0) AS today_gross_cost,
+			COALESCE(historical.yesterday_gross_cost, 0) + COALESCE(tail.yesterday_gross_cost, 0) AS yesterday_gross_cost,
+			-- Orange 特有：利润在 SQL 内直接用分组当前上游倍率算出，避免 service 层再查 groups。
+			-- 利润 = 收入(actual_cost 合计) - 成本(原价合计 * 上游倍率)。
+			COALESCE(g.upstream_rate_multiplier, 1) AS upstream_rate_multiplier
 		FROM groups g
 		LEFT JOIN historical ON historical.group_id = g.id
 		LEFT JOIN tail ON tail.group_id = g.id
@@ -151,9 +168,23 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 	results = make([]usagestats.GroupUsageSummary, 0)
 	for rows.Next() {
 		var row usagestats.GroupUsageSummary
-		if err := rows.Scan(&row.GroupID, &row.TotalCost, &row.TodayCost, &row.YesterdayCost); err != nil {
+		if err := rows.Scan(
+			&row.GroupID,
+			&row.TotalCost,
+			&row.TodayCost,
+			&row.YesterdayCost,
+			&row.TotalGrossCost,
+			&row.TodayGrossCost,
+			&row.YesterdayGrossCost,
+			&row.UpstreamRateMultiplier,
+		); err != nil {
 			return nil, err
 		}
+		// 利润 = 收入 - 成本；成本 = 官方原价合计 × 上游倍率。
+		// 上游倍率允许为 0（免费上游），此时利润等于全部收入。
+		row.TodayProfit = row.TodayCost - row.TodayGrossCost*row.UpstreamRateMultiplier
+		row.YesterdayProfit = row.YesterdayCost - row.YesterdayGrossCost*row.UpstreamRateMultiplier
+		row.TotalProfit = row.TotalCost - row.TotalGrossCost*row.UpstreamRateMultiplier
 		results = append(results, row)
 	}
 	if err := rows.Err(); err != nil {
@@ -250,11 +281,14 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.C
 	}
 
 	if _, err := r.sql.ExecContext(ctx, `
-		INSERT INTO usage_group_daily_rollups (bucket_date, group_id, actual_cost, computed_at)
+		INSERT INTO usage_group_daily_rollups (bucket_date, group_id, actual_cost, total_cost, computed_at)
 		SELECT
 			(created_at AT TIME ZONE $3::text)::date AS bucket_date,
 			group_id,
 			COALESCE(SUM(actual_cost), 0) AS actual_cost,
+			-- Orange 特有：官方原价合计。成本 = 该值 × groups.upstream_rate_multiplier，
+			-- 毛利 = actual_cost 合计 - 成本合计。见 migration 9008。
+			COALESCE(SUM(total_cost), 0) AS total_cost,
 			NOW()
 		FROM usage_logs
 		WHERE group_id IS NOT NULL
@@ -264,6 +298,7 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.C
 		ON CONFLICT (bucket_date, group_id)
 		DO UPDATE SET
 			actual_cost = EXCLUDED.actual_cost,
+			total_cost = EXCLUDED.total_cost,
 			computed_at = EXCLUDED.computed_at
 	`, rebuildStart.UTC(), todayStart.UTC(), timezoneName); err != nil {
 		return fmt.Errorf("重建分组用量日桶: %w", err)

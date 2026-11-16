@@ -35,8 +35,13 @@ func TestUsageLogRepositoryGetAllGroupUsageSummaryUsesRollupTail(t *testing.T) {
 			"2026-03-07", // closed_before
 			time.Date(2026, 3, 7, 5, 0, 0, 0, time.UTC), // tail_start = closed_before 在配置时区的零点
 		).
-		WillReturnRows(sqlmock.NewRows([]string{"group_id", "total_cost", "today_cost", "yesterday_cost"}).
-			AddRow(int64(7), 12.5, 1.25, 2.5))
+		WillReturnRows(sqlmock.NewRows([]string{
+			"group_id", "total_cost", "today_cost", "yesterday_cost",
+			"total_gross_cost", "today_gross_cost", "yesterday_gross_cost",
+			"upstream_rate_multiplier",
+		}).
+			// 收入 12.5，官方原价合计 50，上游倍率 0.2 -> 成本 10，利润 2.5。
+			AddRow(int64(7), 12.5, 1.25, 2.5, 50.0, 5.0, 10.0, 0.2))
 
 	result, err := repo.GetAllGroupUsageSummary(context.Background(), todayStart)
 	require.NoError(t, err)
@@ -44,6 +49,14 @@ func TestUsageLogRepositoryGetAllGroupUsageSummaryUsesRollupTail(t *testing.T) {
 	require.InDelta(t, 12.5, result[0].TotalCost, 0.0000001)
 	require.InDelta(t, 1.25, result[0].TodayCost, 0.0000001)
 	require.InDelta(t, 2.5, result[0].YesterdayCost, 0.0000001)
+	// Orange 特有：利润 = 收入 - 官方原价合计 * 上游倍率。
+	require.InDelta(t, 50.0, result[0].TotalGrossCost, 0.0000001)
+	require.InDelta(t, 5.0, result[0].TodayGrossCost, 0.0000001)
+	require.InDelta(t, 10.0, result[0].YesterdayGrossCost, 0.0000001)
+	require.InDelta(t, 0.2, result[0].UpstreamRateMultiplier, 0.0000001)
+	require.InDelta(t, 2.5, result[0].TotalProfit, 0.0000001)
+	require.InDelta(t, 0.25, result[0].TodayProfit, 0.0000001)
+	require.InDelta(t, 0.5, result[0].YesterdayProfit, 0.0000001)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -86,7 +99,11 @@ func TestUsageLogRepositoryGetAllGroupUsageSummaryFallsBackWhenWatermarkInvalid(
 				WillReturnRows(tc.rows)
 			mock.ExpectQuery(`(?s)usage_group_daily_rollups.*FROM usage_logs ul\s+WHERE ul\.created_at >= \$7`).
 				WithArgs(todayStart, yesterdayStart, "2026-03-08", false, "1970-01-01", "1970-01-01", epoch).
-				WillReturnRows(sqlmock.NewRows([]string{"group_id", "total_cost", "today_cost", "yesterday_cost"}))
+				WillReturnRows(sqlmock.NewRows([]string{
+					"group_id", "total_cost", "today_cost", "yesterday_cost",
+					"total_gross_cost", "today_gross_cost", "yesterday_gross_cost",
+					"upstream_rate_multiplier",
+				}))
 
 			_, err := repo.GetAllGroupUsageSummary(context.Background(), todayStart)
 			require.NoError(t, err)

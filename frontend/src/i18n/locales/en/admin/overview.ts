@@ -874,6 +874,7 @@ export default {
         id: 'ID',
         platform: 'Platform',
         rateMultiplier: 'Rate Multiplier',
+        upstreamMultiplier: 'Upstream Multiplier',
         rpmOverride: 'RPM Override',
         rpmOverrideHint: 'Per-user RPM cap in this group; empty = group default; 0 = unlimited',
         rateDefault: 'default',
@@ -896,6 +897,7 @@ export default {
       usageToday: 'Today',
       usageYesterday: 'Yesterday',
       usageTotal: 'Total',
+      usageProfit: 'Profit',
       accountsAvailable: 'Avail:',
       accountsRateLimited: 'Limited:',
       accountsTotal: 'Total:',
@@ -924,6 +926,7 @@ export default {
         descriptionPlaceholder: 'Enter description (optional)',
         rateMultiplierLabel: 'Rate Multiplier',
         rateMultiplierHint: '1.0 = standard rate, 0.5 = half price, 2.0 = double',
+        upstreamRateMultiplier: 'Upstream Multiplier',
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
         rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).',
@@ -990,6 +993,8 @@ export default {
       groupUpdatedSuccess: 'Group updated successfully',
       groupDeletedSuccess: 'Group deleted successfully',
       rateMultiplierHint: 'Cost multiplier for this group (e.g., 1.5 = 150% of base cost)',
+      upstreamRateMultiplierHint:
+        'Our upstream purchase cost multiplier. Used only for profit stats: profit = official price x (rate multiplier - upstream multiplier). 0 = free upstream.',
       modelRateMultipliers: {
         title: 'Model-specific rate multipliers',
         description: 'Override the group rate for exact model names.',

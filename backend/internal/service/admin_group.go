@@ -509,6 +509,12 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		return nil, err
 	}
 
+	// Orange 特有：上游倍率归一化与校验。允许 0（免费上游），缺失按 1.0。
+	upstreamRateMultiplier := input.UpstreamRateMultiplier
+	if err := validateUpstreamRateMultiplier(upstreamRateMultiplier); err != nil {
+		return nil, err
+	}
+
 	// 校验降级分组
 	if input.FallbackGroupID != nil {
 		if err := s.validateFallbackGroup(ctx, 0, *input.FallbackGroupID); err != nil {
@@ -585,6 +591,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		I18n:                            i18n,
 		Platform:                        platform,
 		RateMultiplier:                  input.RateMultiplier,
+		UpstreamRateMultiplier:          upstreamRateMultiplier,
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
@@ -811,6 +818,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, errors.New("rate_multiplier must be > 0")
 		}
 		group.RateMultiplier = *input.RateMultiplier
+	}
+	// Orange 特有：上游倍率允许 0（免费上游），仅拒绝负数与非有限值。
+	if input.UpstreamRateMultiplier != nil {
+		if err := validateUpstreamRateMultiplier(*input.UpstreamRateMultiplier); err != nil {
+			return nil, err
+		}
+		group.UpstreamRateMultiplier = *input.UpstreamRateMultiplier
 	}
 	if input.IsExclusive != nil {
 		group.IsExclusive = *input.IsExclusive

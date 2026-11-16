@@ -867,6 +867,7 @@ export default {
         id: 'ID',
         platform: '平台',
         rateMultiplier: '费率倍数',
+        upstreamMultiplier: '上游倍数',
         rpmOverride: 'RPM 覆盖',
         rpmOverrideHint: '该用户在此分组的 RPM 上限；留空 = 使用分组默认；0 = 不限制',
         rateDefault: '默认',
@@ -889,6 +890,7 @@ export default {
       usageToday: '今日',
       usageYesterday: '昨日',
       usageTotal: '累计',
+      usageProfit: '利润',
       accountsAvailable: '可用:',
       accountsRateLimited: '限流:',
       accountsTotal: '总量:',
@@ -906,6 +908,7 @@ export default {
         descriptionPlaceholder: '请输入描述（可选）',
         rateMultiplierLabel: '费率倍数',
         rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
+        upstreamRateMultiplier: '上游倍率',
         rpmLimit: '每分钟请求数 (RPM)',
         rpmLimitPlaceholder: '0 表示不限制',
         rpmLimitHint: '每用户在本分组每分钟最大请求数，0 = 不限制；一旦设置即接管该用户的限流（覆盖用户级 rpm_limit）',
@@ -966,6 +969,8 @@ export default {
           '公开分组费率 0.8，您可以创建一个费率 0.7 的专属分组，手动分配给 VIP 用户，让他们享受更优惠的价格。'
       },
       rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
+      upstreamRateMultiplierHint:
+        '我方向上游采购的成本倍率，仅用于利润统计：利润 = 官方原价 × (费率倍数 − 上游倍率)。0 = 免费上游。',
       modelRateMultipliers: {
         title: '模型专属倍率',
         description: '可为指定模型覆盖当前分组倍率，仅支持精确模型名。',

@@ -23,6 +23,10 @@ type Group struct {
 	I18n           GroupI18n // 名称与描述的界面语言译文；缺失的语言沿用 Name/Description
 	Platform       string
 	RateMultiplier float64
+	// UpstreamRateMultiplier 是 Orange 特有的上游成本倍率（我方采购价）。
+	// 仅用于利润统计：毛利 = SUM(total_cost) * (RateMultiplier - UpstreamRateMultiplier)。
+	// 不参与用户扣费，也不参与 profit_control 的调度准入（后者仍读 accounts.rate_multiplier）。
+	UpstreamRateMultiplier float64
 	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
 	// token 计费倍率额外乘以 PeakRateMultiplier。详见 PeakMultiplierAt。
 	PeakRateEnabled    bool
@@ -462,6 +466,22 @@ func NormalizeProfitControlConfig(platform string, enabled bool, minMargin, safe
 		}
 	}
 	return enabled, minMargin, safetyBuffer
+}
+
+// validateUpstreamRateMultiplier 校验 Orange 特有的上游成本倍率。
+//
+// 与 rate_multiplier 的 > 0 约束不同，上游倍率允许 0（免费上游，例如赠送额度）。
+// 只拒绝负数与非有限值：这类值会让 "成本 = total_cost * U" 变成负数或 NaN，
+// 从而把利润统计彻底算错，必须在写库前拦住。
+// 上界不设限：官方倍率上限也未被约束，保持一致。
+func validateUpstreamRateMultiplier(v float64) error {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return errors.New("upstream_rate_multiplier must be a finite number")
+	}
+	if v < 0 {
+		return errors.New("upstream_rate_multiplier must be >= 0")
+	}
+	return nil
 }
 
 func profitControlPlatformSupported(platform string) bool {

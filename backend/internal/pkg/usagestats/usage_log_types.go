@@ -116,11 +116,29 @@ type EndpointStat struct {
 }
 
 // GroupUsageSummary represents today's, yesterday's, and cumulative cost for a single group.
+//
+// 命名注意：Cost 系列字段是**用户实际扣费（收入侧）**，不是我方成本。
+// Orange 新增的 GrossCost 系列是官方原价合计，乘以分组上游倍率才是我方成本。
 type GroupUsageSummary struct {
 	GroupID       int64   `json:"group_id"`
 	TodayCost     float64 `json:"today_cost"`
 	YesterdayCost float64 `json:"yesterday_cost"`
 	TotalCost     float64 `json:"total_cost"`
+
+	// Orange 特有：官方原价合计（未乘任何倍率），用于计算我方成本与毛利。
+	// 利润字段在 service 层按分组上游倍率填充（需要 groups 表配置，SQL 里拿不到）。
+	TodayGrossCost     float64 `json:"today_gross_cost"`
+	YesterdayGrossCost float64 `json:"yesterday_gross_cost"`
+	TotalGrossCost     float64 `json:"total_gross_cost"`
+
+	// Orange 特有：利润 = 收入 - 成本 = Cost - GrossCost * upstream_rate_multiplier。
+	// 由 service 层填充；直接调用 repository 时为零值。
+	TodayProfit     float64 `json:"today_profit"`
+	YesterdayProfit float64 `json:"yesterday_profit"`
+	TotalProfit     float64 `json:"total_profit"`
+
+	// UpstreamRateMultiplier 是该分组当前的上游倍率快照，供前端展示与校验。
+	UpstreamRateMultiplier float64 `json:"upstream_rate_multiplier"`
 }
 
 // GroupStat represents usage statistics for a single group

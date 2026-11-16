@@ -197,6 +197,11 @@ type AdminGroup struct {
 	ProfitSafetyBuffer   float64                       `json:"profit_safety_buffer"`
 	ModelPricing         []service.ChannelModelPricing `json:"model_pricing"`
 
+	// Orange 特有：上游成本倍率（我方采购价）。
+	// 与上面的利润控制字段同属内部经营信息——知道上游倍率即可算出我方成本，
+	// 因此只放管理端 DTO，不得下放到 dto.Group（用户侧接口会整体返回该结构）。
+	UpstreamRateMultiplier float64 `json:"upstream_rate_multiplier"`
+
 	// 模型路由配置（仅 anthropic 平台使用）
 	ModelRouting        map[string][]int64 `json:"model_routing"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`

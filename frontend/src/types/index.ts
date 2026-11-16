@@ -652,6 +652,10 @@ export interface AdminGroup extends Group {
   profit_min_margin: number
   profit_safety_buffer: number
 
+  // Orange 特有：上游成本倍率（我方采购价）。与服务端同属内部经营信息，
+  // 仅管理端 DTO 暴露，不下放到 Group。
+  upstream_rate_multiplier: number
+
   // 模型路由配置（仅管理员可见，内部信息）
   model_routing: Record<string, number[]> | null
   model_routing_enabled: boolean

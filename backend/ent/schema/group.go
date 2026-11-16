@@ -52,6 +52,14 @@ func (Group) Fields() []ent.Field {
 		field.Float("rate_multiplier").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0),
+		// Orange 特有（migration 9008）：上游成本倍率，我方采购价。
+		// 仅用于利润统计（毛利 = total_cost*(rate_multiplier - upstream_rate_multiplier)），
+		// 不参与用户扣费，也不参与 profit_control 的调度准入（后者仍读 accounts.rate_multiplier）。
+		// 允许 0 表示免费上游。
+		field.Float("upstream_rate_multiplier").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(1.0).
+			Comment("Orange 特有：上游成本倍率（我方采购价），仅用于利润统计"),
 		// 高峰时段倍率（added by migration 158）
 		field.Bool("peak_rate_enabled").
 			Default(false).
