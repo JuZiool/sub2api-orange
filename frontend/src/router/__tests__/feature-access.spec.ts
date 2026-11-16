@@ -8,6 +8,7 @@ type NavigationGuard = (
 
 const routerHarness = vi.hoisted(() => ({
   guard: null as NavigationGuard | null,
+  routes: [] as Array<{ path: string; meta?: Record<string, unknown> }>,
 }))
 
 const authStore = vi.hoisted(() => ({
@@ -33,13 +34,16 @@ const appStore = vi.hoisted(() => ({
 
 vi.mock('vue-router', () => ({
   createWebHistory: vi.fn(() => ({})),
-  createRouter: vi.fn(() => ({
-    beforeEach: vi.fn((guard: NavigationGuard) => {
-      routerHarness.guard = guard
-    }),
-    afterEach: vi.fn(),
-    onError: vi.fn(),
-  })),
+  createRouter: vi.fn((options: { routes: Array<{ path: string; meta?: Record<string, unknown> }> }) => {
+    routerHarness.routes = options.routes
+    return {
+      beforeEach: vi.fn((guard: NavigationGuard) => {
+        routerHarness.guard = guard
+      }),
+      afterEach: vi.fn(),
+      onError: vi.fn(),
+    }
+  }),
 }))
 
 vi.mock('@/stores/auth', () => ({
@@ -108,6 +112,12 @@ function runGuard(meta: Record<string, unknown>, path: string) {
 
 describe('feature route guard', () => {
   beforeAll(async () => {
+    const [{ i18n }, { default: en }] = await Promise.all([
+      import('@/i18n'),
+      import('@/i18n/locales/en'),
+    ])
+    i18n.global.setLocaleMessage('en', en)
+    i18n.global.locale.value = 'en'
     await import('@/router')
   })
 
@@ -118,6 +128,16 @@ describe('feature route guard', () => {
     appStore.publicSettingsLoaded = false
     appStore.cachedPublicSettings = null
     appStore.fetchPublicSettings.mockReset()
+  })
+
+  it('protects the fee calculator route from non-admin direct access', async () => {
+    const route = routerHarness.routes.find(({ path }) => path === '/admin/fee-calculator')
+    expect(route?.meta).toMatchObject({ requiresAuth: true, requiresAdmin: true })
+
+    const { navigation, next } = runGuard(route?.meta ?? {}, route?.path ?? '/admin/fee-calculator')
+    await navigation
+
+    expect(next).toHaveBeenCalledWith('/dashboard')
   })
 
   it('waits for the first public-settings request before deciding payment access', async () => {

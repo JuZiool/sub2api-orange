@@ -477,6 +477,22 @@ const ServerIcon = {
     )
 }
 
+const CalculatorIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('rect', { x: '4.5', y: '3', width: '15', height: '18', rx: '2' }),
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M8 7.5h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01'
+        })
+      ]
+    )
+}
+
 const PluginIcon = {
   render: () => h(Icon, { name: 'cube' })
 }
@@ -854,6 +870,7 @@ const adminNavItems = computed((): NavItem[] => {
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
     if (flagMCP()) filtered.push({ path: '/settings/mcp', label: t('mcp.title'), icon: MCPIcon })
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
+    filtered.push({ path: '/admin/fee-calculator', label: t('nav.feeCalculator'), icon: CalculatorIcon })
     for (const cm of customMenuItemsForAdmin.value) {
       filtered.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
     }
@@ -861,6 +878,7 @@ const adminNavItems = computed((): NavItem[] => {
   }
 
   visible.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
+  visible.push({ path: '/admin/fee-calculator', label: t('nav.feeCalculator'), icon: CalculatorIcon })
   for (const cm of customMenuItemsForAdmin.value) {
     visible.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
   }

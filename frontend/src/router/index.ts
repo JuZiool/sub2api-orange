@@ -633,6 +633,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/fee-calculator',
+    name: 'AdminFeeCalculator',
+    component: () => import('@/features/fee-calculator/FeeCalculatorView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Fee Calculator',
+      titleKey: 'rateCalculator.title',
+      descriptionKey: 'rateCalculator.description'
+    }
+  },
+  {
     path: '/admin/risk-control',
     name: 'AdminRiskControl',
     component: () => import('@/views/admin/RiskControlView.vue'),

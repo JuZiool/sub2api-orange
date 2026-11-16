@@ -1,0 +1,289 @@
+<template>
+  <AppLayout>
+    <div class="space-y-5">
+      <header>
+        <h1 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('rateCalculator.title') }}</h1>
+      </header>
+
+      <section class="card p-4 sm:p-5">
+        <div class="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.2fr)]">
+          <div class="space-y-3">
+            <label for="rate-calculator-pay" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('rateCalculator.payAmount') }}
+            </label>
+            <div class="flex items-center gap-2">
+              <input
+                id="rate-calculator-pay"
+                v-model="state.pay"
+                type="text"
+                inputmode="decimal"
+                autocomplete="off"
+                :placeholder="t('rateCalculator.payPlaceholder')"
+                :aria-invalid="calculation.payInvalid ? 'true' : undefined"
+                class="input min-w-0 flex-1 tabular-nums"
+              />
+              <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('rateCalculator.yuan') }}</span>
+            </div>
+            <div class="grid grid-cols-3 gap-1.5 sm:grid-cols-6 xl:grid-cols-3 2xl:grid-cols-6">
+              <button
+                v-for="amount in presets"
+                :key="amount"
+                type="button"
+                class="btn btn-secondary justify-center px-2 tabular-nums"
+                @click="state.pay = String(amount)"
+              >
+                {{ t('rateCalculator.preset', { amount }) }}
+              </button>
+            </div>
+          </div>
+
+          <div class="min-w-0 border-t border-gray-200 pt-4 dark:border-dark-700 xl:border-l xl:border-t-0 xl:pl-5 xl:pt-0">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div class="min-w-0">
+                <div class="mb-1 text-sm text-gray-500 dark:text-gray-400">{{ t('rateCalculator.safeUpstream') }}</div>
+                <div class="break-words text-3xl font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                  <template v-if="calculation.ready">{{ formatCents(calculation.suggestedCents!) }} <span class="text-base font-normal">{{ t('rateCalculator.yuan') }}</span></template>
+                  <span v-else class="text-gray-400 dark:text-gray-500">—</span>
+                </div>
+              </div>
+              <div class="min-w-0" :class="{ 'text-amber-700 dark:text-amber-400': isLoss }">
+                <div class="mb-1 text-sm text-gray-500 dark:text-gray-400">{{ t(isLoss ? 'rateCalculator.expectedLoss' : 'rateCalculator.expectedProfit') }}</div>
+                <div class="break-words text-3xl font-semibold tabular-nums">
+                  <template v-if="calculation.ready">{{ formatCents(profitMagnitude!) }} <span class="text-base font-normal">{{ t('rateCalculator.yuan') }}</span></template>
+                  <span v-else class="text-gray-400 dark:text-gray-500">—</span>
+                </div>
+              </div>
+            </div>
+            <p class="mt-3 text-sm leading-6 text-gray-500 dark:text-gray-400" aria-live="polite" aria-atomic="true">
+              {{ summaryHint }}
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-3 dark:border-dark-700">
+          <label class="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+            <input v-model="state.remember" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            {{ t(state.remember ? 'rateCalculator.remembered' : 'rateCalculator.remember') }}
+          </label>
+          <button type="button" class="btn btn-secondary" @click="resetAll">
+            {{ t('rateCalculator.resetAll') }}
+          </button>
+        </div>
+      </section>
+
+      <section class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" :aria-label="t('rateCalculator.rateGroups')">
+        <article
+          v-for="group in state.groups"
+          :key="group.index"
+          class="min-w-0 rounded-lg border p-3"
+          :class="groupIsWorst(group.index)
+            ? 'border-emerald-500 dark:border-emerald-600'
+            : 'border-gray-200 dark:border-dark-700'"
+        >
+          <div class="mb-3 flex min-w-0 items-center gap-2">
+            <label :for="`rate-name-${group.index}`" class="sr-only">{{ t('rateCalculator.groupName', { number: group.index + 1 }) }}</label>
+            <input
+              :id="`rate-name-${group.index}`"
+              v-model="group.name"
+              type="text"
+              maxlength="40"
+              autocomplete="off"
+              class="input min-w-0 flex-1 font-medium"
+              :placeholder="t('rateCalculator.groupName', { number: group.index + 1 })"
+            />
+            <button type="button" class="btn btn-secondary shrink-0 px-2" @click="clearGroup(group.index)">
+              {{ t('rateCalculator.clearGroup') }}
+            </button>
+          </div>
+
+          <div class="space-y-3">
+            <div>
+              <label :for="`rate-cost-${group.index}`" class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                {{ t('rateCalculator.upstreamRate') }}
+              </label>
+              <input
+                :id="`rate-cost-${group.index}`"
+                v-model="group.cost"
+                type="text"
+                inputmode="decimal"
+                autocomplete="off"
+                :placeholder="t('rateCalculator.upstreamPlaceholder')"
+                :aria-invalid="calculation.groups[group.index].costInvalid ? 'true' : undefined"
+                class="input w-full tabular-nums"
+              />
+            </div>
+            <div>
+              <label :for="`rate-sell-${group.index}`" class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                {{ t('rateCalculator.userRate') }}
+              </label>
+              <input
+                :id="`rate-sell-${group.index}`"
+                v-model="group.sell"
+                type="text"
+                inputmode="decimal"
+                autocomplete="off"
+                :placeholder="t('rateCalculator.userPlaceholder')"
+                :aria-invalid="calculation.groups[group.index].sellInvalid ? 'true' : undefined"
+                class="input w-full tabular-nums"
+              />
+            </div>
+          </div>
+
+          <div class="mt-3 border-t border-gray-100 pt-3 dark:border-dark-700">
+            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('rateCalculator.groupAmount') }}</div>
+            <div class="mt-0.5 break-words text-xl font-semibold tabular-nums text-primary-600 dark:text-primary-400">
+              <template v-if="calculation.groups[group.index].amountCents !== null">
+                {{ formatCents(calculation.groups[group.index].amountCents!) }} {{ t('rateCalculator.yuan') }}
+              </template>
+              <span v-else class="text-gray-400 dark:text-gray-500">—</span>
+            </div>
+            <p
+              class="mt-1 min-h-9 text-xs leading-5"
+              :class="calculation.groups[group.index].status === 'incomplete' || calculation.groups[group.index].status === 'invalid'
+                ? 'text-amber-700 dark:text-amber-400'
+                : groupIsWorst(group.index)
+                  ? 'text-emerald-700 dark:text-emerald-400'
+                  : 'text-gray-500 dark:text-gray-400'"
+            >
+              {{ groupStatusText(group.index) }}
+            </p>
+          </div>
+        </article>
+      </section>
+
+      <details class="text-sm text-gray-500 dark:text-gray-400">
+        <summary class="cursor-pointer">{{ t('rateCalculator.calculationNotes') }}</summary>
+        <p class="mt-2 leading-6">{{ t('rateCalculator.formula') }}</p>
+        <p class="mt-1 leading-6">{{ t('rateCalculator.profitFormula') }}</p>
+      </details>
+    </div>
+  </AppLayout>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, reactive, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import AppLayout from '@/components/layout/AppLayout.vue'
+import { calculateRates, formatCents } from './calculator'
+
+const STORAGE_KEY = 'rateCalc.shared.v2'
+const presets = [10, 20, 50, 100, 500, 1000]
+const { t } = useI18n()
+
+function createGroups() {
+  return Array.from({ length: 7 }, (_, index) => ({ index, name: '', cost: '', sell: '' }))
+}
+
+const state = reactive({
+  pay: '',
+  remember: false,
+  groups: createGroups(),
+})
+
+const calculation = computed(() => calculateRates(state.pay, state.groups))
+const isLoss = computed(() => (calculation.value.profitCents ?? 0n) < 0n)
+const profitMagnitude = computed(() => {
+  const cents = calculation.value.profitCents
+  return cents === null ? null : cents < 0n ? -cents : cents
+})
+
+const summaryHint = computed(() => {
+  const result = calculation.value
+  if (result.invalidGroups.length) {
+    return t('rateCalculator.invalidGroups', { groups: result.invalidGroups.join('、') })
+  }
+  if (result.payInvalid) return t('rateCalculator.invalidPay')
+  if (!result.payEntered) return t('rateCalculator.enterPay')
+  if (!result.ready) return t('rateCalculator.enterRates')
+  return t('rateCalculator.coverage', {
+    count: result.completeCount,
+    groups: result.highestGroupNames.join('、'),
+  })
+})
+
+function groupIsWorst(index: number): boolean {
+  return calculation.value.ready && calculation.value.highestGroupIndexes.includes(index)
+}
+
+function groupStatusText(index: number): string {
+  if (groupIsWorst(index)) return t('rateCalculator.groupWorst')
+  const group = calculation.value.groups[index]
+  switch (group.status) {
+    case 'blank': return t('rateCalculator.groupBlank')
+    case 'incomplete': return t('rateCalculator.groupIncomplete')
+    case 'invalid': return t('rateCalculator.groupInvalid')
+    case 'awaitingPayment': return t('rateCalculator.groupAwaitingPay')
+    case 'ready': return t('rateCalculator.groupReady')
+  }
+  return ''
+}
+
+function clearGroup(index: number) {
+  state.groups[index].cost = ''
+  state.groups[index].sell = ''
+}
+
+function clearSaved() {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // Storage may be disabled by the browser.
+  }
+}
+
+function resetAll() {
+  state.pay = ''
+  state.remember = false
+  state.groups.forEach((group) => {
+    group.name = ''
+    group.cost = ''
+    group.sell = ''
+  })
+  clearSaved()
+}
+
+function restore() {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
+    if (!saved || typeof saved !== 'object' || !('on' in saved) || saved.on !== true) {
+      clearSaved()
+      return
+    }
+
+    const data = saved as { pay?: unknown; rates?: unknown }
+    state.remember = true
+    if (typeof data.pay === 'string') state.pay = data.pay
+    if (Array.isArray(data.rates)) {
+      const savedRates = data.rates as unknown[]
+      state.groups.forEach((group, index) => {
+        const rate = savedRates[index]
+        if (!rate || typeof rate !== 'object') return
+        const savedRate = rate as { name?: unknown; cost?: unknown; sell?: unknown }
+        if (typeof savedRate.name === 'string') group.name = savedRate.name
+        if (typeof savedRate.cost === 'string') group.cost = savedRate.cost
+        if (typeof savedRate.sell === 'string') group.sell = savedRate.sell
+      })
+    }
+  } catch {
+    clearSaved()
+  }
+}
+
+watch(state, (value) => {
+  if (!value.remember) {
+    clearSaved()
+    return
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      on: true,
+      pay: value.pay,
+      rates: value.groups.map(({ name, cost, sell }) => ({ name, cost, sell })),
+    }))
+  } catch {
+    // Storage may be disabled or full.
+  }
+}, { deep: true })
+
+onMounted(restore)
+</script>

@@ -90,3 +90,17 @@ describe('AppSidebar MCP entry', () => {
     expect(componentSource).not.toMatch(/path: '\/settings\/mcp'[^\n]*PluginIcon/)
   })
 })
+
+describe('AppSidebar fee calculator entry', () => {
+  it('places the fee calculator after System Settings in both admin menu modes', () => {
+    expect(componentSource).toMatch(/filtered\.push\(\{ path: '\/admin\/settings'[\s\S]*?\n\s*filtered\.push\(\{ path: '\/admin\/fee-calculator'/)
+    expect(componentSource).toMatch(/visible\.push\(\{ path: '\/admin\/settings'[\s\S]*?\n\s*visible\.push\(\{ path: '\/admin\/fee-calculator'/)
+    expect(componentSource).toContain("label: t('nav.feeCalculator'), icon: CalculatorIcon")
+  })
+
+  it('does not add the admin calculator route to regular-user navigation', () => {
+    const userNavSource = componentSource.match(/const userNavItems = computed[\s\S]*?\n\}\)/)?.[0] ?? ''
+    expect(userNavSource).not.toContain('/admin/fee-calculator')
+    expect(componentSource).toContain('<template v-if="isAdmin">')
+  })
+})
