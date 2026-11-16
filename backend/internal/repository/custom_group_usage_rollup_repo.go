@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
@@ -66,12 +67,49 @@ func (r *usageLogRepository) readGroupUsageRollupSnapshot(ctx context.Context, t
 	}, nil
 }
 
+type groupUsageRollupSchema struct {
+	dailyTable      bool
+	totalCostColumn bool
+	stateTable      bool
+}
+
+func (r *usageLogRepository) readGroupUsageRollupSchema(ctx context.Context) (groupUsageRollupSchema, error) {
+	var schema groupUsageRollupSchema
+	if err := scanSingleRow(ctx, r.sql, `
+		SELECT
+			to_regclass('public.usage_group_daily_rollups') IS NOT NULL,
+			EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_schema = 'public'
+					AND table_name = 'usage_group_daily_rollups'
+					AND column_name = 'total_cost'
+			),
+			to_regclass('public.usage_group_rollup_state') IS NOT NULL
+	`, nil, &schema.dailyTable, &schema.totalCostColumn, &schema.stateTable); err != nil {
+		return groupUsageRollupSchema{}, fmt.Errorf("检查分组利润汇总结构: %w", err)
+	}
+	return schema, nil
+}
+
 func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Context, todayStart time.Time) (results []usagestats.GroupUsageSummary, err error) {
 	todayStart = service.GroupUsageTodayStart(todayStart)
 	yesterdayStart := service.GroupUsageYesterdayStart(todayStart)
 	timezoneName := service.GroupUsageTimezoneName()
 	todayDate := service.GroupUsageDate(todayStart)
 	yesterdayDate := service.GroupUsageDate(yesterdayStart)
+
+	schema, err := r.readGroupUsageRollupSchema(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !schema.dailyTable || !schema.totalCostColumn || !schema.stateTable {
+		slog.Warn("group_profit_summary_rollup_unavailable",
+			"daily_table", schema.dailyTable,
+			"total_cost_column", schema.totalCostColumn,
+			"state_table", schema.stateTable,
+		)
+		return r.getAllGroupUsageSummaryFromUsageLogs(ctx, todayStart, yesterdayStart)
+	}
 
 	state, err := r.readGroupUsageRollupSnapshot(ctx, timezoneName, todayDate)
 	if err != nil {
@@ -94,9 +132,13 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 			SELECT
 				rollup.group_id,
 				COALESCE(SUM(rollup.actual_cost), 0) AS actual_cost,
+				COALESCE(SUM(rollup.total_cost), 0) AS total_cost,
 				COALESCE(SUM(rollup.actual_cost) FILTER (
 					WHERE rollup.bucket_date = $3::date
-				), 0) AS yesterday_cost
+				), 0) AS yesterday_cost,
+				COALESCE(SUM(rollup.total_cost) FILTER (
+					WHERE rollup.bucket_date = $3::date
+				), 0) AS yesterday_total_cost
 			FROM usage_group_daily_rollups rollup
 			WHERE $4::boolean
 				AND rollup.bucket_date >= $5::date
@@ -107,11 +149,17 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 			SELECT
 				ul.group_id,
 				COALESCE(SUM(ul.actual_cost), 0) AS actual_cost,
+				COALESCE(SUM(ul.total_cost), 0) AS total_cost,
 				COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $1), 0) AS today_cost,
+				COALESCE(SUM(ul.total_cost) FILTER (WHERE ul.created_at >= $1), 0) AS today_total_cost,
 				COALESCE(SUM(ul.actual_cost) FILTER (
 					WHERE ul.created_at >= $2
 						AND ul.created_at < $1
-				), 0) AS yesterday_cost
+				), 0) AS yesterday_cost,
+				COALESCE(SUM(ul.total_cost) FILTER (
+					WHERE ul.created_at >= $2
+						AND ul.created_at < $1
+				), 0) AS yesterday_total_cost
 			FROM usage_logs ul
 			WHERE ul.created_at >= $7
 			GROUP BY ul.group_id
@@ -120,7 +168,16 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 			g.id AS group_id,
 			COALESCE(historical.actual_cost, 0) + COALESCE(tail.actual_cost, 0) AS total_cost,
 			COALESCE(tail.today_cost, 0) AS today_cost,
-			COALESCE(historical.yesterday_cost, 0) + COALESCE(tail.yesterday_cost, 0) AS yesterday_cost
+			COALESCE(historical.yesterday_cost, 0) + COALESCE(tail.yesterday_cost, 0) AS yesterday_cost,
+			(COALESCE(historical.total_cost, 0) + COALESCE(tail.total_cost, 0)) * g.upstream_rate_multiplier AS total_upstream_cost,
+			COALESCE(tail.today_total_cost, 0) * g.upstream_rate_multiplier AS today_upstream_cost,
+			(COALESCE(historical.yesterday_total_cost, 0) + COALESCE(tail.yesterday_total_cost, 0)) * g.upstream_rate_multiplier AS yesterday_upstream_cost,
+			(COALESCE(historical.actual_cost, 0) + COALESCE(tail.actual_cost, 0)) -
+				((COALESCE(historical.total_cost, 0) + COALESCE(tail.total_cost, 0)) * g.upstream_rate_multiplier) AS total_profit,
+			COALESCE(tail.today_cost, 0) -
+				(COALESCE(tail.today_total_cost, 0) * g.upstream_rate_multiplier) AS today_profit,
+			(COALESCE(historical.yesterday_cost, 0) + COALESCE(tail.yesterday_cost, 0)) -
+				((COALESCE(historical.yesterday_total_cost, 0) + COALESCE(tail.yesterday_total_cost, 0)) * g.upstream_rate_multiplier) AS yesterday_profit
 		FROM groups g
 		LEFT JOIN historical ON historical.group_id = g.id
 		LEFT JOIN tail ON tail.group_id = g.id
@@ -151,7 +208,88 @@ func (r *usageLogRepository) getAllGroupUsageSummaryFromRollups(ctx context.Cont
 	results = make([]usagestats.GroupUsageSummary, 0)
 	for rows.Next() {
 		var row usagestats.GroupUsageSummary
-		if err := rows.Scan(&row.GroupID, &row.TotalCost, &row.TodayCost, &row.YesterdayCost); err != nil {
+		if err := rows.Scan(
+			&row.GroupID,
+			&row.TotalCost,
+			&row.TodayCost,
+			&row.YesterdayCost,
+			&row.TotalUpstreamCost,
+			&row.TodayUpstreamCost,
+			&row.YesterdayUpstreamCost,
+			&row.TotalProfit,
+			&row.TodayProfit,
+			&row.YesterdayProfit,
+		); err != nil {
+			return nil, err
+		}
+		results = append(results, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func (r *usageLogRepository) getAllGroupUsageSummaryFromUsageLogs(ctx context.Context, todayStart, yesterdayStart time.Time) (results []usagestats.GroupUsageSummary, err error) {
+	const query = `
+		WITH usage_totals AS (
+			SELECT
+				ul.group_id,
+				COALESCE(SUM(ul.actual_cost), 0) AS total_cost,
+				COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $1), 0) AS today_cost,
+				COALESCE(SUM(ul.actual_cost) FILTER (
+					WHERE ul.created_at >= $2 AND ul.created_at < $1
+				), 0) AS yesterday_cost,
+				COALESCE(SUM(ul.total_cost), 0) AS total_upstream_base,
+				COALESCE(SUM(ul.total_cost) FILTER (WHERE ul.created_at >= $1), 0) AS today_upstream_base,
+				COALESCE(SUM(ul.total_cost) FILTER (
+					WHERE ul.created_at >= $2 AND ul.created_at < $1
+				), 0) AS yesterday_upstream_base
+			FROM usage_logs ul
+			WHERE ul.group_id IS NOT NULL
+			GROUP BY ul.group_id
+		)
+		SELECT
+			g.id,
+			COALESCE(t.total_cost, 0),
+			COALESCE(t.today_cost, 0),
+			COALESCE(t.yesterday_cost, 0),
+			COALESCE(t.total_upstream_base, 0) * g.upstream_rate_multiplier,
+			COALESCE(t.today_upstream_base, 0) * g.upstream_rate_multiplier,
+			COALESCE(t.yesterday_upstream_base, 0) * g.upstream_rate_multiplier,
+			COALESCE(t.total_cost, 0) - COALESCE(t.total_upstream_base, 0) * g.upstream_rate_multiplier,
+			COALESCE(t.today_cost, 0) - COALESCE(t.today_upstream_base, 0) * g.upstream_rate_multiplier,
+			COALESCE(t.yesterday_cost, 0) - COALESCE(t.yesterday_upstream_base, 0) * g.upstream_rate_multiplier
+		FROM groups g
+		LEFT JOIN usage_totals t ON t.group_id = g.id
+		ORDER BY g.id
+	`
+	rows, err := r.sql.QueryContext(ctx, query, todayStart, yesterdayStart)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			results = nil
+		}
+	}()
+
+	results = make([]usagestats.GroupUsageSummary, 0)
+	for rows.Next() {
+		var row usagestats.GroupUsageSummary
+		if err := rows.Scan(
+			&row.GroupID,
+			&row.TotalCost,
+			&row.TodayCost,
+			&row.YesterdayCost,
+			&row.TotalUpstreamCost,
+			&row.TodayUpstreamCost,
+			&row.YesterdayUpstreamCost,
+			&row.TotalProfit,
+			&row.TodayProfit,
+			&row.YesterdayProfit,
+		); err != nil {
 			return nil, err
 		}
 		results = append(results, row)
@@ -250,11 +388,12 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.C
 	}
 
 	if _, err := r.sql.ExecContext(ctx, `
-		INSERT INTO usage_group_daily_rollups (bucket_date, group_id, actual_cost, computed_at)
+		INSERT INTO usage_group_daily_rollups (bucket_date, group_id, actual_cost, total_cost, computed_at)
 		SELECT
 			(created_at AT TIME ZONE $3::text)::date AS bucket_date,
 			group_id,
 			COALESCE(SUM(actual_cost), 0) AS actual_cost,
+			COALESCE(SUM(total_cost), 0) AS total_cost,
 			NOW()
 		FROM usage_logs
 		WHERE group_id IS NOT NULL
@@ -264,6 +403,7 @@ func (r *dashboardAggregationRepository) syncGroupUsageRollupsInTx(ctx context.C
 		ON CONFLICT (bucket_date, group_id)
 		DO UPDATE SET
 			actual_cost = EXCLUDED.actual_cost,
+			total_cost = EXCLUDED.total_cost,
 			computed_at = EXCLUDED.computed_at
 	`, rebuildStart.UTC(), todayStart.UTC(), timezoneName); err != nil {
 		return fmt.Errorf("重建分组用量日桶: %w", err)

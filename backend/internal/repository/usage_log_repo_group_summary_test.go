@@ -17,6 +17,7 @@ func TestUsageLogRepositoryGetAllGroupUsageSummaryUsesRollupTail(t *testing.T) {
 	useGroupUsageRepositoryTestTimezone(t, "America/New_York")
 	todayStart := time.Date(2026, 3, 9, 4, 0, 0, 0, time.UTC)
 	yesterdayStart := time.Date(2026, 3, 8, 5, 0, 0, 0, time.UTC)
+	expectGroupUsageProfitRollupSchema(mock, true, true, true)
 
 	// 水位有效：closed_before = 2026-03-07（≤ today），时区与配置一致。
 	mock.ExpectQuery(`(?s)COUNT\(\*\).*usage_group_rollup_state.*WHERE id = 1`).
@@ -35,8 +36,11 @@ func TestUsageLogRepositoryGetAllGroupUsageSummaryUsesRollupTail(t *testing.T) {
 			"2026-03-07", // closed_before
 			time.Date(2026, 3, 7, 5, 0, 0, 0, time.UTC), // tail_start = closed_before 在配置时区的零点
 		).
-		WillReturnRows(sqlmock.NewRows([]string{"group_id", "total_cost", "today_cost", "yesterday_cost"}).
-			AddRow(int64(7), 12.5, 1.25, 2.5))
+		WillReturnRows(sqlmock.NewRows([]string{
+			"group_id", "total_cost", "today_cost", "yesterday_cost",
+			"total_upstream_cost", "today_upstream_cost", "yesterday_upstream_cost",
+			"total_profit", "today_profit", "yesterday_profit",
+		}).AddRow(int64(7), 12.5, 1.25, 2.5, 7.5, 0.75, 1.5, 5.0, 0.5, 1.0))
 
 	result, err := repo.GetAllGroupUsageSummary(context.Background(), todayStart)
 	require.NoError(t, err)
@@ -44,6 +48,8 @@ func TestUsageLogRepositoryGetAllGroupUsageSummaryUsesRollupTail(t *testing.T) {
 	require.InDelta(t, 12.5, result[0].TotalCost, 0.0000001)
 	require.InDelta(t, 1.25, result[0].TodayCost, 0.0000001)
 	require.InDelta(t, 2.5, result[0].YesterdayCost, 0.0000001)
+	require.InDelta(t, 7.5, result[0].TotalUpstreamCost, 0.0000001)
+	require.InDelta(t, 5.0, result[0].TotalProfit, 0.0000001)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -81,16 +87,51 @@ func TestUsageLogRepositoryGetAllGroupUsageSummaryFallsBackWhenWatermarkInvalid(
 			db, mock := newSQLMock(t)
 			repo := newUsageLogRepositoryWithSQL(nil, db)
 			useGroupUsageRepositoryTestTimezone(t, "America/New_York")
+			expectGroupUsageProfitRollupSchema(mock, true, true, true)
 
 			mock.ExpectQuery(`(?s)COUNT\(\*\).*usage_group_rollup_state.*WHERE id = 1`).
 				WillReturnRows(tc.rows)
 			mock.ExpectQuery(`(?s)usage_group_daily_rollups.*FROM usage_logs ul\s+WHERE ul\.created_at >= \$7`).
 				WithArgs(todayStart, yesterdayStart, "2026-03-08", false, "1970-01-01", "1970-01-01", epoch).
-				WillReturnRows(sqlmock.NewRows([]string{"group_id", "total_cost", "today_cost", "yesterday_cost"}))
+				WillReturnRows(sqlmock.NewRows([]string{
+					"group_id", "total_cost", "today_cost", "yesterday_cost",
+					"total_upstream_cost", "today_upstream_cost", "yesterday_upstream_cost",
+					"total_profit", "today_profit", "yesterday_profit",
+				}))
 
 			_, err := repo.GetAllGroupUsageSummary(context.Background(), todayStart)
 			require.NoError(t, err)
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
+}
+
+func TestUsageLogRepositoryGetAllGroupUsageSummaryFallsBackWhenProfitRollupSchemaIsMissing(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := newUsageLogRepositoryWithSQL(nil, db)
+	useGroupUsageRepositoryTestTimezone(t, "America/New_York")
+	todayStart := time.Date(2026, 3, 9, 4, 0, 0, 0, time.UTC)
+	yesterdayStart := time.Date(2026, 3, 8, 5, 0, 0, 0, time.UTC)
+
+	expectGroupUsageProfitRollupSchema(mock, false, false, false)
+	mock.ExpectQuery(`(?s)WITH usage_totals AS .*FROM usage_logs ul`).
+		WithArgs(todayStart, yesterdayStart).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"group_id", "total_cost", "today_cost", "yesterday_cost",
+			"total_upstream_cost", "today_upstream_cost", "yesterday_upstream_cost",
+			"total_profit", "today_profit", "yesterday_profit",
+		}).AddRow(int64(9), 2.0, 1.0, 0.5, 3.0, 1.5, 0.75, -1.0, -0.5, -0.25))
+
+	result, err := repo.GetAllGroupUsageSummary(context.Background(), todayStart)
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	require.InDelta(t, 3.0, result[0].TotalUpstreamCost, 0.0000001)
+	require.InDelta(t, -1.0, result[0].TotalProfit, 0.0000001)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func expectGroupUsageProfitRollupSchema(mock sqlmock.Sqlmock, dailyTable, totalCostColumn, stateTable bool) {
+	mock.ExpectQuery(`(?s)to_regclass\('public\.usage_group_daily_rollups'\).*information_schema\.columns.*to_regclass\('public\.usage_group_rollup_state'\)`).
+		WillReturnRows(sqlmock.NewRows([]string{"daily_table", "total_cost_column", "state_table"}).
+			AddRow(dailyTable, totalCostColumn, stateTable))
 }

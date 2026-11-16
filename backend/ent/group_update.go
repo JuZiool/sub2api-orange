@@ -124,6 +124,27 @@ func (_u *GroupUpdate) AddRateMultiplier(v float64) *GroupUpdate {
 	return _u
 }
 
+// SetUpstreamRateMultiplier sets the "upstream_rate_multiplier" field.
+func (_u *GroupUpdate) SetUpstreamRateMultiplier(v float64) *GroupUpdate {
+	_u.mutation.ResetUpstreamRateMultiplier()
+	_u.mutation.SetUpstreamRateMultiplier(v)
+	return _u
+}
+
+// SetNillableUpstreamRateMultiplier sets the "upstream_rate_multiplier" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableUpstreamRateMultiplier(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetUpstreamRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddUpstreamRateMultiplier adds value to the "upstream_rate_multiplier" field.
+func (_u *GroupUpdate) AddUpstreamRateMultiplier(v float64) *GroupUpdate {
+	_u.mutation.AddUpstreamRateMultiplier(v)
+	return _u
+}
+
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
 func (_u *GroupUpdate) SetPeakRateEnabled(v bool) *GroupUpdate {
 	_u.mutation.SetPeakRateEnabled(v)
@@ -1658,6 +1679,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(group.FieldRateMultiplier, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.UpstreamRateMultiplier(); ok {
+		_spec.SetField(group.FieldUpstreamRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedUpstreamRateMultiplier(); ok {
+		_spec.AddField(group.FieldUpstreamRateMultiplier, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.PeakRateEnabled(); ok {
 		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
 	}
@@ -2442,6 +2469,27 @@ func (_u *GroupUpdateOne) SetNillableRateMultiplier(v *float64) *GroupUpdateOne 
 // AddRateMultiplier adds value to the "rate_multiplier" field.
 func (_u *GroupUpdateOne) AddRateMultiplier(v float64) *GroupUpdateOne {
 	_u.mutation.AddRateMultiplier(v)
+	return _u
+}
+
+// SetUpstreamRateMultiplier sets the "upstream_rate_multiplier" field.
+func (_u *GroupUpdateOne) SetUpstreamRateMultiplier(v float64) *GroupUpdateOne {
+	_u.mutation.ResetUpstreamRateMultiplier()
+	_u.mutation.SetUpstreamRateMultiplier(v)
+	return _u
+}
+
+// SetNillableUpstreamRateMultiplier sets the "upstream_rate_multiplier" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableUpstreamRateMultiplier(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetUpstreamRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddUpstreamRateMultiplier adds value to the "upstream_rate_multiplier" field.
+func (_u *GroupUpdateOne) AddUpstreamRateMultiplier(v float64) *GroupUpdateOne {
+	_u.mutation.AddUpstreamRateMultiplier(v)
 	return _u
 }
 
@@ -4008,6 +4056,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(group.FieldRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.UpstreamRateMultiplier(); ok {
+		_spec.SetField(group.FieldUpstreamRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedUpstreamRateMultiplier(); ok {
+		_spec.AddField(group.FieldUpstreamRateMultiplier, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.PeakRateEnabled(); ok {
 		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)

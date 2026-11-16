@@ -18,7 +18,18 @@ describe('admin group usage summary API', () => {
 
   it('does not send browser timezone parameters', async () => {
     const summary = [
-      { group_id: 1, today_cost: 1.25, yesterday_cost: 2.5, total_cost: 9.75 },
+      {
+        group_id: 1,
+        today_cost: 1.25,
+        yesterday_cost: 2.5,
+        total_cost: 9.75,
+        today_upstream_cost: 0.75,
+        yesterday_upstream_cost: 1.5,
+        total_upstream_cost: 6.25,
+        today_profit: 0.5,
+        yesterday_profit: 1,
+        total_profit: 3.5,
+      },
     ]
     get.mockResolvedValue({ data: summary })
 

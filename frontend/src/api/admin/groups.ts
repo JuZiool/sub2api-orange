@@ -445,16 +445,22 @@ export async function clearGroupRPMOverrides(id: number): Promise<{ message: str
   return data
 }
 
-/**
- * Get usage summary (today + yesterday + cumulative cost) for all groups
- * @returns Array of group usage summaries
- */
-export async function getUsageSummary(): Promise<
-  { group_id: number; today_cost: number; yesterday_cost: number; total_cost: number }[]
-> {
-  const { data } = await apiClient.get<
-    { group_id: number; today_cost: number; yesterday_cost: number; total_cost: number }[]
-  >('/admin/groups/usage-summary')
+export interface GroupUsageSummary {
+  group_id: number
+  today_cost: number
+  yesterday_cost: number
+  total_cost: number
+  today_upstream_cost: number
+  yesterday_upstream_cost: number
+  total_upstream_cost: number
+  today_profit: number
+  yesterday_profit: number
+  total_profit: number
+}
+
+/** Get billed income, upstream cost, and profit summaries for all groups. */
+export async function getUsageSummary(): Promise<GroupUsageSummary[]> {
+  const { data } = await apiClient.get<GroupUsageSummary[]>('/admin/groups/usage-summary')
   return data
 }
 

@@ -368,6 +368,36 @@
             </div>
           </template>
 
+          <template #cell-profit="{ row }">
+            <div v-if="usageLoading" class="text-xs text-gray-400">—</div>
+            <div v-else class="space-y-0.5 text-xs">
+              <div class="text-gray-500 dark:text-gray-400">
+                <span class="text-gray-400 dark:text-gray-500">{{ t("admin.groups.profitToday") }}</span>
+                <span
+                  class="ml-1 font-semibold"
+                  :class="getProfitClass(usageMap.get(row.id)?.today_profit ?? 0)"
+                  :title="t('admin.groups.profitBreakdown', { income: formatUsd(usageMap.get(row.id)?.today_cost), cost: formatUsd(usageMap.get(row.id)?.today_upstream_cost) })"
+                >{{ formatProfit(usageMap.get(row.id)?.today_profit ?? 0) }}</span>
+              </div>
+              <div class="text-gray-500 dark:text-gray-400">
+                <span class="text-gray-400 dark:text-gray-500">{{ t("admin.groups.profitYesterday") }}</span>
+                <span
+                  class="ml-1 font-semibold"
+                  :class="getProfitClass(usageMap.get(row.id)?.yesterday_profit ?? 0)"
+                  :title="t('admin.groups.profitBreakdown', { income: formatUsd(usageMap.get(row.id)?.yesterday_cost), cost: formatUsd(usageMap.get(row.id)?.yesterday_upstream_cost) })"
+                >{{ formatProfit(usageMap.get(row.id)?.yesterday_profit ?? 0) }}</span>
+              </div>
+              <div class="text-gray-500 dark:text-gray-400">
+                <span class="text-gray-400 dark:text-gray-500">{{ t("admin.groups.profitTotal") }}</span>
+                <span
+                  class="ml-1 font-semibold"
+                  :class="getProfitClass(usageMap.get(row.id)?.total_profit ?? 0)"
+                  :title="t('admin.groups.profitBreakdown', { income: formatUsd(usageMap.get(row.id)?.total_cost), cost: formatUsd(usageMap.get(row.id)?.total_upstream_cost) })"
+                >{{ formatProfit(usageMap.get(row.id)?.total_profit ?? 0) }}</span>
+              </div>
+            </div>
+          </template>
+
           <template #cell-status="{ value }">
             <span
               :class="[
@@ -625,6 +655,23 @@
             data-tour="group-form-multiplier"
           />
           <p class="input-hint">{{ t("admin.groups.rateMultiplierHint") }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{
+            t("admin.groups.form.upstreamRateMultiplier")
+          }}</label>
+          <input
+            v-model.number="createForm.upstream_rate_multiplier"
+            type="number"
+            min="0"
+            step="0.0001"
+            required
+            class="input"
+            data-testid="create-upstream-rate-multiplier"
+          />
+          <p class="input-hint">
+            {{ t("admin.groups.form.upstreamRateMultiplierHint") }}
+          </p>
         </div>
         <ModelRateMultiplierEditor v-model="createForm.model_rate_multipliers" />
         <div>
@@ -2278,6 +2325,23 @@
             class="input"
             data-tour="group-form-multiplier"
           />
+        </div>
+        <div>
+          <label class="input-label">{{
+            t("admin.groups.form.upstreamRateMultiplier")
+          }}</label>
+          <input
+            v-model.number="editForm.upstream_rate_multiplier"
+            type="number"
+            min="0"
+            step="0.0001"
+            required
+            class="input"
+            data-testid="edit-upstream-rate-multiplier"
+          />
+          <p class="input-hint">
+            {{ t("admin.groups.form.upstreamRateMultiplierHint") }}
+          </p>
         </div>
         <ModelRateMultiplierEditor v-model="editForm.model_rate_multipliers" />
         <div>
@@ -4301,6 +4365,7 @@ import { useAppStore } from "@/stores/app";
 import { useAuthStore } from "@/stores/auth";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
+import type { GroupUsageSummary } from "@/api/admin/groups";
 import type {
   AdminGroup,
   CodexModelsManifestConfig,
@@ -4520,6 +4585,7 @@ const allColumns = computed<Column[]>(() => {
     basic[3],
     { key: "capacity", label: t("admin.groups.columns.capacity"), sortable: false },
     { key: "usage", label: t("admin.groups.columns.usage"), sortable: false },
+    { key: "profit", label: t("admin.groups.columns.profit"), sortable: false },
     ...basic.slice(4),
   ];
 });
@@ -4602,7 +4668,11 @@ const saveColumnsToStorage = () => {
 
 const isColumnVisible = (key: string) => !hiddenColumns.has(key);
 const hasVisibleUsageSummaryConsumer = computed(
-  () => !authStore.isSimpleMode && (isColumnVisible("usage") || isColumnVisible("billing_type")),
+  () =>
+    !authStore.isSimpleMode &&
+    (isColumnVisible("usage") ||
+      isColumnVisible("profit") ||
+      isColumnVisible("billing_type")),
 );
 const hasVisibleCapacityColumn = computed(() => !authStore.isSimpleMode && isColumnVisible("capacity"));
 
@@ -4618,7 +4688,7 @@ const toggleColumn = (key: string) => {
   }
   saveColumnsToStorage();
 
-  if (wasHidden && (key === "usage" || key === "billing_type")) {
+  if (wasHidden && (key === "usage" || key === "profit" || key === "billing_type")) {
     loadUsageSummary();
   }
   if (wasHidden && key === "capacity") {
@@ -4818,12 +4888,6 @@ const copyAccountsGroupOptionsForEdit = computed(() => {
 
 const groups = ref<AdminGroup[]>([]);
 const loading = ref(false);
-type GroupUsageSummary = {
-  today_cost: number;
-  yesterday_cost: number;
-  total_cost: number;
-};
-
 const usageMap = ref<Map<number, GroupUsageSummary>>(new Map());
 const usageLoading = ref(false);
 const capacityMap = ref<
@@ -4981,6 +5045,7 @@ const createForm = reactive({
   i18n: {} as GroupI18n,
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  upstream_rate_multiplier: 1,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -5348,6 +5413,7 @@ const editForm = reactive({
   i18n: {} as GroupI18n,
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
+  upstream_rate_multiplier: 1,
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
@@ -5709,6 +5775,16 @@ const formatCost = (cost: number): string => {
 const formatUsd = (cost: number | null | undefined): string =>
   `$${formatCost(cost ?? 0)}`;
 
+const formatProfit = (profit: number): string =>
+  `${profit < 0 ? "-" : ""}$${formatCost(Math.abs(profit))}`;
+
+const getProfitClass = (profit: number): string =>
+  profit > 0
+    ? "text-emerald-600 dark:text-emerald-400"
+    : profit < 0
+      ? "text-red-600 dark:text-red-400"
+      : "text-gray-700 dark:text-gray-300";
+
 const getQuotaUsageClass = (
   used: number,
   limit: number | null | undefined,
@@ -5736,11 +5812,7 @@ const loadUsageSummary = async () => {
     const data = await adminAPI.groups.getUsageSummary();
     const map = new Map<number, GroupUsageSummary>();
     for (const item of data) {
-      map.set(item.group_id, {
-        today_cost: item.today_cost,
-        yesterday_cost: item.yesterday_cost,
-        total_cost: item.total_cost,
-      });
+      map.set(item.group_id, item);
     }
     usageMap.value = map;
   } catch (error) {
@@ -5826,6 +5898,7 @@ const closeCreateModal = () => {
   createForm.i18n = {};
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
+  createForm.upstream_rate_multiplier = 1;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
@@ -6146,6 +6219,7 @@ const handleEdit = async (group: AdminGroup) => {
   );
   editForm.platform = group.platform;
   editForm.rate_multiplier = group.rate_multiplier;
+  editForm.upstream_rate_multiplier = group.upstream_rate_multiplier ?? 1;
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";

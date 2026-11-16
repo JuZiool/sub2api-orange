@@ -23404,6 +23404,8 @@ type GroupMutation struct {
 	i18n                                    *domain.GroupI18n
 	rate_multiplier                         *float64
 	addrate_multiplier                      *float64
+	upstream_rate_multiplier                *float64
+	addupstream_rate_multiplier             *float64
 	peak_rate_enabled                       *bool
 	peak_start                              *string
 	peak_end                                *string
@@ -23917,6 +23919,62 @@ func (m *GroupMutation) AddedRateMultiplier() (r float64, exists bool) {
 func (m *GroupMutation) ResetRateMultiplier() {
 	m.rate_multiplier = nil
 	m.addrate_multiplier = nil
+}
+
+// SetUpstreamRateMultiplier sets the "upstream_rate_multiplier" field.
+func (m *GroupMutation) SetUpstreamRateMultiplier(f float64) {
+	m.upstream_rate_multiplier = &f
+	m.addupstream_rate_multiplier = nil
+}
+
+// UpstreamRateMultiplier returns the value of the "upstream_rate_multiplier" field in the mutation.
+func (m *GroupMutation) UpstreamRateMultiplier() (r float64, exists bool) {
+	v := m.upstream_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpstreamRateMultiplier returns the old "upstream_rate_multiplier" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldUpstreamRateMultiplier(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpstreamRateMultiplier is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpstreamRateMultiplier requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpstreamRateMultiplier: %w", err)
+	}
+	return oldValue.UpstreamRateMultiplier, nil
+}
+
+// AddUpstreamRateMultiplier adds f to the "upstream_rate_multiplier" field.
+func (m *GroupMutation) AddUpstreamRateMultiplier(f float64) {
+	if m.addupstream_rate_multiplier != nil {
+		*m.addupstream_rate_multiplier += f
+	} else {
+		m.addupstream_rate_multiplier = &f
+	}
+}
+
+// AddedUpstreamRateMultiplier returns the value that was added to the "upstream_rate_multiplier" field in this mutation.
+func (m *GroupMutation) AddedUpstreamRateMultiplier() (r float64, exists bool) {
+	v := m.addupstream_rate_multiplier
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetUpstreamRateMultiplier resets all changes to the "upstream_rate_multiplier" field.
+func (m *GroupMutation) ResetUpstreamRateMultiplier() {
+	m.upstream_rate_multiplier = nil
+	m.addupstream_rate_multiplier = nil
 }
 
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
@@ -27420,7 +27478,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 68)
+	fields := make([]string, 0, 70)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -27441,6 +27499,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.rate_multiplier != nil {
 		fields = append(fields, group.FieldRateMultiplier)
+	}
+	if m.upstream_rate_multiplier != nil {
+		fields = append(fields, group.FieldUpstreamRateMultiplier)
 	}
 	if m.peak_rate_enabled != nil {
 		fields = append(fields, group.FieldPeakRateEnabled)
@@ -27650,6 +27711,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.I18n()
 	case group.FieldRateMultiplier:
 		return m.RateMultiplier()
+	case group.FieldUpstreamRateMultiplier:
+		return m.UpstreamRateMultiplier()
 	case group.FieldPeakRateEnabled:
 		return m.PeakRateEnabled()
 	case group.FieldPeakStart:
@@ -27797,6 +27860,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldI18n(ctx)
 	case group.FieldRateMultiplier:
 		return m.OldRateMultiplier(ctx)
+	case group.FieldUpstreamRateMultiplier:
+		return m.OldUpstreamRateMultiplier(ctx)
 	case group.FieldPeakRateEnabled:
 		return m.OldPeakRateEnabled(ctx)
 	case group.FieldPeakStart:
@@ -27978,6 +28043,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRateMultiplier(v)
+		return nil
+	case group.FieldUpstreamRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpstreamRateMultiplier(v)
 		return nil
 	case group.FieldPeakRateEnabled:
 		v, ok := value.(bool)
@@ -28424,6 +28496,9 @@ func (m *GroupMutation) AddedFields() []string {
 	if m.addrate_multiplier != nil {
 		fields = append(fields, group.FieldRateMultiplier)
 	}
+	if m.addupstream_rate_multiplier != nil {
+		fields = append(fields, group.FieldUpstreamRateMultiplier)
+	}
 	if m.addpeak_rate_multiplier != nil {
 		fields = append(fields, group.FieldPeakRateMultiplier)
 	}
@@ -28512,6 +28587,8 @@ func (m *GroupMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case group.FieldRateMultiplier:
 		return m.AddedRateMultiplier()
+	case group.FieldUpstreamRateMultiplier:
+		return m.AddedUpstreamRateMultiplier()
 	case group.FieldPeakRateMultiplier:
 		return m.AddedPeakRateMultiplier()
 	case group.FieldDailyLimitUsd:
@@ -28579,6 +28656,13 @@ func (m *GroupMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddRateMultiplier(v)
+		return nil
+	case group.FieldUpstreamRateMultiplier:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddUpstreamRateMultiplier(v)
 		return nil
 	case group.FieldPeakRateMultiplier:
 		v, ok := value.(float64)
@@ -28944,6 +29028,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldRateMultiplier:
 		m.ResetRateMultiplier()
+		return nil
+	case group.FieldUpstreamRateMultiplier:
+		m.ResetUpstreamRateMultiplier()
 		return nil
 	case group.FieldPeakRateEnabled:
 		m.ResetPeakRateEnabled()

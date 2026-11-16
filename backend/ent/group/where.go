@@ -85,6 +85,11 @@ func RateMultiplier(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRateMultiplier, v))
 }
 
+// UpstreamRateMultiplier applies equality check predicate on the "upstream_rate_multiplier" field. It's identical to UpstreamRateMultiplierEQ.
+func UpstreamRateMultiplier(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldUpstreamRateMultiplier, v))
+}
+
 // PeakRateEnabled applies equality check predicate on the "peak_rate_enabled" field. It's identical to PeakRateEnabledEQ.
 func PeakRateEnabled(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldPeakRateEnabled, v))
@@ -658,6 +663,46 @@ func RateMultiplierLT(v float64) predicate.Group {
 // RateMultiplierLTE applies the LTE predicate on the "rate_multiplier" field.
 func RateMultiplierLTE(v float64) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRateMultiplier, v))
+}
+
+// UpstreamRateMultiplierEQ applies the EQ predicate on the "upstream_rate_multiplier" field.
+func UpstreamRateMultiplierEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldUpstreamRateMultiplier, v))
+}
+
+// UpstreamRateMultiplierNEQ applies the NEQ predicate on the "upstream_rate_multiplier" field.
+func UpstreamRateMultiplierNEQ(v float64) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldUpstreamRateMultiplier, v))
+}
+
+// UpstreamRateMultiplierIn applies the In predicate on the "upstream_rate_multiplier" field.
+func UpstreamRateMultiplierIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldUpstreamRateMultiplier, vs...))
+}
+
+// UpstreamRateMultiplierNotIn applies the NotIn predicate on the "upstream_rate_multiplier" field.
+func UpstreamRateMultiplierNotIn(vs ...float64) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldUpstreamRateMultiplier, vs...))
+}
+
+// UpstreamRateMultiplierGT applies the GT predicate on the "upstream_rate_multiplier" field.
+func UpstreamRateMultiplierGT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldUpstreamRateMultiplier, v))
+}
+
+// UpstreamRateMultiplierGTE applies the GTE predicate on the "upstream_rate_multiplier" field.
+func UpstreamRateMultiplierGTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldUpstreamRateMultiplier, v))
+}
+
+// UpstreamRateMultiplierLT applies the LT predicate on the "upstream_rate_multiplier" field.
+func UpstreamRateMultiplierLT(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldUpstreamRateMultiplier, v))
+}
+
+// UpstreamRateMultiplierLTE applies the LTE predicate on the "upstream_rate_multiplier" field.
+func UpstreamRateMultiplierLTE(v float64) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldUpstreamRateMultiplier, v))
 }
 
 // PeakRateEnabledEQ applies the EQ predicate on the "peak_rate_enabled" field.

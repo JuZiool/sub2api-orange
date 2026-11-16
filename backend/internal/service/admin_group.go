@@ -401,6 +401,13 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 	if input.RateMultiplier <= 0 {
 		return nil, errors.New("rate_multiplier must be > 0")
 	}
+	upstreamRateMultiplier := 1.0
+	if input.UpstreamRateMultiplier != nil {
+		if *input.UpstreamRateMultiplier < 0 {
+			return nil, errors.New("upstream_rate_multiplier must be >= 0")
+		}
+		upstreamRateMultiplier = *input.UpstreamRateMultiplier
+	}
 	i18n, err := normalizeGroupI18n(input.I18n)
 	if err != nil {
 		return nil, err
@@ -585,6 +592,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		I18n:                            i18n,
 		Platform:                        platform,
 		RateMultiplier:                  input.RateMultiplier,
+		UpstreamRateMultiplier:          upstreamRateMultiplier,
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
@@ -811,6 +819,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, errors.New("rate_multiplier must be > 0")
 		}
 		group.RateMultiplier = *input.RateMultiplier
+	}
+	if input.UpstreamRateMultiplier != nil {
+		if *input.UpstreamRateMultiplier < 0 {
+			return nil, errors.New("upstream_rate_multiplier must be >= 0")
+		}
+		group.UpstreamRateMultiplier = *input.UpstreamRateMultiplier
 	}
 	if input.IsExclusive != nil {
 		group.IsExclusive = *input.IsExclusive

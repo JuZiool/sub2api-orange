@@ -50,3 +50,16 @@ func TestMigration223TracksConfiguredTimezone(t *testing.T) {
 	require.Contains(t, sql, "CREATE OR REPLACE FUNCTION invalidate_group_usage_rollup_state")
 	require.Contains(t, sql, "CREATE OR REPLACE FUNCTION invalidate_group_usage_rollup_state_after_insert")
 }
+
+func TestMigration9009SupportsLegacyRollupSchema(t *testing.T) {
+	content, err := FS.ReadFile("9009_group_profit_tracking.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "ADD COLUMN IF NOT EXISTS upstream_rate_multiplier")
+	require.Contains(t, sql, "to_regclass('public.usage_group_daily_rollups') IS NULL")
+	require.Contains(t, sql, "ADD COLUMN IF NOT EXISTS total_cost")
+	require.Contains(t, sql, "IF NOT total_cost_exists")
+	require.Contains(t, sql, "usage_logs_group_rollup_invalidate_total_cost_update")
+	require.Contains(t, sql, "EXECUTE FUNCTION public.invalidate_group_usage_rollup_state()")
+}

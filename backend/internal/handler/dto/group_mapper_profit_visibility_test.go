@@ -18,14 +18,15 @@ var profitControlJSONFields = []string{
 
 func profitControlServiceGroup() *service.Group {
 	return &service.Group{
-		ID:                   7,
-		Name:                 "profit-gated",
-		Platform:             service.PlatformAnthropic,
-		RateMultiplier:       2.0,
-		Status:               service.StatusActive,
-		ProfitControlEnabled: true,
-		ProfitMinMargin:      0.3,
-		ProfitSafetyBuffer:   0.05,
+		ID:                     7,
+		Name:                   "profit-gated",
+		Platform:               service.PlatformAnthropic,
+		RateMultiplier:         2.0,
+		UpstreamRateMultiplier: 1.75,
+		Status:                 service.StatusActive,
+		ProfitControlEnabled:   true,
+		ProfitMinMargin:        0.3,
+		ProfitSafetyBuffer:     0.05,
 	}
 }
 
@@ -57,6 +58,9 @@ func TestGroupFromServiceOmitsProfitControl(t *testing.T) {
 		if _, ok := fields["rate_multiplier"]; !ok {
 			t.Errorf("%s: 应仍返回 rate_multiplier", name)
 		}
+		if _, ok := fields["upstream_rate_multiplier"]; ok {
+			t.Errorf("%s: 普通用户 DTO 不得包含 upstream_rate_multiplier", name)
+		}
 	}
 }
 
@@ -67,6 +71,9 @@ func TestGroupFromServiceAdminIncludesProfitControl(t *testing.T) {
 		t.Fatalf("管理员 DTO 未透传利润控制配置: %+v", admin)
 	}
 	fields := marshalToMap(t, admin)
+	if got := fields["upstream_rate_multiplier"]; got != 1.75 {
+		t.Errorf("管理员 DTO 的 upstream_rate_multiplier = %v, want 1.75", got)
+	}
 	for _, f := range profitControlJSONFields {
 		if _, ok := fields[f]; !ok {
 			t.Errorf("管理员 DTO 应包含 %q", f)

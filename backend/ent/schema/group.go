@@ -52,6 +52,10 @@ func (Group) Fields() []ent.Field {
 		field.Float("rate_multiplier").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0),
+		field.Float("upstream_rate_multiplier").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(1.0).
+			Comment("Orange 特有：仅用于分组利润统计的上游成本倍率"),
 		// 高峰时段倍率（added by migration 158）
 		field.Bool("peak_rate_enabled").
 			Default(false).

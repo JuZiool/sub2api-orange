@@ -30,6 +30,8 @@ const (
 	FieldI18n = "i18n"
 	// FieldRateMultiplier holds the string denoting the rate_multiplier field in the database.
 	FieldRateMultiplier = "rate_multiplier"
+	// FieldUpstreamRateMultiplier holds the string denoting the upstream_rate_multiplier field in the database.
+	FieldUpstreamRateMultiplier = "upstream_rate_multiplier"
 	// FieldPeakRateEnabled holds the string denoting the peak_rate_enabled field in the database.
 	FieldPeakRateEnabled = "peak_rate_enabled"
 	// FieldPeakStart holds the string denoting the peak_start field in the database.
@@ -245,6 +247,7 @@ var Columns = []string{
 	FieldDescription,
 	FieldI18n,
 	FieldRateMultiplier,
+	FieldUpstreamRateMultiplier,
 	FieldPeakRateEnabled,
 	FieldPeakStart,
 	FieldPeakEnd,
@@ -348,6 +351,8 @@ var (
 	DefaultI18n domain.GroupI18n
 	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
 	DefaultRateMultiplier float64
+	// DefaultUpstreamRateMultiplier holds the default value on creation for the "upstream_rate_multiplier" field.
+	DefaultUpstreamRateMultiplier float64
 	// DefaultPeakRateEnabled holds the default value on creation for the "peak_rate_enabled" field.
 	DefaultPeakRateEnabled bool
 	// DefaultPeakStart holds the default value on creation for the "peak_start" field.
@@ -496,6 +501,11 @@ func ByDescription(opts ...sql.OrderTermOption) OrderOption {
 // ByRateMultiplier orders the results by the rate_multiplier field.
 func ByRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRateMultiplier, opts...).ToFunc()
+}
+
+// ByUpstreamRateMultiplier orders the results by the upstream_rate_multiplier field.
+func ByUpstreamRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUpstreamRateMultiplier, opts...).ToFunc()
 }
 
 // ByPeakRateEnabled orders the results by the peak_rate_enabled field.

@@ -43,6 +43,11 @@ const messages: Record<string, string> = {
   'admin.groups.columns.accounts': 'Accounts',
   'admin.groups.columns.capacity': 'Capacity',
   'admin.groups.columns.usage': 'Usage',
+  'admin.groups.columns.profit': 'Profit',
+  'admin.groups.profitToday': 'Today',
+  'admin.groups.profitYesterday': 'Yesterday',
+  'admin.groups.profitTotal': 'Total',
+  'admin.groups.profitBreakdown': 'Income {income}, upstream cost {cost}',
   'admin.groups.columns.status': 'Status',
   'admin.groups.columns.actions': 'Actions',
   'admin.groups.usageToday': 'Today',
@@ -104,6 +109,7 @@ const createGroup = (overrides: Partial<AdminGroup> = {}): AdminGroup => ({
   description: null,
   platform: 'anthropic',
   rate_multiplier: 1,
+  upstream_rate_multiplier: 1,
   rpm_limit: 0,
   is_exclusive: false,
   status: 'active',
@@ -162,6 +168,9 @@ const DataTableStub = {
       <div data-test="rows">{{ data.map((row) => row.name).join(',') }}</div>
       <div v-if="data.length" data-test="usage-cell">
         <slot name="cell-usage" :row="data[0]" />
+      </div>
+      <div v-if="data.length" data-test="profit-cell">
+        <slot name="cell-profit" :row="data[0]" />
       </div>
     </div>
   `,
@@ -299,6 +308,7 @@ describe('admin GroupsView column settings', () => {
       'account_count',
       'capacity',
       'usage',
+      'profit',
       'status',
       'actions',
     ])
@@ -323,6 +333,7 @@ describe('admin GroupsView column settings', () => {
       'rate_multiplier',
       'is_exclusive',
       'account_count',
+      'profit',
       'status',
       'actions',
     ])
@@ -342,6 +353,7 @@ describe('admin GroupsView column settings', () => {
       'is_exclusive',
       'account_count',
       'capacity',
+      'profit',
       'status',
       'actions',
     ])
@@ -365,6 +377,7 @@ describe('admin GroupsView column settings', () => {
       'is_exclusive',
       'account_count',
       'capacity',
+      'profit',
       'status',
       'actions',
     ])
@@ -389,6 +402,7 @@ describe('admin GroupsView column settings', () => {
       'account_count',
       'capacity',
       'usage',
+      'profit',
       'status',
       'actions',
     ])
@@ -398,7 +412,7 @@ describe('admin GroupsView column settings', () => {
   it('skips usage and capacity fetches until consuming columns are shown', async () => {
     localStorage.setItem(
       'group-hidden-columns',
-      JSON.stringify(['billing_type', 'usage', 'capacity']),
+      JSON.stringify(['billing_type', 'usage', 'profit', 'capacity']),
     )
 
     const wrapper = await mountView()
@@ -419,7 +433,18 @@ describe('admin GroupsView column settings', () => {
 
   it('renders yesterday usage between today and total', async () => {
     getUsageSummary.mockResolvedValue([
-      { group_id: 1, today_cost: 1.25, yesterday_cost: 2.5, total_cost: 9.75 },
+      {
+        group_id: 1,
+        today_cost: 1.25,
+        yesterday_cost: 2.5,
+        total_cost: 9.75,
+        today_upstream_cost: 0.75,
+        yesterday_upstream_cost: 1.5,
+        total_upstream_cost: 6.25,
+        today_profit: 0.5,
+        yesterday_profit: 1,
+        total_profit: 3.5,
+      },
     ])
 
     const wrapper = await mountView()
@@ -430,5 +455,29 @@ describe('admin GroupsView column settings', () => {
     expect(text).toContain('Total$9.75')
     expect(text.indexOf('Today')).toBeLessThan(text.indexOf('Yesterday'))
     expect(text.indexOf('Yesterday')).toBeLessThan(text.indexOf('Total'))
+  })
+
+  it('renders profit summaries in their own column', async () => {
+    getUsageSummary.mockResolvedValue([
+      {
+        group_id: 1,
+        today_cost: 1.25,
+        yesterday_cost: 2.5,
+        total_cost: 9.75,
+        today_upstream_cost: 0.75,
+        yesterday_upstream_cost: 3,
+        total_upstream_cost: 8.5,
+        today_profit: 0.5,
+        yesterday_profit: -0.5,
+        total_profit: 1.25,
+      },
+    ])
+
+    const wrapper = await mountView()
+    const text = wrapper.get('[data-test="profit-cell"]').text()
+
+    expect(text).toContain('Today$0.50')
+    expect(text).toContain('Yesterday-$0.50')
+    expect(text).toContain('Total$1.25')
   })
 })
