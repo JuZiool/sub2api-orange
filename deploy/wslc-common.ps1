@@ -240,7 +240,11 @@ function Backup-OrangeExistingData {
     $backupDir = Join-Path $StateDirectory ('backups/' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
     [System.IO.Directory]::CreateDirectory($backupDir) | Out-Null
     $archive = Join-Path $backupDir 'existing-data.tar'
-    & tar -cf $archive -C $DeployDirectory data postgres_data redis_data .env
+    # 与 wslc-build.ps1 同理：必须用 Windows 自带的 bsdtar。Git for Windows 的
+    # tar.exe 会把 "D:\..." 当成远程主机（tar: Cannot connect to D: resolve failed）。
+    $systemTar = Join-Path $env:SystemRoot 'System32\tar.exe'
+    if (-not (Test-Path -LiteralPath $systemTar)) { throw "未找到 Windows 自带 tar：$systemTar" }
+    & $systemTar -cf $archive -C $DeployDirectory data postgres_data redis_data .env
     if ($LASTEXITCODE -ne 0) { throw '旧数据备份失败，未启动容器。' }
     Write-Host "已有测试数据已备份：$archive"
     return $archive
