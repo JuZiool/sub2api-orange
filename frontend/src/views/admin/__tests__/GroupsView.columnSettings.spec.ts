@@ -164,6 +164,9 @@ const DataTableStub = {
       <div v-if="data.length" data-test="usage-cell">
         <slot name="cell-usage" :row="data[0]" />
       </div>
+      <div v-if="data.length" data-test="profit-cell">
+        <slot name="cell-profit" :row="data[0]" />
+      </div>
     </div>
   `,
 }
@@ -301,6 +304,7 @@ describe('admin GroupsView column settings', () => {
       'account_count',
       'capacity',
       'usage',
+      'profit',
       'status',
       'actions',
     ])
@@ -326,6 +330,7 @@ describe('admin GroupsView column settings', () => {
       'upstream_multiplier',
       'is_exclusive',
       'account_count',
+      'profit',
       'status',
       'actions',
     ])
@@ -346,6 +351,7 @@ describe('admin GroupsView column settings', () => {
       'is_exclusive',
       'account_count',
       'capacity',
+      'profit',
       'status',
       'actions',
     ])
@@ -370,6 +376,7 @@ describe('admin GroupsView column settings', () => {
       'is_exclusive',
       'account_count',
       'capacity',
+      'profit',
       'status',
       'actions',
     ])
@@ -395,6 +402,7 @@ describe('admin GroupsView column settings', () => {
       'account_count',
       'capacity',
       'usage',
+      'profit',
       'status',
       'actions',
     ])
@@ -455,9 +463,13 @@ describe('admin GroupsView column settings', () => {
     ])
 
     const wrapper = await mountView()
-    const text = wrapper.get('[data-test="usage-cell"]').text()
+    const text = wrapper.get('[data-test="profit-cell"]').text()
 
-    expect(text).toContain('Profit$1.95')
-    expect(text).not.toContain('Profit$0.00')
+    // 今日/昨日/累计三行都要渲染，且不能用 0 兜底。
+    expect(text).toContain('Today$0.25')
+    expect(text).toContain('Yesterday$0.50')
+    expect(text).toContain('Total$1.95')
+    expect(text.indexOf('Today')).toBeLessThan(text.indexOf('Yesterday'))
+    expect(text.indexOf('Yesterday')).toBeLessThan(text.indexOf('Total'))
   })
 })

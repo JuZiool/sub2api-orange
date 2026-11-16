@@ -879,6 +879,7 @@ export default {
         accounts: '账号数',
         capacity: '容量',
         usage: '用量',
+        profit: '利润',
         status: '状态',
         actions: '操作',
         billingType: '计费类型',

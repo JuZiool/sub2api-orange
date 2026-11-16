@@ -886,6 +886,7 @@ export default {
         accounts: 'Accounts',
         capacity: 'Capacity',
         usage: 'Usage',
+        profit: 'Profit',
         status: 'Status',
         actions: 'Actions',
         billingType: 'Billing Type',

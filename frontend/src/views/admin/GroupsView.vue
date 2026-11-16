@@ -371,22 +371,24 @@
                   }}</span
                 >
               </div>
-              <!-- Orange 特有：利润 = 收入 - 成本（成本 = 官方原价 * 上游倍率）。
-                   负利润标红，方便一眼看出亏本分组。 -->
-              <div class="text-gray-500 dark:text-gray-400">
+            </div>
+          </template>
+
+          <!-- Orange 特有：独立利润列 = 收入 - 成本（成本 = 官方原价 * 上游倍率）。
+               今日/昨日/累计三行与「用量」列对齐；负利润标红。 -->
+          <template #cell-profit="{ row }">
+            <div v-if="usageLoading" class="text-xs text-gray-400">—</div>
+            <div v-else class="space-y-0.5 text-xs">
+              <div
+                v-for="entry in profitCells(row.id)"
+                :key="entry.key"
+                class="text-gray-500 dark:text-gray-400"
+              >
                 <span class="text-gray-400 dark:text-gray-500">{{
-                  t("admin.groups.usageProfit")
+                  entry.label
                 }}</span>
-                <span
-                  class="ml-1 font-medium"
-                  :class="
-                    (usageMap.get(row.id)?.total_profit ?? 0) < 0
-                      ? 'text-red-600 dark:text-red-400'
-                      : 'text-emerald-600 dark:text-emerald-400'
-                  "
-                  >${{
-                    formatCost(usageMap.get(row.id)?.total_profit ?? 0)
-                  }}</span
+                <span class="ml-1 font-medium" :class="entry.className"
+                  >${{ formatCost(entry.value) }}</span
                 >
               </div>
             </div>
@@ -4575,6 +4577,7 @@ const allColumns = computed<Column[]>(() => {
     basic[3],
     { key: "capacity", label: t("admin.groups.columns.capacity"), sortable: false },
     { key: "usage", label: t("admin.groups.columns.usage"), sortable: false },
+    { key: "profit", label: t("admin.groups.columns.profit"), sortable: false },
     ...basic.slice(4),
   ];
 });
@@ -5772,6 +5775,28 @@ const formatCost = (cost: number): string => {
 
 const formatUsd = (cost: number | null | undefined): string =>
   `$${formatCost(cost ?? 0)}`;
+
+// 利润列的三行（今日/昨日/累计）。负利润标红，正数标绿，零值用中性色，
+// 避免满屏绿色把真正的亏损掩盖掉。
+const profitCells = (groupId: number) => {
+  const usage = usageMap.value.get(groupId);
+  const cells = [
+    { key: "today", label: t("admin.groups.usageToday"), value: usage?.today_profit },
+    {
+      key: "yesterday",
+      label: t("admin.groups.usageYesterday"),
+      value: usage?.yesterday_profit,
+    },
+    { key: "total", label: t("admin.groups.usageTotal"), value: usage?.total_profit },
+  ];
+  return cells.map((cell) => {
+    const value = cell.value ?? 0;
+    let className = "text-gray-700 dark:text-gray-300";
+    if (value < 0) className = "text-red-600 dark:text-red-400";
+    else if (value > 0) className = "text-emerald-600 dark:text-emerald-400";
+    return { ...cell, value, className };
+  });
+};
 
 const getQuotaUsageClass = (
   used: number,
