@@ -240,6 +240,7 @@ export default {
     addGroup: '添加分组',
     groupName: '倍率组 {number}',
     clearGroup: '清空本组',
+    confirmDeleteGroup: '再次点击删除',
     upstreamRate: '上游倍率',
     upstreamPlaceholder: '如 0.2',
     userRate: '给用户的倍率',

@@ -240,6 +240,7 @@ export default {
     addGroup: 'Add group',
     groupName: 'Rate group {number}',
     clearGroup: 'Clear group',
+    confirmDeleteGroup: 'Click again to delete',
     upstreamRate: 'Upstream rate',
     upstreamPlaceholder: 'e.g. 0.2',
     userRate: 'User rate',

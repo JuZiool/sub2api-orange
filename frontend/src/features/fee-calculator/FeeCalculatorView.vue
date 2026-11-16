@@ -90,9 +90,15 @@
               autocomplete="off"
               class="input min-w-0 flex-1 font-medium"
               :placeholder="t('rateCalculator.groupName', { number: group.index + 1 })"
+              @input="cancelPendingDelete(group.index)"
             />
-            <button type="button" class="btn btn-secondary shrink-0 px-2" @click="clearGroup(group.index)">
-              {{ t('rateCalculator.clearGroup') }}
+            <button
+              type="button"
+              class="btn shrink-0 px-2"
+              :class="pendingDeleteIndex === group.index ? 'btn-danger' : 'btn-secondary'"
+              @click="clearGroup(group.index)"
+            >
+              {{ t(pendingDeleteIndex === group.index ? 'rateCalculator.confirmDeleteGroup' : 'rateCalculator.clearGroup') }}
             </button>
           </div>
 
@@ -110,6 +116,7 @@
                 :placeholder="t('rateCalculator.upstreamPlaceholder')"
                 :aria-invalid="calculation.groups[group.index].costInvalid ? 'true' : undefined"
                 class="input w-full tabular-nums"
+                @input="cancelPendingDelete(group.index)"
               />
             </div>
             <div>
@@ -125,6 +132,7 @@
                 :placeholder="t('rateCalculator.userPlaceholder')"
                 :aria-invalid="calculation.groups[group.index].sellInvalid ? 'true' : undefined"
                 class="input w-full tabular-nums"
+                @input="cancelPendingDelete(group.index)"
               />
             </div>
           </div>
@@ -169,7 +177,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -178,6 +186,7 @@ import { calculateRates, formatCents } from './calculator'
 const STORAGE_KEY = 'rateCalc.shared.v2'
 const presets = [10, 20, 50, 100, 500, 1000]
 const { t } = useI18n()
+const pendingDeleteIndex = ref<number | null>(null)
 
 function createGroup(index: number) {
   return { index, name: '', cost: '', sell: '' }
@@ -232,11 +241,27 @@ function groupStatusText(index: number): string {
 }
 
 function clearGroup(index: number) {
+  if (pendingDeleteIndex.value === index) {
+    state.groups.splice(index, 1)
+    state.groups.forEach((group, nextIndex) => {
+      group.index = nextIndex
+    })
+    pendingDeleteIndex.value = null
+    return
+  }
+
+  pendingDeleteIndex.value = null
   state.groups[index].cost = ''
   state.groups[index].sell = ''
+  pendingDeleteIndex.value = index
+}
+
+function cancelPendingDelete(index: number) {
+  if (pendingDeleteIndex.value === index) pendingDeleteIndex.value = null
 }
 
 function addGroup() {
+  pendingDeleteIndex.value = null
   state.groups.push(createGroup(state.groups.length))
 }
 
@@ -249,6 +274,7 @@ function clearSaved() {
 }
 
 function resetAll() {
+  pendingDeleteIndex.value = null
   state.pay = ''
   state.remember = false
   state.groups.forEach((group) => {
