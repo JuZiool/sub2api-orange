@@ -267,6 +267,12 @@
             >
           </template>
 
+          <template #cell-upstream_rate_multiplier="{ value }">
+            <span class="text-sm text-gray-700 dark:text-gray-300"
+              >{{ value }}x</span
+            >
+          </template>
+
           <template #cell-is_exclusive="{ value }">
             <span :class="['badge', value ? 'badge-primary' : 'badge-gray']">
               {{
@@ -4581,6 +4587,7 @@ const allColumns = computed<Column[]>(() => {
     ...basic.slice(0, 3),
     { key: "billing_type", label: t("admin.groups.columns.billingType"), sortable: true },
     { key: "rate_multiplier", label: t("admin.groups.columns.rateMultiplier"), sortable: true },
+    { key: "upstream_rate_multiplier", label: t("admin.groups.columns.upstreamRateMultiplier"), sortable: true },
     { key: "is_exclusive", label: t("admin.groups.columns.type"), sortable: true },
     basic[3],
     { key: "capacity", label: t("admin.groups.columns.capacity"), sortable: false },

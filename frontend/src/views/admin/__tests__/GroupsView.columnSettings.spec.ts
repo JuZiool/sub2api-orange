@@ -39,6 +39,7 @@ const messages: Record<string, string> = {
   'admin.groups.columns.platform': 'Platform',
   'admin.groups.columns.billingType': 'Billing Type',
   'admin.groups.columns.rateMultiplier': 'Rate Multiplier',
+  'admin.groups.columns.upstreamRateMultiplier': 'Upstream Multiplier',
   'admin.groups.columns.type': 'Type',
   'admin.groups.columns.accounts': 'Accounts',
   'admin.groups.columns.capacity': 'Capacity',
@@ -172,6 +173,12 @@ const DataTableStub = {
       <div v-if="data.length" data-test="profit-cell">
         <slot name="cell-profit" :row="data[0]" />
       </div>
+      <div v-if="data.length" data-test="upstream-rate-multiplier-cell">
+        <slot
+          name="cell-upstream_rate_multiplier"
+          :value="data[0].upstream_rate_multiplier"
+        />
+      </div>
     </div>
   `,
 }
@@ -304,6 +311,7 @@ describe('admin GroupsView column settings', () => {
       'platform',
       'billing_type',
       'rate_multiplier',
+      'upstream_rate_multiplier',
       'is_exclusive',
       'account_count',
       'capacity',
@@ -331,6 +339,7 @@ describe('admin GroupsView column settings', () => {
       'platform',
       'billing_type',
       'rate_multiplier',
+      'upstream_rate_multiplier',
       'is_exclusive',
       'account_count',
       'profit',
@@ -350,6 +359,7 @@ describe('admin GroupsView column settings', () => {
       'platform',
       'billing_type',
       'rate_multiplier',
+      'upstream_rate_multiplier',
       'is_exclusive',
       'account_count',
       'capacity',
@@ -374,6 +384,7 @@ describe('admin GroupsView column settings', () => {
       'platform',
       'billing_type',
       'rate_multiplier',
+      'upstream_rate_multiplier',
       'is_exclusive',
       'account_count',
       'capacity',
@@ -398,6 +409,7 @@ describe('admin GroupsView column settings', () => {
       'platform',
       'billing_type',
       'rate_multiplier',
+      'upstream_rate_multiplier',
       'is_exclusive',
       'account_count',
       'capacity',
@@ -479,5 +491,12 @@ describe('admin GroupsView column settings', () => {
     expect(text).toContain('Today$0.50')
     expect(text).toContain('Yesterday-$0.50')
     expect(text).toContain('Total$1.25')
+  })
+
+  it('renders the upstream multiplier as its own column', async () => {
+    const wrapper = await mountView()
+
+    expect(columnKeys(wrapper)).toContain('upstream_rate_multiplier')
+    expect(wrapper.get('[data-test="upstream-rate-multiplier-cell"]').text()).toBe('1x')
   })
 })

@@ -874,6 +874,7 @@ export default {
         id: 'ID',
         platform: 'Platform',
         rateMultiplier: 'Rate Multiplier',
+        upstreamRateMultiplier: 'Upstream Multiplier',
         rpmOverride: 'RPM Override',
         rpmOverrideHint: 'Per-user RPM cap in this group; empty = group default; 0 = unlimited',
         rateDefault: 'default',
