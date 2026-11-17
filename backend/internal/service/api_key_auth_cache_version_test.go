@@ -2,6 +2,16 @@ package service
 
 import "testing"
 
+func TestAPIKeyService_RejectsV29AuthSnapshotWithoutUltrafastGroupChain(t *testing.T) {
+	svc := &APIKeyService{}
+	apiKey, used, err := svc.applyAuthCacheEntry("k-legacy-group-chain", &APIKeyAuthCacheEntry{
+		Snapshot: &APIKeyAuthSnapshot{Version: 29},
+	})
+	if err != nil || used || apiKey != nil {
+		t.Fatalf("expected v29 snapshot to be ignored, got key=%v used=%v err=%v", apiKey, used, err)
+	}
+}
+
 func TestAPIKeyService_RejectsV10AuthSnapshotWithoutModelAllowlist(t *testing.T) {
 	groupID := int64(9)
 	svc := &APIKeyService{}

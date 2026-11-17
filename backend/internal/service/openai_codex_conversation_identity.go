@@ -404,7 +404,7 @@ func prepareCodexConversationIdentity(c *gin.Context, routed *Account, body map[
 
 func (s *OpenAIGatewayService) scopeCodexRequestMetadataMap(c *gin.Context, routed *Account, body map[string]any) (bool, error) {
 	if !usesCodexConversationIdentity(routed) {
-		return applyCodexAccountIdentityClientMetadataMap(body, codexAccountIdentitySource(c, routed), getAPIKeyIDFromContext(c)), nil
+		return applyCodexAccountIdentityClientMetadataMap(body, codexAccountIdentitySource(c, routed), getAPIKeyIDFromContext(c), codexClientSessionID(c)), nil
 	}
 	return projectCodexConversationMetadataMap(c, routed, body, isOpenAIResponsesCompactPath(c))
 }
@@ -427,7 +427,7 @@ func projectCodexConversationMetadataMap(c *gin.Context, routed *Account, body m
 
 func (s *OpenAIGatewayService) scopeCodexRequestMetadataRaw(c *gin.Context, routed *Account, body []byte) ([]byte, bool, error) {
 	if !usesCodexConversationIdentity(routed) {
-		return applyCodexAccountIdentityClientMetadataRaw(body, codexAccountIdentitySource(c, routed), getAPIKeyIDFromContext(c))
+		return applyCodexAccountIdentityClientMetadataRaw(body, codexAccountIdentitySource(c, routed), getAPIKeyIDFromContext(c), codexClientSessionID(c))
 	}
 	return projectCodexConversationMetadataRaw(c, routed, body, isOpenAIResponsesCompactPath(c))
 }

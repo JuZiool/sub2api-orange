@@ -426,6 +426,7 @@ func createGroupUsageRollupTriggerTestSchema(t *testing.T, ctx context.Context, 
 			user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			group_id BIGINT REFERENCES groups(id) ON DELETE SET NULL,
 			actual_cost NUMERIC(20, 10) NOT NULL,
+			total_cost NUMERIC(20, 10) NOT NULL DEFAULT 0,
 			created_at TIMESTAMPTZ NOT NULL
 		);
 	`
@@ -436,6 +437,7 @@ func createGroupUsageRollupTriggerTestSchema(t *testing.T, ctx context.Context, 
 				user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 				group_id BIGINT REFERENCES groups(id) ON DELETE SET NULL,
 				actual_cost NUMERIC(20, 10) NOT NULL,
+				total_cost NUMERIC(20, 10) NOT NULL DEFAULT 0,
 				created_at TIMESTAMPTZ NOT NULL
 			) PARTITION BY RANGE (created_at);
 			CREATE TABLE usage_logs_default PARTITION OF usage_logs DEFAULT;
@@ -444,13 +446,17 @@ func createGroupUsageRollupTriggerTestSchema(t *testing.T, ctx context.Context, 
 
 	_, err = tx.ExecContext(ctx, `
 		CREATE TABLE users (id BIGINT PRIMARY KEY);
-		CREATE TABLE groups (id BIGINT PRIMARY KEY);
+		CREATE TABLE groups (
+			id BIGINT PRIMARY KEY,
+			upstream_rate_multiplier NUMERIC(10, 4) NOT NULL DEFAULT 1
+		);
 	`+usageLogsDDL)
 	require.NoError(t, err)
 
 	for _, migrationName := range []string{
 		"222_group_usage_daily_rollups.sql",
 		"223_group_usage_rollup_timezone.sql",
+		"251_group_usage_rollup_nonblocking_build.sql",
 	} {
 		migrationSQL, readErr := migrations.FS.ReadFile(migrationName)
 		require.NoError(t, readErr)
@@ -459,6 +465,21 @@ func createGroupUsageRollupTriggerTestSchema(t *testing.T, ctx context.Context, 
 			require.NoError(t, err)
 		}
 	}
+	// Orange 的 9009 固定引用 public；隔离 fixture 只补等价的利润列与成本更新触发器，
+	// 避免把真实迁移应用到共享测试数据库的 public 表。
+	_, err = tx.ExecContext(ctx, `
+		ALTER TABLE usage_group_daily_rollups
+			ADD COLUMN total_cost NUMERIC(20, 10) NOT NULL DEFAULT 0;
+		CREATE TRIGGER usage_logs_group_rollup_invalidate_total_cost_update
+		AFTER UPDATE OF total_cost ON usage_logs
+		FOR EACH ROW
+		WHEN (
+			OLD.total_cost IS DISTINCT FROM NEW.total_cost
+			AND (OLD.group_id IS NOT NULL OR NEW.group_id IS NOT NULL)
+		)
+		EXECUTE FUNCTION invalidate_group_usage_rollup_state();
+	`)
+	require.NoError(t, err)
 	require.NoError(t, tx.Commit())
 
 	return schema

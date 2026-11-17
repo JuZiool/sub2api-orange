@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 29 // v29: Orange group chain and require_privacy_set snapshot
+const apiKeyAuthSnapshotVersion = 30 // v30: Orange group chain, privacy and force_openai_ultrafast snapshot
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -451,6 +451,7 @@ func apiKeyAuthGroupSnapshotFromGroup(group *Group) *APIKeyAuthGroupSnapshot {
 		AllowMessagesDispatch:           group.AllowMessagesDispatch,
 		AllowLive:                       group.AllowLive,
 		ForceOpenAIFast:                 group.ForceOpenAIFast,
+		ForceOpenAIUltrafast:            group.ForceOpenAIUltrafast,
 		FreeOpenAIFast:                  group.FreeOpenAIFast,
 		DefaultMappedModel:              group.DefaultMappedModel,
 		MessagesDispatchModelConfig:     group.MessagesDispatchModelConfig,
@@ -580,6 +581,7 @@ func apiKeyAuthGroupFromSnapshot(snapshot *APIKeyAuthGroupSnapshot) *Group {
 		AllowMessagesDispatch:           snapshot.AllowMessagesDispatch,
 		AllowLive:                       snapshot.AllowLive,
 		ForceOpenAIFast:                 snapshot.ForceOpenAIFast,
+		ForceOpenAIUltrafast:            snapshot.ForceOpenAIUltrafast,
 		FreeOpenAIFast:                  snapshot.FreeOpenAIFast,
 		DefaultMappedModel:              snapshot.DefaultMappedModel,
 		MessagesDispatchModelConfig:     snapshot.MessagesDispatchModelConfig,

@@ -79,7 +79,7 @@ func TestAPIKeyAuthSnapshotRequirePrivacySetRoundtrip(t *testing.T) {
 	require.True(t, materialized.Group.RequirePrivacySet)
 }
 
-// Orange 聚合链与官方 privacy 配置共用 v29 认证快照，主组和后组须各自保真。
+// Orange 聚合链与官方 privacy 配置共用认证快照，主组和后组须各自保真。
 func TestAPIKeyAuthSnapshotGroupChainRequirePrivacySetRoundtrip(t *testing.T) {
 	for _, tc := range []struct {
 		name            string
@@ -107,7 +107,6 @@ func TestAPIKeyAuthSnapshotGroupChainRequirePrivacySetRoundtrip(t *testing.T) {
 			var cached APIKeyAuthCacheEntry
 			require.NoError(t, json.Unmarshal(payload, &cached))
 			require.NotNil(t, cached.Snapshot)
-			require.Equal(t, 29, cached.Snapshot.Version)
 			require.Equal(t, apiKeyAuthSnapshotVersion, cached.Snapshot.Version)
 			materialized, used, err := svc.applyAuthCacheEntry(apiKey.Key, &cached)
 			require.NoError(t, err)
