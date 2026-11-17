@@ -126,6 +126,20 @@ func (_c *GroupCreate) SetNillableUpstreamRateMultiplier(v *float64) *GroupCreat
 	return _c
 }
 
+// SetFeeCalculatorSyncEnabled sets the "fee_calculator_sync_enabled" field.
+func (_c *GroupCreate) SetFeeCalculatorSyncEnabled(v bool) *GroupCreate {
+	_c.mutation.SetFeeCalculatorSyncEnabled(v)
+	return _c
+}
+
+// SetNillableFeeCalculatorSyncEnabled sets the "fee_calculator_sync_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableFeeCalculatorSyncEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetFeeCalculatorSyncEnabled(*v)
+	}
+	return _c
+}
+
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
 func (_c *GroupCreate) SetPeakRateEnabled(v bool) *GroupCreate {
 	_c.mutation.SetPeakRateEnabled(v)
@@ -1128,6 +1142,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultUpstreamRateMultiplier
 		_c.mutation.SetUpstreamRateMultiplier(v)
 	}
+	if _, ok := _c.mutation.FeeCalculatorSyncEnabled(); !ok {
+		v := group.DefaultFeeCalculatorSyncEnabled
+		_c.mutation.SetFeeCalculatorSyncEnabled(v)
+	}
 	if _, ok := _c.mutation.PeakRateEnabled(); !ok {
 		v := group.DefaultPeakRateEnabled
 		_c.mutation.SetPeakRateEnabled(v)
@@ -1327,6 +1345,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.UpstreamRateMultiplier(); !ok {
 		return &ValidationError{Name: "upstream_rate_multiplier", err: errors.New(`ent: missing required field "Group.upstream_rate_multiplier"`)}
+	}
+	if _, ok := _c.mutation.FeeCalculatorSyncEnabled(); !ok {
+		return &ValidationError{Name: "fee_calculator_sync_enabled", err: errors.New(`ent: missing required field "Group.fee_calculator_sync_enabled"`)}
 	}
 	if _, ok := _c.mutation.PeakRateEnabled(); !ok {
 		return &ValidationError{Name: "peak_rate_enabled", err: errors.New(`ent: missing required field "Group.peak_rate_enabled"`)}
@@ -1580,6 +1601,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.UpstreamRateMultiplier(); ok {
 		_spec.SetField(group.FieldUpstreamRateMultiplier, field.TypeFloat64, value)
 		_node.UpstreamRateMultiplier = value
+	}
+	if value, ok := _c.mutation.FeeCalculatorSyncEnabled(); ok {
+		_spec.SetField(group.FieldFeeCalculatorSyncEnabled, field.TypeBool, value)
+		_node.FeeCalculatorSyncEnabled = value
 	}
 	if value, ok := _c.mutation.PeakRateEnabled(); ok {
 		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
@@ -2110,6 +2135,18 @@ func (u *GroupUpsert) UpdateUpstreamRateMultiplier() *GroupUpsert {
 // AddUpstreamRateMultiplier adds v to the "upstream_rate_multiplier" field.
 func (u *GroupUpsert) AddUpstreamRateMultiplier(v float64) *GroupUpsert {
 	u.Add(group.FieldUpstreamRateMultiplier, v)
+	return u
+}
+
+// SetFeeCalculatorSyncEnabled sets the "fee_calculator_sync_enabled" field.
+func (u *GroupUpsert) SetFeeCalculatorSyncEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldFeeCalculatorSyncEnabled, v)
+	return u
+}
+
+// UpdateFeeCalculatorSyncEnabled sets the "fee_calculator_sync_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateFeeCalculatorSyncEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldFeeCalculatorSyncEnabled)
 	return u
 }
 
@@ -3298,6 +3335,20 @@ func (u *GroupUpsertOne) AddUpstreamRateMultiplier(v float64) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateUpstreamRateMultiplier() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateUpstreamRateMultiplier()
+	})
+}
+
+// SetFeeCalculatorSyncEnabled sets the "fee_calculator_sync_enabled" field.
+func (u *GroupUpsertOne) SetFeeCalculatorSyncEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetFeeCalculatorSyncEnabled(v)
+	})
+}
+
+// UpdateFeeCalculatorSyncEnabled sets the "fee_calculator_sync_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateFeeCalculatorSyncEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateFeeCalculatorSyncEnabled()
 	})
 }
 
@@ -4821,6 +4872,20 @@ func (u *GroupUpsertBulk) AddUpstreamRateMultiplier(v float64) *GroupUpsertBulk 
 func (u *GroupUpsertBulk) UpdateUpstreamRateMultiplier() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateUpstreamRateMultiplier()
+	})
+}
+
+// SetFeeCalculatorSyncEnabled sets the "fee_calculator_sync_enabled" field.
+func (u *GroupUpsertBulk) SetFeeCalculatorSyncEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetFeeCalculatorSyncEnabled(v)
+	})
+}
+
+// UpdateFeeCalculatorSyncEnabled sets the "fee_calculator_sync_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateFeeCalculatorSyncEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateFeeCalculatorSyncEnabled()
 	})
 }
 

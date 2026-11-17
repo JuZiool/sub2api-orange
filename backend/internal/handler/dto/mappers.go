@@ -171,6 +171,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 	out := &AdminGroup{
 		Group:                       groupFromServiceBase(g),
 		UpstreamRateMultiplier:      g.UpstreamRateMultiplier,
+		FeeCalculatorSyncEnabled:    g.FeeCalculatorSyncEnabled,
 		ForceOpenAIFast:             g.ForceOpenAIFast,
 		ForceOpenAIUltrafast:        g.ForceOpenAIUltrafast,
 		FreeOpenAIFast:              g.FreeOpenAIFast,

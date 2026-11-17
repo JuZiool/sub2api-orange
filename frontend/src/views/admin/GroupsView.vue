@@ -678,6 +678,16 @@
           <p class="input-hint">
             {{ t("admin.groups.form.upstreamRateMultiplierHint") }}
           </p>
+          <label class="mt-3 inline-flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              v-model="createForm.fee_calculator_sync_enabled"
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              data-testid="create-fee-calculator-sync"
+            />
+            {{ t("admin.groups.form.feeCalculatorSync") }}
+          </label>
+          <p class="input-hint">{{ t("admin.groups.form.feeCalculatorSyncHint") }}</p>
         </div>
         <ModelRateMultiplierEditor v-model="createForm.model_rate_multipliers" />
         <div>
@@ -2361,6 +2371,16 @@
           <p class="input-hint">
             {{ t("admin.groups.form.upstreamRateMultiplierHint") }}
           </p>
+          <label class="mt-3 inline-flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input
+              v-model="editForm.fee_calculator_sync_enabled"
+              type="checkbox"
+              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              data-testid="edit-fee-calculator-sync"
+            />
+            {{ t("admin.groups.form.feeCalculatorSync") }}
+          </label>
+          <p class="input-hint">{{ t("admin.groups.form.feeCalculatorSyncHint") }}</p>
         </div>
         <ModelRateMultiplierEditor v-model="editForm.model_rate_multipliers" />
         <div>
@@ -5079,6 +5099,7 @@ const createForm = reactive({
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
   upstream_rate_multiplier: 1,
+  fee_calculator_sync_enabled: false,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -5448,6 +5469,7 @@ const editForm = reactive({
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
   upstream_rate_multiplier: 1,
+  fee_calculator_sync_enabled: false,
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
@@ -5934,6 +5956,7 @@ const closeCreateModal = () => {
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
   createForm.upstream_rate_multiplier = 1;
+  createForm.fee_calculator_sync_enabled = false;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
@@ -6260,6 +6283,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.platform = group.platform;
   editForm.rate_multiplier = group.rate_multiplier;
   editForm.upstream_rate_multiplier = group.upstream_rate_multiplier ?? 1;
+  editForm.fee_calculator_sync_enabled = group.fee_calculator_sync_enabled === true;
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";

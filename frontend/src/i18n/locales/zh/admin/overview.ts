@@ -914,6 +914,8 @@ export default {
         rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
         upstreamRateMultiplier: '上游成本倍率',
         upstreamRateMultiplierHint: '用于利润统计，不影响用户计费；0 表示免费上游，默认 1.0',
+        feeCalculatorSync: '同步到费用计算器',
+        feeCalculatorSyncHint: '默认关闭；勾选并保存后，将本组名称、用户倍率和上游倍率同步到费用计算器。',
         rpmLimit: '每分钟请求数 (RPM)',
         rpmLimitPlaceholder: '0 表示不限制',
         rpmLimitHint: '每用户在本分组每分钟最大请求数，0 = 不限制；一旦设置即接管该用户的限流（覆盖用户级 rpm_limit）',

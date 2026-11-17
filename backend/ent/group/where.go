@@ -90,6 +90,11 @@ func UpstreamRateMultiplier(v float64) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldUpstreamRateMultiplier, v))
 }
 
+// FeeCalculatorSyncEnabled applies equality check predicate on the "fee_calculator_sync_enabled" field. It's identical to FeeCalculatorSyncEnabledEQ.
+func FeeCalculatorSyncEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldFeeCalculatorSyncEnabled, v))
+}
+
 // PeakRateEnabled applies equality check predicate on the "peak_rate_enabled" field. It's identical to PeakRateEnabledEQ.
 func PeakRateEnabled(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldPeakRateEnabled, v))
@@ -708,6 +713,16 @@ func UpstreamRateMultiplierLT(v float64) predicate.Group {
 // UpstreamRateMultiplierLTE applies the LTE predicate on the "upstream_rate_multiplier" field.
 func UpstreamRateMultiplierLTE(v float64) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldUpstreamRateMultiplier, v))
+}
+
+// FeeCalculatorSyncEnabledEQ applies the EQ predicate on the "fee_calculator_sync_enabled" field.
+func FeeCalculatorSyncEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldFeeCalculatorSyncEnabled, v))
+}
+
+// FeeCalculatorSyncEnabledNEQ applies the NEQ predicate on the "fee_calculator_sync_enabled" field.
+func FeeCalculatorSyncEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldFeeCalculatorSyncEnabled, v))
 }
 
 // PeakRateEnabledEQ applies the EQ predicate on the "peak_rate_enabled" field.

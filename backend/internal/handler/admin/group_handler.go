@@ -191,6 +191,7 @@ type CreateGroupRequest struct {
 	Platform                  string                        `json:"platform" binding:"omitempty,group_platform"`
 	RateMultiplier            float64                       `json:"rate_multiplier"`
 	UpstreamRateMultiplier    *float64                      `json:"upstream_rate_multiplier"`
+	FeeCalculatorSyncEnabled  bool                          `json:"fee_calculator_sync_enabled"`
 	IsExclusive               bool                          `json:"is_exclusive"`
 	SubscriptionType          string                        `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
 	DailyLimitUSD             optionalLimitField            `json:"daily_limit_usd"`
@@ -270,6 +271,7 @@ type UpdateGroupRequest struct {
 	Platform                  string                         `json:"platform" binding:"omitempty,group_platform"`
 	RateMultiplier            *float64                       `json:"rate_multiplier"`
 	UpstreamRateMultiplier    *float64                       `json:"upstream_rate_multiplier"`
+	FeeCalculatorSyncEnabled  *bool                          `json:"fee_calculator_sync_enabled"`
 	IsExclusive               *bool                          `json:"is_exclusive"`
 	Status                    string                         `json:"status" binding:"omitempty,oneof=active inactive"`
 	SubscriptionType          string                         `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
@@ -681,6 +683,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		Platform:                        req.Platform,
 		RateMultiplier:                  req.RateMultiplier,
 		UpstreamRateMultiplier:          req.UpstreamRateMultiplier,
+		FeeCalculatorSyncEnabled:        req.FeeCalculatorSyncEnabled,
 		IsExclusive:                     req.IsExclusive,
 		SubscriptionType:                req.SubscriptionType,
 		DailyLimitUSD:                   req.DailyLimitUSD.ToServiceInput(),
@@ -831,6 +834,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		Platform:                        req.Platform,
 		RateMultiplier:                  req.RateMultiplier,
 		UpstreamRateMultiplier:          req.UpstreamRateMultiplier,
+		FeeCalculatorSyncEnabled:        req.FeeCalculatorSyncEnabled,
 		IsExclusive:                     req.IsExclusive,
 		Status:                          req.Status,
 		SubscriptionType:                req.SubscriptionType,

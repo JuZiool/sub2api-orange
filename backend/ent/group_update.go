@@ -145,6 +145,20 @@ func (_u *GroupUpdate) AddUpstreamRateMultiplier(v float64) *GroupUpdate {
 	return _u
 }
 
+// SetFeeCalculatorSyncEnabled sets the "fee_calculator_sync_enabled" field.
+func (_u *GroupUpdate) SetFeeCalculatorSyncEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetFeeCalculatorSyncEnabled(v)
+	return _u
+}
+
+// SetNillableFeeCalculatorSyncEnabled sets the "fee_calculator_sync_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableFeeCalculatorSyncEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetFeeCalculatorSyncEnabled(*v)
+	}
+	return _u
+}
+
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
 func (_u *GroupUpdate) SetPeakRateEnabled(v bool) *GroupUpdate {
 	_u.mutation.SetPeakRateEnabled(v)
@@ -1699,6 +1713,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedUpstreamRateMultiplier(); ok {
 		_spec.AddField(group.FieldUpstreamRateMultiplier, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.FeeCalculatorSyncEnabled(); ok {
+		_spec.SetField(group.FieldFeeCalculatorSyncEnabled, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.PeakRateEnabled(); ok {
 		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)
 	}
@@ -2507,6 +2524,20 @@ func (_u *GroupUpdateOne) SetNillableUpstreamRateMultiplier(v *float64) *GroupUp
 // AddUpstreamRateMultiplier adds value to the "upstream_rate_multiplier" field.
 func (_u *GroupUpdateOne) AddUpstreamRateMultiplier(v float64) *GroupUpdateOne {
 	_u.mutation.AddUpstreamRateMultiplier(v)
+	return _u
+}
+
+// SetFeeCalculatorSyncEnabled sets the "fee_calculator_sync_enabled" field.
+func (_u *GroupUpdateOne) SetFeeCalculatorSyncEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetFeeCalculatorSyncEnabled(v)
+	return _u
+}
+
+// SetNillableFeeCalculatorSyncEnabled sets the "fee_calculator_sync_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableFeeCalculatorSyncEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetFeeCalculatorSyncEnabled(*v)
+	}
 	return _u
 }
 
@@ -4093,6 +4124,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedUpstreamRateMultiplier(); ok {
 		_spec.AddField(group.FieldUpstreamRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.FeeCalculatorSyncEnabled(); ok {
+		_spec.SetField(group.FieldFeeCalculatorSyncEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.PeakRateEnabled(); ok {
 		_spec.SetField(group.FieldPeakRateEnabled, field.TypeBool, value)

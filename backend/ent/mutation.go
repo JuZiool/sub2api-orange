@@ -23406,6 +23406,7 @@ type GroupMutation struct {
 	addrate_multiplier                      *float64
 	upstream_rate_multiplier                *float64
 	addupstream_rate_multiplier             *float64
+	fee_calculator_sync_enabled             *bool
 	peak_rate_enabled                       *bool
 	peak_start                              *string
 	peak_end                                *string
@@ -23976,6 +23977,42 @@ func (m *GroupMutation) AddedUpstreamRateMultiplier() (r float64, exists bool) {
 func (m *GroupMutation) ResetUpstreamRateMultiplier() {
 	m.upstream_rate_multiplier = nil
 	m.addupstream_rate_multiplier = nil
+}
+
+// SetFeeCalculatorSyncEnabled sets the "fee_calculator_sync_enabled" field.
+func (m *GroupMutation) SetFeeCalculatorSyncEnabled(b bool) {
+	m.fee_calculator_sync_enabled = &b
+}
+
+// FeeCalculatorSyncEnabled returns the value of the "fee_calculator_sync_enabled" field in the mutation.
+func (m *GroupMutation) FeeCalculatorSyncEnabled() (r bool, exists bool) {
+	v := m.fee_calculator_sync_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFeeCalculatorSyncEnabled returns the old "fee_calculator_sync_enabled" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldFeeCalculatorSyncEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFeeCalculatorSyncEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFeeCalculatorSyncEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFeeCalculatorSyncEnabled: %w", err)
+	}
+	return oldValue.FeeCalculatorSyncEnabled, nil
+}
+
+// ResetFeeCalculatorSyncEnabled resets all changes to the "fee_calculator_sync_enabled" field.
+func (m *GroupMutation) ResetFeeCalculatorSyncEnabled() {
+	m.fee_calculator_sync_enabled = nil
 }
 
 // SetPeakRateEnabled sets the "peak_rate_enabled" field.
@@ -27515,7 +27552,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 71)
+	fields := make([]string, 0, 72)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -27539,6 +27576,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.upstream_rate_multiplier != nil {
 		fields = append(fields, group.FieldUpstreamRateMultiplier)
+	}
+	if m.fee_calculator_sync_enabled != nil {
+		fields = append(fields, group.FieldFeeCalculatorSyncEnabled)
 	}
 	if m.peak_rate_enabled != nil {
 		fields = append(fields, group.FieldPeakRateEnabled)
@@ -27753,6 +27793,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.RateMultiplier()
 	case group.FieldUpstreamRateMultiplier:
 		return m.UpstreamRateMultiplier()
+	case group.FieldFeeCalculatorSyncEnabled:
+		return m.FeeCalculatorSyncEnabled()
 	case group.FieldPeakRateEnabled:
 		return m.PeakRateEnabled()
 	case group.FieldPeakStart:
@@ -27904,6 +27946,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldRateMultiplier(ctx)
 	case group.FieldUpstreamRateMultiplier:
 		return m.OldUpstreamRateMultiplier(ctx)
+	case group.FieldFeeCalculatorSyncEnabled:
+		return m.OldFeeCalculatorSyncEnabled(ctx)
 	case group.FieldPeakRateEnabled:
 		return m.OldPeakRateEnabled(ctx)
 	case group.FieldPeakStart:
@@ -28094,6 +28138,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetUpstreamRateMultiplier(v)
+		return nil
+	case group.FieldFeeCalculatorSyncEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFeeCalculatorSyncEnabled(v)
 		return nil
 	case group.FieldPeakRateEnabled:
 		v, ok := value.(bool)
@@ -29082,6 +29133,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldUpstreamRateMultiplier:
 		m.ResetUpstreamRateMultiplier()
+		return nil
+	case group.FieldFeeCalculatorSyncEnabled:
+		m.ResetFeeCalculatorSyncEnabled()
 		return nil
 	case group.FieldPeakRateEnabled:
 		m.ResetPeakRateEnabled()

@@ -932,6 +932,8 @@ export default {
         rateMultiplierHint: '1.0 = standard rate, 0.5 = half price, 2.0 = double',
         upstreamRateMultiplier: 'Upstream cost multiplier',
         upstreamRateMultiplierHint: 'Used for profit reporting only; 0 means free upstream. Defaults to 1.0.',
+        feeCalculatorSync: 'Sync to fee calculator',
+        feeCalculatorSyncHint: 'Off by default. Enable and save to sync this group’s name, user rate, and upstream rate to the fee calculator.',
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
         rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).',

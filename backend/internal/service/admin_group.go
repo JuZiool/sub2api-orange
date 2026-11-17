@@ -594,6 +594,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		Platform:                        platform,
 		RateMultiplier:                  input.RateMultiplier,
 		UpstreamRateMultiplier:          upstreamRateMultiplier,
+		FeeCalculatorSyncEnabled:        input.FeeCalculatorSyncEnabled,
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
@@ -827,6 +828,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, errors.New("upstream_rate_multiplier must be >= 0")
 		}
 		group.UpstreamRateMultiplier = *input.UpstreamRateMultiplier
+	}
+	if input.FeeCalculatorSyncEnabled != nil {
+		group.FeeCalculatorSyncEnabled = *input.FeeCalculatorSyncEnabled
 	}
 	if input.IsExclusive != nil {
 		group.IsExclusive = *input.IsExclusive

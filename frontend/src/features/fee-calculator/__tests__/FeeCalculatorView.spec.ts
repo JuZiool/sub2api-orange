@@ -21,7 +21,7 @@ const STORAGE_KEY = 'rateCalc.shared.v2'
 const mounted: VueWrapper[] = []
 
 function group(id: number, name: string, cost = 0.2, sell = 0.25) {
-  return { id, name, status: 'active', upstream_rate_multiplier: cost, rate_multiplier: sell }
+  return { id, name, status: 'active', upstream_rate_multiplier: cost, rate_multiplier: sell, fee_calculator_sync_enabled: true }
 }
 
 function deferred<T>() {
@@ -86,7 +86,7 @@ describe('FeeCalculatorView automatic group synchronization', () => {
     localStorage.clear()
   })
 
-  it('imports all groups automatically, keeps zero cost, and makes synchronized fields readonly', async () => {
+  it('imports opted-in groups automatically, keeps zero cost, and makes synchronized fields readonly', async () => {
     getAll.mockResolvedValue([group(10, 'Claude'), group(20, '免费组', 0, 1)])
     const wrapper = render()
     await flushPromises()
@@ -199,7 +199,7 @@ describe('FeeCalculatorView automatic group synchronization', () => {
     { id: 0, name: '无效ID', upstream_rate_multiplier: 0.2, rate_multiplier: 1 },
     { id: 10, name: '无穷值', upstream_rate_multiplier: Infinity, rate_multiplier: 1 },
   ])('rejects malformed group responses instead of assuming rates: $name', async (malformed) => {
-    getAll.mockResolvedValue([group(20, '有效组'), malformed])
+    getAll.mockResolvedValue([group(20, '有效组'), { ...malformed, fee_calculator_sync_enabled: true }])
     const wrapper = render()
     await flushPromises()
     await wrapper.get('#rate-calculator-pay').setValue('20')
@@ -341,5 +341,99 @@ describe('FeeCalculatorView automatic group synchronization', () => {
     expect(wrapper.get<HTMLInputElement>('#rate-calculator-pay').element.value).toBe('')
     expect(wrapper.get<HTMLInputElement>('input[type="checkbox"]').element.checked).toBe(false)
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
+  })
+
+  it('imports only groups with an explicitly true synchronization flag', async () => {
+    const { fee_calculator_sync_enabled: _flag, ...legacy } = group(30, '旧接口组')
+    getAll.mockResolvedValue([
+      group(10, '已勾选'),
+      { ...group(20, '未勾选'), fee_calculator_sync_enabled: false },
+      legacy,
+      { ...group(40, '字符串不是勾选'), fee_calculator_sync_enabled: 'true' },
+    ])
+    const wrapper = render()
+    await flushPromises()
+    expect(names(wrapper)).toEqual(['已勾选'])
+    await wrapper.get('#rate-calculator-pay').setValue('20')
+    expect(summaryAmount(wrapper)).toContain('16.00')
+  })
+
+  it('adds newly opted-in groups and removes unchecked automatic cards without changing manual entries', async () => {
+    getAll.mockResolvedValue([
+      group(10, '原同步组'),
+      { ...group(20, '待勾选组'), fee_calculator_sync_enabled: false },
+    ])
+    const wrapper = render()
+    await flushPromises()
+    await wrapper.get('#rate-calculator-pay').setValue('20')
+    await button(wrapper, '添加手动分组').trigger('click')
+    const manual = cards(wrapper)[1]
+    await field(manual, 'name').setValue('我的预算')
+    await field(manual, 'cost').setValue('0.1')
+    await field(manual, 'sell').setValue('0.5')
+
+    getAll.mockResolvedValue([
+      { ...group(10, '原同步组'), fee_calculator_sync_enabled: false },
+      group(20, '新勾选组', 0.3, 0.5),
+    ])
+    await button(wrapper, '刷新分组倍率').trigger('click')
+    await flushPromises()
+    expect(names(wrapper)).toEqual(['新勾选组', '我的预算'])
+    expect(field(cards(wrapper)[1], 'cost').element.value).toBe('0.1')
+    expect(field(cards(wrapper)[1], 'sell').element.value).toBe('0.5')
+    expect(summaryAmount(wrapper)).toContain('12.00')
+
+    await button(wrapper, '刷新分组倍率').trigger('click')
+    await flushPromises()
+    expect(names(wrapper)).toEqual(['新勾选组', '我的预算'])
+  })
+
+  it('clears previously imported cache when no group is opted in and preserves manual calculation', async () => {
+    save([
+      { groupId: 10, name: '旧版全部同步缓存', cost: '9', sell: '1' },
+      { name: '手动预算', cost: '0.2', sell: '0.25' },
+    ])
+    const { fee_calculator_sync_enabled: _flag, ...legacy } = group(20, '没有开关字段')
+    getAll.mockResolvedValue([
+      { ...group(10, '未勾选组'), fee_calculator_sync_enabled: false },
+      legacy,
+    ])
+    const wrapper = render()
+    await flushPromises()
+
+    expect(names(wrapper)).toEqual(['手动预算'])
+    expect(summaryAmount(wrapper)).toContain('16.00')
+    expect(wrapper.text()).toContain(translation('syncEmpty'))
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).rates).toEqual([
+      { name: '手动预算', cost: '0.2', sell: '0.25' },
+    ])
+  })
+
+  it('ignores missing or invalid multipliers on groups that are not opted in', async () => {
+    getAll.mockResolvedValue([
+      group(10, '正常勾选组'),
+      { id: 20, name: '未勾选且无倍率', fee_calculator_sync_enabled: false },
+      { id: 30, name: '无同步字段', upstream_rate_multiplier: Infinity, rate_multiplier: 0 },
+    ])
+    const wrapper = render()
+    await flushPromises()
+    await wrapper.get('#rate-calculator-pay').setValue('20')
+    expect(names(wrapper)).toEqual(['正常勾选组'])
+    expect(summaryAmount(wrapper)).toContain('16.00')
+    expect(wrapper.text()).not.toContain(translation('syncError'))
+  })
+
+  it('allows adding manual rates when all configured groups are unchecked', async () => {
+    getAll.mockResolvedValue([{ ...group(10, '未勾选'), fee_calculator_sync_enabled: false }])
+    const wrapper = render()
+    await flushPromises()
+    expect(names(wrapper)).toEqual([])
+    expect(wrapper.text()).toContain(translation('syncEmpty'))
+    await button(wrapper, '添加手动分组').trigger('click')
+    const manual = cards(wrapper)[0]
+    await field(manual, 'cost').setValue('0.2')
+    await field(manual, 'sell').setValue('0.25')
+    await wrapper.get('#rate-calculator-pay').setValue('20')
+    expect(summaryAmount(wrapper)).toContain('16.00')
   })
 })

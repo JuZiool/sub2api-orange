@@ -56,6 +56,9 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(1.0).
 			Comment("Orange 特有：仅用于分组利润统计的上游成本倍率"),
+		field.Bool("fee_calculator_sync_enabled").
+			Default(false).
+			Comment("Orange 特有：是否同步到费用计算器，默认关闭"),
 		// 高峰时段倍率（added by migration 158）
 		field.Bool("peak_rate_enabled").
 			Default(false).

@@ -95,12 +95,14 @@ func cloneGroupMessagesDispatchModelConfig(value OpenAIMessagesDispatchModelConf
 
 func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 	return &Group{
-		Name:                            duplicateGroupName(source.Name, 1),
-		Description:                     source.Description,
-		I18n:                            cloneGroupI18nForDuplicate(source.I18n),
-		Platform:                        source.Platform,
-		RateMultiplier:                  source.RateMultiplier,
-		UpstreamRateMultiplier:          source.UpstreamRateMultiplier,
+		Name:                   duplicateGroupName(source.Name, 1),
+		Description:            source.Description,
+		I18n:                   cloneGroupI18nForDuplicate(source.I18n),
+		Platform:               source.Platform,
+		RateMultiplier:         source.RateMultiplier,
+		UpstreamRateMultiplier: source.UpstreamRateMultiplier,
+		// 新复制的分组须重新勾选，不继承源分组的计算器同步授权。
+		FeeCalculatorSyncEnabled:        false,
 		PeakRateEnabled:                 source.PeakRateEnabled,
 		PeakStart:                       source.PeakStart,
 		PeakEnd:                         source.PeakEnd,

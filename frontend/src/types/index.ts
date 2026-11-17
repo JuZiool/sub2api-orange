@@ -648,6 +648,8 @@ export interface AdminGroup extends Group {
   free_openai_fast: boolean
   model_pricing: import('@/api/admin/channels').ChannelModelPricing[]
   upstream_rate_multiplier: number
+  // Orange：只有明确勾选的分组同步至费用计算器，旧响应缺失时视为关闭。
+  fee_calculator_sync_enabled?: boolean
   // 分组利润控制（openai/anthropic/gemini/grok/antigravity 分组可启用；margin/buffer 为小数存储）。
   // 仅管理员可见：与 rate_multiplier 相乘即可反推上游成本上限，不得下放到 Group。
   profit_control_enabled: boolean
@@ -839,6 +841,7 @@ export interface CreateGroupRequest {
   platform?: GroupPlatform
   rate_multiplier?: number
   upstream_rate_multiplier?: number
+  fee_calculator_sync_enabled?: boolean
   is_exclusive?: boolean
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
@@ -909,6 +912,7 @@ export interface UpdateGroupRequest {
   platform?: GroupPlatform
   rate_multiplier?: number
   upstream_rate_multiplier?: number
+  fee_calculator_sync_enabled?: boolean
   is_exclusive?: boolean
   status?: 'active' | 'inactive'
   subscription_type?: SubscriptionType

@@ -32,6 +32,8 @@ const (
 	FieldRateMultiplier = "rate_multiplier"
 	// FieldUpstreamRateMultiplier holds the string denoting the upstream_rate_multiplier field in the database.
 	FieldUpstreamRateMultiplier = "upstream_rate_multiplier"
+	// FieldFeeCalculatorSyncEnabled holds the string denoting the fee_calculator_sync_enabled field in the database.
+	FieldFeeCalculatorSyncEnabled = "fee_calculator_sync_enabled"
 	// FieldPeakRateEnabled holds the string denoting the peak_rate_enabled field in the database.
 	FieldPeakRateEnabled = "peak_rate_enabled"
 	// FieldPeakStart holds the string denoting the peak_start field in the database.
@@ -250,6 +252,7 @@ var Columns = []string{
 	FieldI18n,
 	FieldRateMultiplier,
 	FieldUpstreamRateMultiplier,
+	FieldFeeCalculatorSyncEnabled,
 	FieldPeakRateEnabled,
 	FieldPeakStart,
 	FieldPeakEnd,
@@ -356,6 +359,8 @@ var (
 	DefaultRateMultiplier float64
 	// DefaultUpstreamRateMultiplier holds the default value on creation for the "upstream_rate_multiplier" field.
 	DefaultUpstreamRateMultiplier float64
+	// DefaultFeeCalculatorSyncEnabled holds the default value on creation for the "fee_calculator_sync_enabled" field.
+	DefaultFeeCalculatorSyncEnabled bool
 	// DefaultPeakRateEnabled holds the default value on creation for the "peak_rate_enabled" field.
 	DefaultPeakRateEnabled bool
 	// DefaultPeakStart holds the default value on creation for the "peak_start" field.
@@ -511,6 +516,11 @@ func ByRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 // ByUpstreamRateMultiplier orders the results by the upstream_rate_multiplier field.
 func ByUpstreamRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUpstreamRateMultiplier, opts...).ToFunc()
+}
+
+// ByFeeCalculatorSyncEnabled orders the results by the fee_calculator_sync_enabled field.
+func ByFeeCalculatorSyncEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFeeCalculatorSyncEnabled, opts...).ToFunc()
 }
 
 // ByPeakRateEnabled orders the results by the peak_rate_enabled field.

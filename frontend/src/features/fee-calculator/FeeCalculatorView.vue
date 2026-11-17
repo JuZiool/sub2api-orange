@@ -212,7 +212,8 @@ const syncMessage = computed(() => {
   if (syncStatus.value === 'loading') return t('rateCalculator.syncLoading')
   if (syncStatus.value === 'error') return t('rateCalculator.syncError')
   if (syncStatus.value === 'manual') return t('rateCalculator.simpleModeManual')
-  return t('rateCalculator.syncSuccess', { count: state.groups.filter(group => group.groupId !== undefined).length })
+  const count = state.groups.filter(group => group.groupId !== undefined).length
+  return count > 0 ? t('rateCalculator.syncSuccess', { count }) : t('rateCalculator.syncEmpty')
 })
 let disposed = false
 let requestId = 0
@@ -394,11 +395,13 @@ async function syncGroups(): Promise<void> {
   syncStatus.value = 'loading'
   pendingSync = (async () => {
     try {
-      const groups = await getAll()
+      const response = await getAll()
       if (disposed || currentRequest !== requestId) return
+      if (!Array.isArray(response)) throw new Error('Invalid group response')
+      const groups = response.filter(group => group?.fee_calculator_sync_enabled === true)
       // Simple mode and incomplete responses must never silently become rate 1.
       const ids = new Set<number>()
-      if (!Array.isArray(groups) || !groups.every(group => {
+      if (!groups.every(group => {
         if (!group || !Number.isSafeInteger(group.id) || group.id <= 0 || ids.has(group.id)
           || typeof group.name !== 'string'
           || typeof group.upstream_rate_multiplier !== 'number' || !Number.isFinite(group.upstream_rate_multiplier)

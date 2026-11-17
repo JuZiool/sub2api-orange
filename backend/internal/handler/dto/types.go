@@ -184,7 +184,8 @@ type Group struct {
 // 注意：普通用户接口不得返回 model_routing/account_count/account_groups 等内部信息。
 type AdminGroup struct {
 	Group
-	UpstreamRateMultiplier float64 `json:"upstream_rate_multiplier"`
+	UpstreamRateMultiplier   float64 `json:"upstream_rate_multiplier"`
+	FeeCalculatorSyncEnabled bool    `json:"fee_calculator_sync_enabled"`
 	// ForceOpenAIFast 是管理端请求策略，用户侧分组 DTO 无需暴露。
 	ForceOpenAIFast      bool `json:"force_openai_fast"`
 	ForceOpenAIUltrafast bool `json:"force_openai_ultrafast"`
