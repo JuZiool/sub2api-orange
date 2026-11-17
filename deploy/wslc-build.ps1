@@ -11,7 +11,14 @@ $ErrorActionPreference = 'Stop'
 $repo = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $stateDir = Join-Path $PSScriptRoot '.wslc'
 if (-not $IsWindows) { throw '本脚本用于 Windows 上的 WSLC。' }
-foreach ($command in @('wslc','git','tar')) { Get-Command $command -ErrorAction Stop | Out-Null }
+foreach ($command in @('wslc','git')) { Get-Command $command -ErrorAction Stop | Out-Null }
+# 必须用 Windows 自带的 bsdtar：Git for Windows 的 tar.exe 会把 "C:\..." 当成
+# 远程主机（tar: Cannot connect to C: resolve failed），在 Git Bash 位于 PATH 前部时
+# 会遮蔽系统 tar。这里显式解析成绝对路径，避免依赖 PATH 顺序。
+$systemTar = Join-Path $env:SystemRoot 'System32\tar.exe'
+if (-not (Test-Path -LiteralPath $systemTar)) {
+    throw "未找到 Windows 自带 tar：$systemTar"
+}
 $null = Invoke-OrangeWslc -Arguments @('info')
 $dirty = @(& git -C $repo status --porcelain --untracked-files=no)
 if ($LASTEXITCODE -ne 0) { throw '无法检查本地 Git 状态。' }
@@ -39,7 +46,7 @@ try {
     $archive = Join-Path $temp 'source.tar'
     & git -C $repo archive --format=tar "--output=$archive" $commit
     if ($LASTEXITCODE -ne 0) { throw '导出本地已提交源码失败。' }
-    & tar -xf $archive -C $source
+    & $systemTar -xf $archive -C $source
     if ($LASTEXITCODE -ne 0) { throw '展开本地源码快照失败。' }
     $arguments = @('build','--progress','plain','--tag',$Image,
         '--build-arg',"VERSION=$version",'--build-arg',"COMMIT=$short",
