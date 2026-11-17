@@ -332,9 +332,12 @@ func TestCommandCodeGatewayPassesThroughCatalogProtocols(t *testing.T) {
 		url  string
 		body []byte
 	}
+	forwardSequence := 0
 	forward := func(t *testing.T, ingress routingMatrixIngress, model string, catalog map[string][]string) observation {
 		t.Helper()
-		base := fmt.Sprintf("http://cc-%s-%d.example", strings.ReplaceAll(t.Name(), "/", "-"), time.Now().UnixNano())
+		// Orange 特有：同一时钟刻度内的调用也要独立缓存，避免刷新失败保留前一用例的目录。
+		forwardSequence++
+		base := fmt.Sprintf("http://cc-%s-%d-%d.example", strings.ReplaceAll(t.Name(), "/", "-"), time.Now().UnixNano(), forwardSequence)
 		account := commandCodeTestAccount(12)
 		account.Credentials["api_base_urls"] = map[string]any{
 			APIProtocolChatCompletions: base + "/provider/v1",
