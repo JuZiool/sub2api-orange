@@ -86,6 +86,106 @@ describe('FeeCalculatorView automatic group synchronization', () => {
     localStorage.clear()
   })
 
+  it('starts with one blank manual card and retains it when the initial synchronization returns no groups', async () => {
+    const pending = deferred<ReturnType<typeof group>[]>()
+    getAll.mockReturnValueOnce(pending.promise)
+    const wrapper = render()
+    await flushPromises()
+
+    expect(names(wrapper)).toEqual([''])
+    expect(field(cards(wrapper)[0], 'name').element.readOnly).toBe(false)
+    expect(field(cards(wrapper)[0], 'cost').element.value).toBe('')
+    expect(field(cards(wrapper)[0], 'sell').element.value).toBe('')
+    pending.resolve([])
+    await flushPromises()
+    expect(names(wrapper)).toEqual([''])
+
+    window.dispatchEvent(new Event('focus'))
+    await flushPromises()
+    expect(getAll).toHaveBeenCalledTimes(2)
+    expect(names(wrapper)).toEqual([''])
+  })
+
+  it('starts with one blank manual card in simple mode', async () => {
+    authState.isSimpleMode = true
+    const wrapper = render()
+    await flushPromises()
+
+    expect(getAll).not.toHaveBeenCalled()
+    expect(names(wrapper)).toEqual([''])
+    expect(field(cards(wrapper)[0], 'cost').element.value).toBe('')
+    expect(field(cards(wrapper)[0], 'sell').element.value).toBe('')
+    expect(field(cards(wrapper)[0], 'name').element.readOnly).toBe(false)
+  })
+
+  it.each([
+    { simple: false, automaticCache: false },
+    { simple: false, automaticCache: true },
+    { simple: true, automaticCache: false },
+    { simple: true, automaticCache: true },
+  ])('restores seven blank legacy manual cards as one: simple=$simple, automaticCache=$automaticCache', async ({ simple, automaticCache }) => {
+    authState.isSimpleMode = simple
+    const automaticRates = automaticCache ? [{ groupId: 10, name: '旧自动组', cost: '0.2', sell: '0.25' }] : []
+    save([...automaticRates, ...Array.from({ length: 7 }, () => ({ name: '', cost: '', sell: '' }))])
+    const pending = deferred<ReturnType<typeof group>[]>()
+    if (!simple) getAll.mockReturnValueOnce(pending.promise)
+    const wrapper = render()
+    await flushPromises()
+
+    expect(names(wrapper)).toEqual(automaticCache && !simple ? ['旧自动组', ''] : [''])
+    const remembered = JSON.parse(localStorage.getItem(STORAGE_KEY)!)
+    expect(remembered.rates.filter((rate: { groupId?: number }) => rate.groupId === undefined)).toEqual([
+      { name: '', cost: '', sell: '' },
+    ])
+
+    if (simple) {
+      expect(getAll).not.toHaveBeenCalled()
+    } else {
+      pending.resolve([])
+      await flushPromises()
+      expect(names(wrapper)).toEqual([''])
+    }
+  })
+
+  it('preserves multiple filled manual cards while restoring and synchronizing', async () => {
+    const rememberedRates = [
+      { name: '预算一', cost: '0.2', sell: '0.25' },
+      { name: '预算二', cost: '0.3', sell: '0.5' },
+    ]
+    save(rememberedRates)
+    const pending = deferred<ReturnType<typeof group>[]>()
+    getAll.mockReturnValueOnce(pending.promise)
+    const wrapper = render()
+    await flushPromises()
+    expect(names(wrapper)).toEqual(['预算一', '预算二'])
+
+    pending.resolve([])
+    await flushPromises()
+    expect(names(wrapper)).toEqual(['预算一', '预算二'])
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).rates).toEqual(rememberedRates)
+    expect(summaryAmount(wrapper)).toContain('16.00')
+  })
+
+  it.each([
+    { action: '全部重置', expectedNames: ['服务器组', ''] },
+    { action: '添加手动分组', expectedNames: ['服务器组', '', ''] },
+  ])('preserves explicitly requested blank cards when $action happens before the initial response', async ({ action, expectedNames }) => {
+    const pending = deferred<ReturnType<typeof group>[]>()
+    getAll.mockReturnValueOnce(pending.promise)
+    const wrapper = render()
+    await flushPromises()
+    await button(wrapper, action).trigger('click')
+
+    pending.resolve([group(10, '服务器组')])
+    await flushPromises()
+    expect(names(wrapper)).toEqual(expectedNames)
+    cards(wrapper).slice(1).forEach((card) => {
+      expect(field(card, 'name').element.readOnly).toBe(false)
+      expect(field(card, 'cost').element.value).toBe('')
+      expect(field(card, 'sell').element.value).toBe('')
+    })
+  })
+
   it('imports opted-in groups automatically, keeps zero cost, and makes synchronized fields readonly', async () => {
     getAll.mockResolvedValue([group(10, 'Claude'), group(20, '免费组', 0, 1)])
     const wrapper = render()
@@ -326,10 +426,15 @@ describe('FeeCalculatorView automatic group synchronization', () => {
   })
 
   it('resets manual inputs and saved memory while retaining automatic group configuration', async () => {
-    save([{ name: '手动组', cost: '0.3', sell: '0.5' }])
+    save([
+      { name: '手动组一', cost: '0.3', sell: '0.5' },
+      { name: '手动组二', cost: '0.2', sell: '0.4' },
+    ])
     getAll.mockResolvedValue([group(10, '服务器组')])
     const wrapper = render()
     await flushPromises()
+    await button(wrapper, '添加手动分组').trigger('click')
+    expect(names(wrapper)).toEqual(['服务器组', '手动组一', '手动组二', ''])
     await button(wrapper, '全部重置').trigger('click')
     await flushPromises()
 
@@ -427,13 +532,21 @@ describe('FeeCalculatorView automatic group synchronization', () => {
     getAll.mockResolvedValue([{ ...group(10, '未勾选'), fee_calculator_sync_enabled: false }])
     const wrapper = render()
     await flushPromises()
-    expect(names(wrapper)).toEqual([])
+    expect(names(wrapper)).toEqual([''])
     expect(wrapper.text()).toContain(translation('syncEmpty'))
-    await button(wrapper, '添加手动分组').trigger('click')
     const manual = cards(wrapper)[0]
     await field(manual, 'cost').setValue('0.2')
     await field(manual, 'sell').setValue('0.25')
     await wrapper.get('#rate-calculator-pay').setValue('20')
+    expect(summaryAmount(wrapper)).toContain('16.00')
+
+    await button(wrapper, '添加手动分组').trigger('click')
+    await button(wrapper, '添加手动分组').trigger('click')
+    window.dispatchEvent(new Event('focus'))
+    await flushPromises()
+    expect(names(wrapper)).toEqual(['', '', ''])
+    expect(field(cards(wrapper)[0], 'cost').element.value).toBe('0.2')
+    expect(field(cards(wrapper)[0], 'sell').element.value).toBe('0.25')
     expect(summaryAmount(wrapper)).toContain('16.00')
   })
 })

@@ -218,13 +218,13 @@ const syncMessage = computed(() => {
 let disposed = false
 let requestId = 0
 let pendingSync: Promise<void> | null = null
-let hasSynced = false
+let keepBlankManualGroups = false
 
 function createGroup(index: number): CalculatorGroup {
   return { index, name: '', cost: '', sell: '' }
 }
 
-function createGroups(count = 7) {
+function createGroups(count = 1) {
   return Array.from({ length: count }, (_, index) => createGroup(index))
 }
 
@@ -301,6 +301,7 @@ function cancelPendingDelete(index: number) {
 
 function addGroup() {
   pendingDeleteIndex.value = null
+  keepBlankManualGroups = true
   state.groups.push(createGroup(state.groups.length))
 }
 
@@ -313,15 +314,14 @@ function clearSaved() {
 }
 
 function resetAll() {
-  pendingDeleteIndex.value = null
   state.pay = ''
   state.remember = false
-  state.groups.forEach((group) => {
-    if (group.groupId !== undefined) return
-    group.name = ''
-    group.cost = ''
-    group.sell = ''
-  })
+  keepBlankManualGroups = true
+  state.groups = [
+    ...state.groups.filter(group => group.groupId !== undefined),
+    ...createGroups(),
+  ]
+  reindexGroups()
   clearSaved()
 }
 
@@ -352,6 +352,14 @@ function restore() {
         if (typeof savedRate.cost === 'string') group.cost = savedRate.cost
         if (typeof savedRate.sell === 'string') group.sell = savedRate.sell
       })
+      const manualGroups = state.groups.filter(group => group.groupId === undefined)
+      if (manualGroups.length && manualGroups.every(group => !group.name.trim() && !group.cost.trim() && !group.sell.trim())) {
+        state.groups = [
+          ...state.groups.filter(group => group.groupId !== undefined),
+          ...createGroups(),
+        ]
+        reindexGroups()
+      }
     }
   } catch {
     clearSaved()
@@ -385,6 +393,7 @@ async function syncGroups(): Promise<void> {
     requestId += 1
     pendingSync = null
     state.groups = state.groups.filter(group => group.groupId === undefined)
+    if (!state.groups.length) state.groups = createGroups()
     reindexGroups()
     syncStatus.value = 'manual'
     return
@@ -411,7 +420,7 @@ async function syncGroups(): Promise<void> {
       })) throw new Error('Incomplete group rates')
 
       const manualGroups = state.groups.filter(group => group.groupId === undefined
-        && (hasSynced || group.name.trim() || group.cost.trim() || group.sell.trim()))
+        && (keepBlankManualGroups || group.name.trim() || group.cost.trim() || group.sell.trim()))
       state.groups = [
         ...groups.map(group => ({
           index: 0,
@@ -422,8 +431,9 @@ async function syncGroups(): Promise<void> {
         })),
         ...manualGroups,
       ]
+      if (!state.groups.length) state.groups = createGroups()
       reindexGroups()
-      hasSynced = true
+      keepBlankManualGroups = true
       syncStatus.value = 'synced'
     } catch {
       if (!disposed && currentRequest === requestId) syncStatus.value = 'error'
