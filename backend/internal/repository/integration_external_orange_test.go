@@ -38,6 +38,7 @@ func runOrangeExternalRepositoryTests(ctx context.Context, m *testing.M, dsn str
 	}
 	log.Print("Orange external repository tests: migrations applied to isolated empty database")
 
+	integrationDSN = dsn
 	integrationDB = db
 	integrationEntClient = dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
 	defer func() { _ = integrationEntClient.Close() }()

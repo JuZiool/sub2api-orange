@@ -252,6 +252,8 @@ func TestAttachQuotaSnapshot_NoteOnlyWhenProbeMessageEmpty(t *testing.T) {
 
 func TestValidateCreateParams_CheckModeMatrix(t *testing.T) {
 	accountID := int64(9)
+	// Orange 特有：这里只校验参数，使用公网 IP 字面量，避免真实 DNS 或代理 Fake-IP 影响校验顺序。
+	const publicEndpoint = "https://8.8.8.8"
 
 	cases := []struct {
 		name    string
@@ -270,7 +272,7 @@ func TestValidateCreateParams_CheckModeMatrix(t *testing.T) {
 			name: "probe requires api key",
 			params: ChannelMonitorCreateParams{
 				Provider: MonitorProviderOpenAI, CheckMode: MonitorCheckModeProbe,
-				Endpoint: "https://api.openai.com", IntervalSeconds: 60, PrimaryModel: "gpt-5",
+				Endpoint: publicEndpoint, IntervalSeconds: 60, PrimaryModel: "gpt-5",
 			},
 			wantErr: ErrChannelMonitorMissingAPIKey,
 		},
@@ -302,7 +304,7 @@ func TestValidateCreateParams_CheckModeMatrix(t *testing.T) {
 			name: "antigravity probe unsupported",
 			params: ChannelMonitorCreateParams{
 				Provider: MonitorProviderAntigravity, CheckMode: MonitorCheckModeProbe,
-				Endpoint: "https://example.com", APIKey: "k",
+				Endpoint: publicEndpoint, APIKey: "k",
 				IntervalSeconds: 60, AccountID: &accountID, PrimaryModel: "gemini-3-pro",
 			},
 			wantErr: ErrChannelMonitorInvalidCheckMode,
@@ -311,7 +313,7 @@ func TestValidateCreateParams_CheckModeMatrix(t *testing.T) {
 			name: "antigravity quota_probe unsupported",
 			params: ChannelMonitorCreateParams{
 				Provider: MonitorProviderAntigravity, CheckMode: MonitorCheckModeQuotaProbe,
-				Endpoint: "https://example.com", APIKey: "k",
+				Endpoint: publicEndpoint, APIKey: "k",
 				IntervalSeconds: 60, AccountID: &accountID, PrimaryModel: "gemini-3-pro",
 			},
 			wantErr: ErrChannelMonitorInvalidCheckMode,
@@ -320,7 +322,7 @@ func TestValidateCreateParams_CheckModeMatrix(t *testing.T) {
 			name: "unknown mode rejected",
 			params: ChannelMonitorCreateParams{
 				Provider: MonitorProviderOpenAI, CheckMode: "auto",
-				Endpoint: "https://api.openai.com", APIKey: "sk",
+				Endpoint: publicEndpoint, APIKey: "sk",
 				IntervalSeconds: 60, PrimaryModel: "gpt-5",
 			},
 			wantErr: ErrChannelMonitorInvalidCheckMode,
@@ -330,7 +332,7 @@ func TestValidateCreateParams_CheckModeMatrix(t *testing.T) {
 			name: "quota_probe requires primary model",
 			params: ChannelMonitorCreateParams{
 				Provider: MonitorProviderKimi, CheckMode: MonitorCheckModeQuotaProbe,
-				Endpoint: "https://api.kimi.com", APIKey: "sk",
+				Endpoint: publicEndpoint, APIKey: "sk",
 				IntervalSeconds: 60, AccountID: &accountID,
 			},
 			wantErr: ErrChannelMonitorMissingPrimaryModel,
