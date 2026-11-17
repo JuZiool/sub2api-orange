@@ -1,9 +1,15 @@
 <template>
   <AppLayout>
     <div class="space-y-5">
-      <header>
+      <header class="flex flex-wrap items-center justify-between gap-3">
         <h1 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('rateCalculator.title') }}</h1>
+        <button v-if="!auth.isSimpleMode" type="button" class="btn btn-secondary" :disabled="syncStatus === 'loading'" @click="syncGroups">
+          {{ t('rateCalculator.refreshGroups') }}
+        </button>
       </header>
+      <p role="status" class="text-sm" :class="syncStatus === 'error' ? 'text-amber-700 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'">
+        {{ syncMessage }}
+      </p>
 
       <section class="card p-4 sm:p-5">
         <div class="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(260px,0.8fr)_minmax(0,1.2fr)]">
@@ -74,7 +80,7 @@
       <section class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" :aria-label="t('rateCalculator.rateGroups')">
         <article
           v-for="group in state.groups"
-          :key="group.index"
+          :key="group.groupId === undefined ? `manual-${group.index}` : `synced-${group.groupId}`"
           class="min-w-0 rounded-lg border p-3"
           :class="groupIsWorst(group.index)
             ? 'border-emerald-500 dark:border-emerald-600'
@@ -88,11 +94,13 @@
               type="text"
               maxlength="40"
               autocomplete="off"
+              :readonly="group.groupId !== undefined"
               class="input min-w-0 flex-1 font-medium"
               :placeholder="t('rateCalculator.groupName', { number: group.index + 1 })"
               @input="cancelPendingDelete(group.index)"
             />
             <button
+              v-if="group.groupId === undefined"
               type="button"
               class="btn shrink-0 px-2"
               :class="pendingDeleteIndex === group.index ? 'btn-danger' : 'btn-secondary'"
@@ -100,6 +108,7 @@
             >
               {{ t(pendingDeleteIndex === group.index ? 'rateCalculator.confirmDeleteGroup' : 'rateCalculator.clearGroup') }}
             </button>
+            <span v-else class="shrink-0 text-xs text-gray-500 dark:text-gray-400">{{ t('rateCalculator.autoSynced') }}</span>
           </div>
 
           <div class="space-y-3">
@@ -113,6 +122,7 @@
                 type="text"
                 inputmode="decimal"
                 autocomplete="off"
+                :readonly="group.groupId !== undefined"
                 :placeholder="t('rateCalculator.upstreamPlaceholder')"
                 :aria-invalid="calculation.groups[group.index].costInvalid ? 'true' : undefined"
                 class="input w-full tabular-nums"
@@ -129,6 +139,7 @@
                 type="text"
                 inputmode="decimal"
                 autocomplete="off"
+                :readonly="group.groupId !== undefined"
                 :placeholder="t('rateCalculator.userPlaceholder')"
                 :aria-invalid="calculation.groups[group.index].sellInvalid ? 'true' : undefined"
                 class="input w-full tabular-nums"
@@ -140,7 +151,7 @@
           <div class="mt-3 border-t border-gray-100 pt-3 dark:border-dark-700">
             <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('rateCalculator.groupAmount') }}</div>
             <div class="mt-0.5 break-words text-xl font-semibold tabular-nums text-primary-600 dark:text-primary-400">
-              <template v-if="calculation.groups[group.index].amountCents !== null">
+              <template v-if="(group.groupId === undefined || !syncBlocked) && calculation.groups[group.index].amountCents !== null">
                 {{ formatCents(calculation.groups[group.index].amountCents!) }} {{ t('rateCalculator.yuan') }}
               </template>
               <span v-else class="text-gray-400 dark:text-gray-500">—</span>
@@ -177,18 +188,38 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { getAll } from '@/api/admin/groups'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { calculateRates, formatCents } from './calculator'
+import { useAuthStore } from '@/stores/auth'
+import { calculateRates, formatCents, type RateInput } from './calculator'
+
+interface CalculatorGroup extends RateInput {
+  index: number
+  groupId?: number
+}
 
 const STORAGE_KEY = 'rateCalc.shared.v2'
 const presets = [10, 20, 50, 100, 500, 1000]
 const { t } = useI18n()
+const auth = useAuthStore()
 const pendingDeleteIndex = ref<number | null>(null)
+const syncStatus = ref<'loading' | 'synced' | 'error' | 'manual'>(auth.isSimpleMode ? 'manual' : 'loading')
+const syncBlocked = computed(() => syncStatus.value === 'loading' || syncStatus.value === 'error')
+const syncMessage = computed(() => {
+  if (syncStatus.value === 'loading') return t('rateCalculator.syncLoading')
+  if (syncStatus.value === 'error') return t('rateCalculator.syncError')
+  if (syncStatus.value === 'manual') return t('rateCalculator.simpleModeManual')
+  return t('rateCalculator.syncSuccess', { count: state.groups.filter(group => group.groupId !== undefined).length })
+})
+let disposed = false
+let requestId = 0
+let pendingSync: Promise<void> | null = null
+let hasSynced = false
 
-function createGroup(index: number) {
+function createGroup(index: number): CalculatorGroup {
   return { index, name: '', cost: '', sell: '' }
 }
 
@@ -202,7 +233,11 @@ const state = reactive({
   groups: createGroups(),
 })
 
-const calculation = computed(() => calculateRates(state.pay, state.groups))
+const calculation = computed(() => {
+  const result = calculateRates(state.pay, state.groups)
+  if (!syncBlocked.value) return result
+  return { ...result, ready: false, suggestedCents: null, profitCents: null, highestGroupIndexes: [], highestGroupNames: [] }
+})
 const isLoss = computed(() => (calculation.value.profitCents ?? 0n) < 0n)
 const profitMagnitude = computed(() => {
   const cents = calculation.value.profitCents
@@ -210,6 +245,7 @@ const profitMagnitude = computed(() => {
 })
 
 const summaryHint = computed(() => {
+  if (syncBlocked.value) return syncMessage.value
   const result = calculation.value
   if (result.invalidGroups.length) {
     return t('rateCalculator.invalidGroups', { groups: result.invalidGroups.join('、') })
@@ -228,6 +264,7 @@ function groupIsWorst(index: number): boolean {
 }
 
 function groupStatusText(index: number): string {
+  if (state.groups[index].groupId !== undefined && syncBlocked.value) return syncMessage.value
   if (groupIsWorst(index)) return t('rateCalculator.groupWorst')
   const group = calculation.value.groups[index]
   switch (group.status) {
@@ -241,6 +278,7 @@ function groupStatusText(index: number): string {
 }
 
 function clearGroup(index: number) {
+  if (state.groups[index].groupId !== undefined) return
   if (pendingDeleteIndex.value === index) {
     state.groups.splice(index, 1)
     state.groups.forEach((group, nextIndex) => {
@@ -278,6 +316,7 @@ function resetAll() {
   state.pay = ''
   state.remember = false
   state.groups.forEach((group) => {
+    if (group.groupId !== undefined) return
     group.name = ''
     group.cost = ''
     group.sell = ''
@@ -304,7 +343,10 @@ function restore() {
       state.groups.forEach((group, index) => {
         const rate = savedRates[index]
         if (!rate || typeof rate !== 'object') return
-        const savedRate = rate as { name?: unknown; cost?: unknown; sell?: unknown }
+        const savedRate = rate as { name?: unknown; cost?: unknown; sell?: unknown; groupId?: unknown }
+        if (typeof savedRate.groupId === 'number' && Number.isSafeInteger(savedRate.groupId) && savedRate.groupId > 0) {
+          group.groupId = savedRate.groupId
+        }
         if (typeof savedRate.name === 'string') group.name = savedRate.name
         if (typeof savedRate.cost === 'string') group.cost = savedRate.cost
         if (typeof savedRate.sell === 'string') group.sell = savedRate.sell
@@ -324,12 +366,88 @@ watch(state, (value) => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       on: true,
       pay: value.pay,
-      rates: value.groups.map(({ name, cost, sell }) => ({ name, cost, sell })),
+      rates: value.groups.map(({ name, cost, sell, groupId }) => ({ name, cost, sell, groupId })),
     }))
   } catch {
     // Storage may be disabled or full.
   }
 }, { deep: true })
 
-onMounted(restore)
+function reindexGroups() {
+  pendingDeleteIndex.value = null
+  state.groups.forEach((group, index) => { group.index = index })
+}
+
+async function syncGroups(): Promise<void> {
+  if (disposed) return
+  if (auth.isSimpleMode) {
+    requestId += 1
+    pendingSync = null
+    state.groups = state.groups.filter(group => group.groupId === undefined)
+    reindexGroups()
+    syncStatus.value = 'manual'
+    return
+  }
+  if (pendingSync) return pendingSync
+
+  const currentRequest = ++requestId
+  syncStatus.value = 'loading'
+  pendingSync = (async () => {
+    try {
+      const groups = await getAll()
+      if (disposed || currentRequest !== requestId) return
+      // Simple mode and incomplete responses must never silently become rate 1.
+      const ids = new Set<number>()
+      if (!Array.isArray(groups) || !groups.every(group => {
+        if (!group || !Number.isSafeInteger(group.id) || group.id <= 0 || ids.has(group.id)
+          || typeof group.name !== 'string'
+          || typeof group.upstream_rate_multiplier !== 'number' || !Number.isFinite(group.upstream_rate_multiplier)
+          || typeof group.rate_multiplier !== 'number' || !Number.isFinite(group.rate_multiplier)) return false
+        ids.add(group.id)
+        return true
+      })) throw new Error('Incomplete group rates')
+
+      const manualGroups = state.groups.filter(group => group.groupId === undefined
+        && (hasSynced || group.name.trim() || group.cost.trim() || group.sell.trim()))
+      state.groups = [
+        ...groups.map(group => ({
+          index: 0,
+          groupId: group.id,
+          name: group.name,
+          cost: String(group.upstream_rate_multiplier),
+          sell: String(group.rate_multiplier),
+        })),
+        ...manualGroups,
+      ]
+      reindexGroups()
+      hasSynced = true
+      syncStatus.value = 'synced'
+    } catch {
+      if (!disposed && currentRequest === requestId) syncStatus.value = 'error'
+    } finally {
+      if (currentRequest === requestId) pendingSync = null
+    }
+  })()
+  return pendingSync
+}
+
+function refreshOnReturn() {
+  if (document.visibilityState !== 'hidden') void syncGroups()
+}
+
+watch(() => auth.isSimpleMode, () => { void syncGroups() })
+
+onMounted(() => {
+  restore()
+  void syncGroups()
+  window.addEventListener('focus', refreshOnReturn)
+  document.addEventListener('visibilitychange', refreshOnReturn)
+})
+
+onBeforeUnmount(() => {
+  disposed = true
+  requestId += 1
+  window.removeEventListener('focus', refreshOnReturn)
+  document.removeEventListener('visibilitychange', refreshOnReturn)
+})
 </script>
