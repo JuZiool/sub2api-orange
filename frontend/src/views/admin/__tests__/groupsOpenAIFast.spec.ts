@@ -23,9 +23,10 @@ describe("groupsOpenAIFast", () => {
 
   it("provides localized Ultra Fast switch labels naming the supported models", () => {
     for (const locale of [zh, en]) {
+      // 上游 0.2.23 起把 hint 改写为套餐/倍率说明，不再包含 service_tier=ultrafast 字面量。
       expect(locale.groups.openaiFast).toMatchObject({
         forceUltrafast: expect.stringContaining("ultrafast"),
-        ultrafastHint: expect.stringContaining("service_tier=ultrafast"),
+        ultrafastHint: expect.stringContaining("Ultra Fast"),
       });
       expect(locale.groups.openaiFast.ultrafastHint).toContain("GPT-6 Astra");
       expect(locale.groups.openaiFast.ultrafastHint).toContain("GPT-6.1 Sol");
