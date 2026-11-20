@@ -27,6 +27,7 @@ func TestAccountTestPromptDefaultsAndCustomPayloads(t *testing.T) {
 			path string
 		}{
 			{"claude", claude, "messages.0.content.0.text"},
+			{"bedrock", buildBedrockTestPayload("us.anthropic.claude-sonnet-4-6", prompt), "messages.0.content.0.text"},
 			{"responses", createOpenAITestPayload("gpt-5.4", true, prompt), "input.0.content.0.text"},
 			{"chat", createOpenAIChatCompletionsTestPayload("gpt-5.4", prompt), "messages.0.content"},
 			{"gemini", json.RawMessage(createGeminiTestPayload("gemini-2.5-flash", prompt)), "contents.0.parts.0.text"},
@@ -87,6 +88,58 @@ func TestAccountTestPromptOpenAIOAuthFinalRequest(t *testing.T) {
 	require.Len(t, upstream.requests, 1)
 	require.Equal(t, prompt, gjson.GetBytes(upstream.lastBody, "input.0.content.0.text").String())
 	require.Equal(t, "Bearer test-token", upstream.lastReq.Header.Get("Authorization"))
+}
+
+func TestAccountTestPromptBedrockFinalRequests(t *testing.T) {
+	for _, model := range []struct {
+		name            string
+		id              string
+		wantTemperature bool
+	}{
+		{"sonnet", "us.anthropic.claude-sonnet-4-6", true},
+		{"opus", "us.anthropic.claude-opus-4-8-v1", false},
+	} {
+		for _, prompt := range []struct {
+			name string
+			text string
+			want string
+		}{
+			{"default", "", "hi"},
+			{"blank", " \n\t", "hi"},
+			{"custom", "  请原样回复：\"你好🙂\"\n", "  请原样回复：\"你好🙂\"\n"},
+		} {
+			t.Run(model.name+"/"+prompt.name, func(t *testing.T) {
+				account := adaptiveCNAccountTestAccount(994, PlatformAnthropic)
+				account.Type = AccountTypeBedrock
+				account.Credentials = map[string]any{
+					"auth_mode": "apikey",
+					"api_key":   "bedrock-test-token",
+					"region":    "us-east-1",
+					"model_mapping": map[string]any{
+						"probe-alias": model.id,
+					},
+				}
+				svc, upstream := adaptiveCNAccountTestService(account, &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"content":[{"type":"text","text":"ok"}]}`)),
+				})
+				c, rec := newTestContext()
+				require.NoError(t, svc.TestAccountConnection(c, account.ID, "probe-alias", prompt.text, "default"))
+				require.Len(t, upstream.requests, 1)
+				require.Equal(t, BuildBedrockURL("us-east-1", model.id, false), upstream.lastReq.URL.String())
+				require.Equal(t, "Bearer bedrock-test-token", upstream.lastReq.Header.Get("Authorization"))
+				require.Equal(t, prompt.want, gjson.GetBytes(upstream.lastBody, "messages.0.content.0.text").String())
+				require.Equal(t, "bedrock-2023-05-31", gjson.GetBytes(upstream.lastBody, "anthropic_version").String())
+				temperature := gjson.GetBytes(upstream.lastBody, "temperature")
+				require.Equal(t, model.wantTemperature, temperature.Exists())
+				if model.wantTemperature {
+					require.EqualValues(t, 1, temperature.Int())
+				}
+				require.Contains(t, rec.Body.String(), `"type":"test_complete","success":true`)
+			})
+		}
+	}
 }
 
 func TestAccountTestPromptAntigravityDefaultsAndCustom(t *testing.T) {
