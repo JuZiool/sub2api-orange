@@ -107,7 +107,10 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	// 仅用于能力路由与图片计费；独立图片/视频端点才在利润门范围之外。
 	requestCtx, pricingAt := service.WithGatewayTokenRequestPricing(requestCtx)
 	rateResolution := gatewayRateSnapshot(requestCtx, h.gatewayService, apiKey, reqModel)
-	if service.IsImageGenerationIntentForPlatform("/v1/responses", reqModel, body, openAICompatibleRequestPlatform(c.Request.Context(), apiKey)) {
+	// body 已在本函数开头用 gjson.ValidBytes 校验过，之后只经过 sjson 改写
+	// （applyOpenAIReasoningEffortPolicyForRequest），合法性保持，因此走跳过校验的
+	// 变体，避免对同一份字节再全量校验一次。
+	if service.IsImageGenerationIntentForPlatformValidated("/v1/responses", reqModel, body, openAICompatibleRequestPlatform(c.Request.Context(), apiKey)) {
 		requestCtx = service.WithOpenAIImageGenerationIntent(requestCtx)
 	}
 	c.Request = c.Request.WithContext(requestCtx)
@@ -179,8 +182,10 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	defer inflightRelease()
 
 	// Parse request for session hash
+	// body 已在本函数开头用 gjson.ValidBytes 校验过，之后只经过 sjson 改写
+	// （applyOpenAIReasoningEffortPolicyForRequest），合法性保持，因此跳过重复校验。
 	bodyRef := service.NewRequestBodyRef(body)
-	parsedReq, _ := service.ParseGatewayRequest(bodyRef, "responses")
+	parsedReq, _ := service.ParseGatewayRequestValidated(bodyRef, "responses")
 	if parsedReq == nil {
 		parsedReq = &service.ParsedRequest{Model: reqModel, Stream: reqStream, Body: bodyRef}
 	}
