@@ -199,13 +199,20 @@ func ResponsesEventToChatChunks(evt *ResponsesStreamEvent, state *ResponsesEvent
 // stream ended without a proper completion event (e.g. upstream disconnect).
 // It is idempotent: if a completion event already emitted the finish chunk,
 // this returns nil.
+//
+// Reaching this function means no terminal event (response.completed /
+// response.done / response.incomplete / response.failed) ever arrived, so the
+// upstream stream was cut short. Such a turn must not be reported as a clean
+// "stop": agent clients treat "stop" as "the turn finished successfully", stop
+// retrying, and keep the half-written assistant message. "length" is the
+// closest truthful reason and makes the client retry or continue instead.
 func FinalizeResponsesChatStream(state *ResponsesEventToChatState) []ChatCompletionsChunk {
 	if state.Finalized {
 		return nil
 	}
 	state.Finalized = true
 
-	finishReason := "stop"
+	finishReason := "length"
 	if state.SawToolCall {
 		finishReason = "tool_calls"
 	}
@@ -376,20 +383,21 @@ func resToChatHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 			state.ServiceTier = evt.Response.ServiceTier
 		}
 
-		switch evt.Response.Status {
-		case "incomplete":
-			if evt.Response.IncompleteDetails != nil {
-				switch evt.Response.IncompleteDetails.Reason {
-				case "max_output_tokens":
-					finishReason = "length"
-				case "content_filter":
-					finishReason = "content_filter"
-				}
+		// IncompleteDetails is authoritative whenever it is present. Some
+		// upstreams report status=completed on a response they truncated, and
+		// others report status=incomplete while leaving the reason only in
+		// incomplete_details, so keying on status alone loses the truncation.
+		if details := evt.Response.IncompleteDetails; details != nil {
+			switch details.Reason {
+			case "max_output_tokens":
+				finishReason = "length"
+			case "content_filter":
+				finishReason = "content_filter"
 			}
-		case "completed":
-			if state.SawToolCall {
-				finishReason = "tool_calls"
-			}
+		} else if evt.Response.Status == "incomplete" {
+			finishReason = "length"
+		} else if state.SawToolCall {
+			finishReason = "tool_calls"
 		}
 	} else if state.SawToolCall {
 		finishReason = "tool_calls"

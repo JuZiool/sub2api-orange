@@ -243,9 +243,15 @@ func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 	var items []ResponsesInputItem
 	content := ""
 
-	if m.ReasoningContent != "" {
-		content = "<thinking>" + m.ReasoningContent + "</thinking>"
-	}
+	// ReasoningContent is deliberately not folded into the assistant message.
+	//
+	// Wrapping it as literal "<thinking>…</thinking>" text made the reasoning
+	// visible to the model on every following turn, and models reliably copy
+	// the shape they see: they start emitting "<thinking>…" inside their own
+	// visible output. Clients then render that as a stray code-ish blob and the
+	// turn looks broken. The Responses protocol carries reasoning as a typed
+	// item, not as text, so a plain-text wrapper is never the right encoding;
+	// dropping it keeps the transcript identical to a normal assistant turn.
 
 	// Emit assistant message with output_text if content is non-empty.
 	if len(m.Content) > 0 {
@@ -293,8 +299,9 @@ func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 // - JSON string
 // - JSON array of typed parts (e.g. [{"type":"text","text":"..."}])
 //
-// For structured thinking/reasoning parts, it preserves semantics by wrapping
-// the text in explicit tags so downstream can still distinguish it from normal text.
+// Structured thinking/reasoning parts are skipped. They used to be wrapped in
+// literal "<thinking>…</thinking>" tags, which leaked the wrapper into the
+// model-visible transcript and taught it to emit that prefix in its own output.
 func parseAssistantContent(raw json.RawMessage) (string, error) {
 	if len(raw) == 0 {
 		return "", nil
@@ -320,31 +327,13 @@ func parseAssistantContent(raw json.RawMessage) (string, error) {
 	for _, p := range parts {
 		typ, _ := p["type"].(string)
 		text, _ := p["text"].(string)
-		thinking, _ := p["thinking"].(string)
 
 		switch typ {
 		case "thinking", "reasoning":
-			if thinking != "" {
-				if err := write("<thinking>"); err != nil {
-					return "", err
-				}
-				if err := write(thinking); err != nil {
-					return "", err
-				}
-				if err := write("</thinking>"); err != nil {
-					return "", err
-				}
-			} else if text != "" {
-				if err := write("<thinking>"); err != nil {
-					return "", err
-				}
-				if err := write(text); err != nil {
-					return "", err
-				}
-				if err := write("</thinking>"); err != nil {
-					return "", err
-				}
-			}
+			// Reasoning is not plain assistant text. Emitting it here (with or
+			// without tags) puts it in the model-visible transcript, which is
+			// what made models reproduce "<thinking>" in their own output.
+			continue
 		default:
 			if text != "" {
 				if err := write(text); err != nil {
