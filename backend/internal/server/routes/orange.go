@@ -19,6 +19,8 @@ import (
 //	GET  /api/v1/usage/ranking             登录用户用量排行（用户榜 / 模型榜）
 //	GET  /api/v1/admin/orange/features     管理员读取开关真实值
 //	PUT  /api/v1/admin/orange/features     管理员局部更新开关
+//	GET  /api/v1/admin/orange/groups/profit                 管理员分组利润统计（今天/昨天/累计，只读 usage_logs）
+//	PUT  /api/v1/admin/orange/groups/:id/upstream-rate       管理员更新分组上游成本倍率（只写 orange_group_upstream_rate）
 func RegisterOrangeRoutes(
 	v1 *gin.RouterGroup,
 	h *handler.Handlers,
@@ -57,5 +59,11 @@ func RegisterOrangeRoutes(
 	{
 		admin.GET("/orange/features", h.Setting.OrangeAdminGetFeatures)
 		admin.PUT("/orange/features", h.Setting.OrangeAdminUpdateFeatures)
+
+		// Orange 特有：分组利润统计与上游成本倍率。
+		// 静态段 /groups/profit 与参数段 /groups/:id/... 同时存在于同一节点，
+		// gin 支持这种写法（上游 admin.go 的 /groups/all 与 /groups/:id 已是同例）。
+		admin.GET("/orange/groups/profit", h.Setting.OrangeAdminGroupProfit)
+		admin.PUT("/orange/groups/:id/upstream-rate", h.Setting.OrangeAdminUpdateGroupUpstreamRate)
 	}
 }
