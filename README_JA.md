@@ -75,6 +75,11 @@
 </tr>
 
 <tr>
+<td width="180"><a href="https://shop.bmoplus.com/?utm_source=github"><img src="assets/partners/logos/bmoplus.jpg" alt="bmoplus" width="150"></a></td>
+<td>本プロジェクトにご支援いただいた BmoPlus に感謝いたします！BmoPlusは、AIサブスクリプションのヘビーユーザー向けに特化した信頼性の高いAIアカウントサービスプロバイダーであり、安定した ChatGPT Plus / ChatGPT Pro (完全保証) / Claude Pro / Super Grok / Gemini Pro の公式代行チャージおよび即納アカウントを提供しています。こちらの<a href="https://shop.bmoplus.com/?utm_source=github">BmoPlus AIアカウント専門店/代行チャージ</a>経由でご登録・ご注文いただいたユーザー様は、GPTを 公式サイト価格の約1割（90% OFF） という驚異的な価格でご利用いただけます！</td>
+</tr>
+
+<tr>
 <td width="180"><a href="https://bestproxy.com/?keyword=a2e8iuol"><img src="assets/partners/logos/bestproxy.png" alt="bestproxy" width="150"></a></td>
 <td>Bestproxy のご支援に感謝します！<a href="https://bestproxy.com/?keyword=a2e8iuol">Bestproxy</a> は高純度の住宅IPを提供し、1アカウント1IP専有をサポートしています。実際の家庭ネットワークとフィンガープリント分離を組み合わせることで、リンク環境の分離を実現し、関連付けによるリスク管理の確率を低減します。</td>
 </tr>
@@ -101,6 +106,18 @@
 <tr>
 <td width="180"><a href="https://roxybrowser.com/invite/bgGKG7"><img src="assets/partners/logos/RoxyBrowser.png" alt="RoxyBrowser" width="150"></a></td>
 <td>RoxyBrowser のご支援に感謝します！<a href="https://roxybrowser.com/invite/bgGKG7">RoxyBrowser</a> は Sub2API の理想的なパートナーです：ネイティブ統合された Roxy AI Agent と高品質なネイティブ住宅 IP を搭載し、シンプルなコマンドで一括自動化をサポート、マルチアカウント管理のセキュリティと効率を大幅に向上させます！<a href="https://roxybrowser.com/invite/bgGKG7">このリンク</a>から登録すると、無料の住宅 IP パッケージと生涯 10% 割引を獲得できます。
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://www.proxy4free.com/?keyword=4yjqecpc"><img src="assets/partners/logos/proxy4free.png" alt="proxy4free" width="150"></a></td>
+<td>Proxy4Free のご支援に感謝します！Proxy4Free は開発者と AI アプリケーション向けのデータプロキシサービスプロバイダーで、住宅プロキシ、静的住宅プロキシ、ISP プロキシ、データセンタープロキシなど多様なプロキシソリューションを提供しており、Web Scraping、Browser Automation、AI Agent などのシナリオに適しています。グローバル IP リソース、安定した接続、柔軟な切り替えをサポートし、開発者のデータ収集成功率の向上と IP ブロックリスクの低減を支援します。<a href="https://www.proxy4free.com/?keyword=4yjqecpc">こちらのリンクから登録</a>して、より安定した効率的な自動化ワークフローを簡単に構築しましょう。
+</td>
+</tr>
+
+<tr>
+<td width="180"><a href="http://aimzoon.com"><img src="assets/partners/logos/aimzoon.jpg" alt="aimzoon" width="150"></a></td>
+<td>Aimzoon のご支援に感謝します！<a href="http://aimzoon.com">Aimzoon</a> は安定してコストパフォーマンスに優れた AI API 接続サービスを提供し、開発者が主要な AI サービスを Codex、Claude Code、Gemini CLI などのコーディングツールへ素早く接続できるようにします。複雑な設定は不要で、より速い接続、より安定した呼び出し、より低いコストを実現。Codex レート割引や特価レートなどのキャンペーンも随時開催中、登録するだけで無料お試しクレジットをプレゼント。AI コーディングを日常のワークフローへ。<a href="http://aimzoon.com">こちら</a>から登録してお試しください！
 </td>
 </tr>
 
@@ -252,7 +269,7 @@ GitHub Releases からビルド済みバイナリをダウンロードするワ�
 #### インストール手順
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/install.sh | sudo bash
 ```
 
 スクリプトは以下を実行します:
@@ -302,7 +319,7 @@ sudo journalctl -u sub2api -f
 sudo systemctl restart sub2api
 
 # アンインストール
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash -s -- uninstall -y
+curl -sSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/install.sh | sudo bash -s -- uninstall -y
 ```
 
 ---
@@ -324,22 +341,48 @@ PostgreSQL と Redis のコンテナを含む Docker Compose でデプロイし�
 # デプロイ用ディレクトリを作成
 mkdir -p sub2api-deploy && cd sub2api-deploy
 
-# デプロイ準備スクリプトをダウンロードして実行
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
+# Docker デプロイエントリポイントをダウンロードして実行（対話端末ではメニューを表示）
+curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/to-install.sh | bash
 
-# サービスを起動
-docker compose up -d
+メニュー：
+# 1 新規インストール、2 移行、3 イメージ更新、4 バックアップ、5 health 確認、6 ロールバック
+
+# 自動化ではモードを明示
+curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/to-install.sh | bash -s -- --mode 1
+
+1 を選ぶとポート、管理者メールアドレス、初期パスワードを入力します。他の操作は既存の .env とデータを使用します。
+
+# 起動または既存デプロイの移行
+to-install.sh --mode 2
+
+# ステータスと health を確認
+to-install.sh health
 
 # ログを表示
-docker compose logs -f sub2api
+docker compose --env-file .env -f docker-compose.local.yml -f docker-compose.ghcr.yml logs -f sub2api
 ```
 
 **スクリプトの動作内容:**
-- `docker-compose.local.yml`（`docker-compose.yml` として保存）と `.env.example` をダウンロード
-- セキュアな認証情報（JWT_SECRET、TOTP_ENCRYPTION_KEY、POSTGRES_PASSWORD）を自動生成
-- 自動生成されたシークレットで `.env` ファイルを作成
-- データディレクトリを作成（バックアップ・移行が容易なローカルディレクトリを使用）
-- 生成された認証情報を参照用に表示
+- ローカル Compose 設定と GHCR イメージ overlay をダウンロード
+- 完全なシークレット値を表示せず安全な値を生成
+- `.env` または永続データがある場合は新規インストールを拒否
+- PostgreSQL、Redis、Sub2API を起動
+- コンテナの health と `/health` を確認
+
+既存デプロイでは次を使用します:
+
+```bash
+# 移行インストール
+to-install.sh --mode 2
+
+# イメージ更新（既定でバックアップを作成）
+to-install.sh update
+
+# バックアップ、health 確認、ロールバック
+to-install.sh backup
+to-install.sh health
+to-install.sh rollback
+```
 
 #### 手動デプロイ
 
@@ -347,8 +390,8 @@ docker compose logs -f sub2api
 
 ```bash
 # 1. リポジトリをクローン
-git clone https://github.com/Wei-Shaw/sub2api.git
-cd sub2api/deploy
+git clone https://github.com/JuZiool/sub2api-orange.git
+cd sub2api-orange/deploy
 
 # 2. 環境設定ファイルをコピー
 cp .env.example .env
@@ -417,7 +460,7 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 | **docker-compose.local.yml** | ローカルディレクトリ | ✅ 容易（ディレクトリ全体を tar） | 本番環境、頻繁なバックアップ |
 | **docker-compose.yml** | 名前付きボリューム | ⚠️ docker コマンドが必要 | シンプルなセットアップ |
 
-**推奨:** データ管理が容易な `docker-compose.local.yml`（スクリプトによるデプロイ）を使用してください。
+**推奨:** 安全な更新、バックアップ、移行、ロールバックのため、`to-install.sh` で `docker-compose.local.yml` と `docker-compose.ghcr.yml` を管理してください。
 
 #### アクセス
 
@@ -431,9 +474,8 @@ docker compose -f docker-compose.local.yml logs sub2api | grep "Generated admin"
 #### アップグレード
 
 ```bash
-# 最新イメージをプルしてコンテナを再作成
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
+# バックアップ、health、失敗時のロールバック付きで更新
+to-install.sh update
 ```
 
 #### 簡単な移行（ローカルディレクトリバージョン）
@@ -479,8 +521,8 @@ rm -rf data/ postgres_data/ redis_data/
 Apple シリコン搭載 Mac と macOS 26 では、Apple `container` 1.1.0 以降を使用して Sub2API、PostgreSQL、Redis の完全なスタックを実行できます:
 
 ```bash
-git clone https://github.com/Wei-Shaw/sub2api.git
-cd sub2api/deploy
+git clone https://github.com/JuZiool/sub2api-orange.git
+cd sub2api-orange/deploy
 ./apple-container.sh init
 ./apple-container.sh up
 ./apple-container.sh status
@@ -505,9 +547,8 @@ cd sub2api/deploy
 
 ```bash
 # 1. リポジトリをクローン
-git clone https://github.com/Wei-Shaw/sub2api.git
-cd sub2api
-
+git clone https://github.com/JuZiool/sub2api-orange.git
+cd sub2api-orange
 # 2. pnpm をインストール（未インストールの場合）
 npm install -g pnpm
 
