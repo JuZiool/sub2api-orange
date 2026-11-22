@@ -213,7 +213,10 @@ func (h *UsageHandler) List(c *gin.Context) {
 		return
 	}
 
-	response.Paginated(c, adminUsageLogResponses(c, records), result.Total, page, pageSize)
+	// Orange 特有：按本页 request_id 批量回填首字延迟拆分（gateway_ms / upstream_ms）。
+	// 查询失败或该请求未采样时两个字段保持 null，不影响列表本身。
+	latencies := h.usageService.OrangeUsageLatencyForLogs(c.Request.Context(), records)
+	response.Paginated(c, adminUsageLogResponses(c, records, latencies), result.Total, page, pageSize)
 }
 
 // Stats handles getting usage statistics with filters

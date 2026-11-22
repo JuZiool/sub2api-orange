@@ -456,6 +456,9 @@ export default {
     duration: '耗时',
     latency: '延迟',
     latencyFirstToken: '首字',
+    // Orange 特有：首字耗时的两段拆分（网关准备 / 等待上游）
+    gatewayLatency: '网关',
+    upstreamLatency: '上游',
     latencyDuration: '总耗时',
     outputTps: '输出 TPS',
     outputTpsHint: '输出 Token ÷ 总耗时（包含首字等待），单位 tok/s。输出 Token 可能包含推理 Token。',

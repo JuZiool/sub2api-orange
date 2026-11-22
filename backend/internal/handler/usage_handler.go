@@ -256,6 +256,15 @@ func (h *UsageHandler) List(c *gin.Context) {
 	for i := range records {
 		out = append(out, *dto.UsageLogFromService(&records[i]).Localized(c.GetHeader("Accept-Language")))
 	}
+	// Orange 特有：按本页 request_id 批量回填首字延迟拆分（gateway_ms / upstream_ms）。
+	// 查询失败或该请求未采样时两个字段保持 null（前端不显示额外行），不影响列表本身。
+	latencies := h.usageService.OrangeUsageLatencyForLogs(c.Request.Context(), records)
+	for i := range out {
+		if latency, ok := latencies[out[i].RequestID]; ok {
+			gatewayMs, upstreamMs := latency.GatewayMs, latency.UpstreamMs
+			out[i].GatewayMs, out[i].UpstreamMs = &gatewayMs, &upstreamMs
+		}
+	}
 	response.Paginated(c, out, result.Total, page, pageSize)
 }
 

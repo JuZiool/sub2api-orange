@@ -628,6 +628,11 @@ func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usage
 	if repo == nil || usageLog == nil {
 		return
 	}
+	// Orange 特有：usage log 落库时顺带 best-effort 记录首字延迟拆分（gateway_ms / upstream_ms）。
+	// 放在这里是因为两条计费主干（GatewayService / OpenAIGatewayService）都经由本函数写用量行；
+	// 内部已自守卫：非流式、无首字时间、未采样或写库失败都静默跳过/仅记 warn，不影响计费。
+	defer OrangeRecordUsageLatency(ctx, repo, usageLog)
+
 	usageCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
 

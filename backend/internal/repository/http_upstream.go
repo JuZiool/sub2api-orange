@@ -310,7 +310,18 @@ func doUpstreamRequest(client *http.Client, req *http.Request, drainTimeouts ...
 		drainTimeout = drainTimeouts[0]
 	}
 	ctx, cancel := pkghttputil.NewUpstreamAttemptContext(req.Context(), drainTimeout)
-	resp, err := servertiming.Do(client, req.WithContext(ctx))
+	attemptReq := req.WithContext(ctx)
+	// Orange 特有：首字延迟拆分的两个时间点（上游请求已发出 / 已收到响应头）。
+	// 追踪对象由请求入口挂在请求 ctx 上，这里只做 best-effort 打点：未安装时 trace 为 nil，
+	// 打点本身不加锁以外的任何开销，也不改变原有请求行为（NewUpstreamAttemptContext 保留 ctx 值）。
+	trace, _ := service.OrangeLatencyTraceFromContext(ctx)
+	if trace != nil {
+		trace.MarkSent(time.Now())
+	}
+	resp, err := servertiming.Do(client, attemptReq)
+	if trace != nil && err == nil {
+		trace.MarkHeaders(time.Now())
+	}
 	if err != nil {
 		cancel()
 		return resp, err
