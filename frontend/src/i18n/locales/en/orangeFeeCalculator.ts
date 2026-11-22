@@ -1,0 +1,63 @@
+/**
+ * Orange 特有：管理员费用计算器的英文文案（独立命名空间 `rateCalculator`）。
+ *
+ * 单独成文件是为了避免改动上游 2000+ 行的 `locales/en/common.ts`（合并冲突热点），
+ * 只在 `locales/en/index.ts` 里展开挂载。
+ */
+export default {
+  rateCalculator: {
+    title: 'Upstream Recharge Calculator',
+    description: 'Calculate a safe upstream top-up amount to cover the user balance.',
+    navLabel: 'Fee Calculator',
+    payAmount: 'User recharge amount',
+    payPlaceholder: 'e.g. 20',
+    yuan: 'CNY',
+    preset: 'Add {amount}',
+    safeUpstream: 'Minimum safe upstream top-up',
+    expectedProfit: 'Expected profit',
+    expectedLoss: 'Expected loss',
+    remember: 'Remember inputs',
+    remembered: 'Inputs are remembered',
+    resetAll: 'Reset all',
+    rateGroups: 'Rate groups',
+    addGroup: 'Add manual group',
+    refreshGroups: 'Refresh group rates',
+    joinSeparator: ', ',
+    groupsPanelTitle: 'Groups included in the calculation',
+    groupsPanelDescription: 'Select the active groups to load into the calculator. The user rate comes from the group rate; the upstream rate must be entered manually. Your selection and upstream rates stay in this browser only.',
+    groupsPanelLoading: 'Loading groups…',
+    groupsPanelError: 'Failed to load the group list. Click Refresh group rates to retry.',
+    groupsPanelEmpty: 'No active groups are available. Use a manual group below to calculate instead.',
+    groupsSelectedCount: '{count} groups selected',
+    clearSelection: 'Clear selection',
+    upstreamRateHint: 'The upstream groups table has no upstream rate field, so enter the real cost manually; it is remembered in this browser.',
+    autoSynced: 'Auto sync',
+    syncLoading: 'Loading current group rates. Summary amounts are paused.',
+    syncError: 'Group data could not be loaded or is incomplete. Summary amounts are paused; click Refresh group rates to retry.',
+    syncSuccess: 'Loaded user rates for {count} selected groups. Fill in the upstream rates to see the summary.',
+    syncEmpty: 'No groups are selected, so no synced rate groups are shown. Select groups above or add a manual group.',
+    simpleModeManual: 'Group rates are unavailable in simple mode. Enter rates manually to calculate.',
+    groupName: 'Rate group {number}',
+    clearGroup: 'Clear group',
+    confirmDeleteGroup: 'Click again to delete',
+    upstreamRate: 'Upstream rate',
+    upstreamPlaceholder: 'e.g. 0.2',
+    userRate: 'User rate',
+    userPlaceholder: 'e.g. 0.22',
+    groupAmount: 'Minimum top-up for this group',
+    groupBlank: 'Empty; excluded from calculation.',
+    groupIncomplete: 'Complete both rates or clear this group.',
+    groupInvalid: 'Upstream rate must be at least 0; user rate must be greater than 0.',
+    groupAwaitingPay: 'Rates entered; waiting for a valid user recharge amount.',
+    groupReady: 'Included in calculation; amount rounded up to cents.',
+    groupWorst: 'The safe top-up amount is based on this group.',
+    calculationNotes: 'Calculation details',
+    formula: 'Required amount per group = user recharge amount × upstream rate ÷ user rate. The highest complete group requirement is rounded up to cents to cover any group the user may use.',
+    profitFormula: 'Expected profit or loss = user recharge amount rounded down to cents − safe upstream top-up; negative values are shown as a loss.',
+    invalidPay: 'Enter a valid user recharge amount greater than or equal to 0.',
+    invalidGroups: 'Rate groups needing correction: {groups}.',
+    enterPay: 'Enter the user recharge amount and at least one rate group.',
+    enterRates: 'Enter at least one complete rate group. Empty groups are ignored.',
+    coverage: 'Covering {count} rate groups; rounded up to cents based on the highest requirement: {groups}.'
+  }
+}

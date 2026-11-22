@@ -7876,6 +7876,7 @@
           </div>
         </div>
 
+        <OrangeFeatureToggles /><!-- Orange 特有：Orange 自有功能开关卡片（切换即保存，与上方表单无关） -->
         </div><!-- /Tab: Features -->
 
         <!-- Tab: Email -->
@@ -8996,6 +8997,7 @@ import ProxySelector from "@/components/common/ProxySelector.vue";
 import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
+import OrangeFeatureToggles from "@/views/admin/settings/OrangeFeatureToggles.vue";
 import RechargeBonusTierEditor from "@/components/admin/settings/RechargeBonusTierEditor.vue";
 import {
   normalizeRechargeBonusMode,

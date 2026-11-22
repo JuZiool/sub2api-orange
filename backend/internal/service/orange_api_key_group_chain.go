@@ -1,0 +1,469 @@
+// Orange 特有：API Key 分组优先级链（密钥级兜底分组 + 聚合分组）。
+//
+// 语义：一条有序链表达一切能力 ——
+//   - 无链（长度 1，只有链首）：普通 Key，行为与上游完全一致；
+//   - 长度 2：密钥级兜底分组（主分组无可用账号时切到兜底分组）；
+//   - 长度 3..8：聚合分组，按 priority 依次尝试。
+//
+// 关键约定：
+//  1. 链首恒等于 api_keys.group_id（上游既有列、既有语义），本表只存链首之后的候选；
+//  2. 切组通过"请求内指针替换"实现：apiKey.Group / apiKey.GroupID / ctxkey.Group 指向
+//     实际命中的分组，因此下游限流、计费、用量归属自动跟随，无需改动计费代码；
+//  3. GroupID 必须分配**新指针**，禁止原地写 —— 认证缓存快照会把 GroupID 指针直接共享给
+//     请求级 APIKey（api_key_auth_cache_impl.go snapshotToAPIKey），原地写会污染 L1/L2 缓存；
+//  4. 只有"分组内无可用账号"（ErrNoAvailableAccounts / ErrNoAvailableCompactAccounts）才推进，
+//     上游 429/5xx/超时属账号级失败，不换分组；强制平台路由（ctxkey.ForcePlatform）不推进。
+package service
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+)
+
+// Orange 特有分组链的参数。
+const (
+	// orangeChainMaxCandidates 是链首之后的候选项上限（整链最多 8 组）。
+	orangeChainMaxCandidates = 8
+	// maxOrangeChainAttempts 是单请求内分组链推进的上限，防止脏数据造成死循环。
+	maxOrangeChainAttempts = 16
+)
+
+// Orange 特有分组链的模式取值（对外 DTO 的 mode 字段）。
+const (
+	OrangeGroupChainModeNone      = "none"
+	OrangeGroupChainModeFallback  = "fallback"
+	OrangeGroupChainModeAggregate = "aggregate"
+)
+
+// OrangeGroupChainMember 是 orange_api_key_group_chain 表的一行，即"链首之后的候选"。
+// Priority 从 1 起，数值越小越先尝试。
+type OrangeGroupChainMember struct {
+	GroupID  int64
+	Priority int
+}
+
+// APIKeyGroupEntry 是分组优先级链上的一项（含链首）。
+type APIKeyGroupEntry struct {
+	Group    *Group
+	Priority int
+}
+
+// orangeKeyGroupRouting 是请求内的分组路由链。普通 Key 长度 1，兜底 Key 长度 2，聚合 Key 更长。
+type orangeKeyGroupRouting struct {
+	primaryGroupID int64
+	chain          []APIKeyGroupEntry
+	apiKey         *APIKey
+}
+
+type orangeKeyGroupRoutingContextKey struct{}
+
+// GroupChain 返回该 Key 的分组优先级链（含链首，按 priority 升序）。
+// 链上 Group 为空/无效的项会被跳过；未配置链时返回 nil。
+func (k *APIKey) GroupChain() []*APIKeyGroupEntry {
+	if k == nil || len(k.Groups) == 0 {
+		return nil
+	}
+	chain := make([]*APIKeyGroupEntry, 0, len(k.Groups))
+	for _, entry := range k.Groups {
+		if entry == nil || entry.Group == nil || entry.Group.ID <= 0 {
+			continue
+		}
+		chain = append(chain, entry)
+	}
+	if len(chain) == 0 {
+		return nil
+	}
+	return chain
+}
+
+// HasGroupChain 报告该 Key 是否配置了分组链（兜底或聚合）。
+func (k *APIKey) HasGroupChain() bool {
+	return len(k.GroupChain()) >= 2
+}
+
+// IsAggregated 报告该 Key 是否为聚合密钥（链上 ≥3 组）。
+func (k *APIKey) IsAggregated() bool {
+	return len(k.GroupChain()) >= 3
+}
+
+// OrangeGroupChainMode 返回该 Key 的分组链模式：none / fallback / aggregate。
+func (k *APIKey) OrangeGroupChainMode() string {
+	switch len(k.GroupChain()) {
+	case 0, 1:
+		return OrangeGroupChainModeNone
+	case 2:
+		return OrangeGroupChainModeFallback
+	default:
+		return OrangeGroupChainModeAggregate
+	}
+}
+
+// orangeUsableKeyChain 按 priority 顺序构建"本次请求可用"的链：过滤空项、软删（GetByID 已剔除）、
+// 停用、上下文不完整、重复分组，以及与链首不同平台/不同订阅类型的成员。
+// 过滤而不是整链作废，这样单个候选被停用/删除不会让整条链失效。
+func orangeUsableKeyChain(apiKey *APIKey) []APIKeyGroupEntry {
+	entries := apiKey.GroupChain()
+	if len(entries) < 2 {
+		return nil
+	}
+	chain := make([]APIKeyGroupEntry, 0, len(entries))
+	seen := make(map[int64]struct{}, len(entries))
+	for _, entry := range entries {
+		group := entry.Group
+		if _, ok := seen[group.ID]; ok {
+			continue
+		}
+		if !group.IsActive() || !IsGroupContextValid(group) {
+			continue
+		}
+		if len(chain) > 0 {
+			head := chain[0].Group
+			if group.Platform != head.Platform || group.SubscriptionType != head.SubscriptionType {
+				continue
+			}
+		}
+		seen[group.ID] = struct{}{}
+		chain = append(chain, APIKeyGroupEntry{Group: group, Priority: entry.Priority})
+	}
+	if len(chain) < 2 {
+		return nil
+	}
+	return chain
+}
+
+// WithOrangeKeyGroupRouting 在鉴权通过后安装请求级分组路由链。
+//
+// 不满足条件时原样返回 ctx（退化为普通 Key，不报错）：链首必须就是当前主分组且可用，
+// 其余成员必须可用、同平台、同订阅类型（跨平台链会在错误的网关上被调度；跨订阅类型会
+// 绕过订阅限额校验）。
+func WithOrangeKeyGroupRouting(ctx context.Context, apiKey *APIKey) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if apiKey == nil || apiKey.GroupID == nil || *apiKey.GroupID <= 0 {
+		return ctx
+	}
+	chain := orangeUsableKeyChain(apiKey)
+	if len(chain) < 2 {
+		return ctx
+	}
+	head := chain[0]
+	if head.Group.ID != *apiKey.GroupID {
+		// 链首与主分组不一致（例如主分组刚被改动但缓存尚未刷新），本请求按普通 Key 处理。
+		return ctx
+	}
+	for _, entry := range chain[1:] {
+		if entry.Group.Platform != head.Group.Platform {
+			return ctx
+		}
+		if entry.Group.SubscriptionType != head.Group.SubscriptionType {
+			return ctx
+		}
+	}
+	return context.WithValue(ctx, orangeKeyGroupRoutingContextKey{}, &orangeKeyGroupRouting{
+		primaryGroupID: head.Group.ID,
+		chain:          chain,
+		apiKey:         apiKey,
+	})
+}
+
+// orangeKeyRoutingFromContext 读取请求内的分组路由链。
+func orangeKeyRoutingFromContext(ctx context.Context) (*orangeKeyGroupRouting, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	routing, ok := ctx.Value(orangeKeyGroupRoutingContextKey{}).(*orangeKeyGroupRouting)
+	if !ok || routing == nil {
+		return nil, false
+	}
+	return routing, true
+}
+
+func orangeChainGroupByID(chain []APIKeyGroupEntry, groupID int64) *Group {
+	for i := range chain {
+		if chain[i].Group != nil && chain[i].Group.ID == groupID {
+			return chain[i].Group
+		}
+	}
+	return nil
+}
+
+// orangeChainNextGroup 返回 groupID 在链上的下一个可用分组。
+func orangeChainNextGroup(chain []APIKeyGroupEntry, groupID int64) *Group {
+	for i := range chain {
+		if chain[i].Group == nil || chain[i].Group.ID != groupID {
+			continue
+		}
+		for j := i + 1; j < len(chain); j++ {
+			if chain[j].Group != nil && chain[j].Group.ID > 0 && chain[j].Group.ID != groupID {
+				return chain[j].Group
+			}
+		}
+		return nil
+	}
+	return nil
+}
+
+// orangeClearUserGroupRPMOverride 清掉认证快照里按主分组算出的 (user, group) RPM 覆盖，
+// 避免主分组的覆盖值泄漏到实际命中的分组。
+func orangeClearUserGroupRPMOverride(apiKey *APIKey) {
+	if apiKey == nil || apiKey.User == nil {
+		return
+	}
+	if apiKey.User.UserGroupRPMOverride == nil && apiKey.User.UserGroupRPMOverrideGroupID == 0 {
+		return
+	}
+	userCopy := *apiKey.User
+	userCopy.UserGroupRPMOverride = nil
+	userCopy.UserGroupRPMOverrideGroupID = 0
+	apiKey.User = &userCopy
+}
+
+// activateOrangeKeyRouting 把请求级 apiKey / ctxkey.Group 切到实际命中的分组。
+func activateOrangeKeyRouting(ctx context.Context, routedGroupID int64) bool {
+	if ctx == nil || routedGroupID <= 0 {
+		return false
+	}
+	routing, ok := orangeKeyRoutingFromContext(ctx)
+	if !ok || routing.apiKey == nil || len(routing.chain) == 0 {
+		return false
+	}
+	routed := orangeChainGroupByID(routing.chain, routedGroupID)
+	if routed == nil {
+		return false
+	}
+	if contextGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && contextGroup != nil {
+		// 原地覆盖：handler 已持有同一指针，只有这样下游读 ctxkey.Group 才能看到路由后的分组。
+		// 该对象来自认证快照的请求内物化（每请求新建）或本请求的链克隆，不会被跨请求共享。
+		*contextGroup = *routed
+	}
+	// 必须分配新指针：认证快照里的 GroupID 指针是共享的，原地写会污染 L1/L2 缓存。
+	groupID := routed.ID
+	routing.apiKey.GroupID = &groupID
+	routing.apiKey.Group = routed
+	orangeClearUserGroupRPMOverride(routing.apiKey)
+	return true
+}
+
+// healOrangeKeyChainHead 在链首分组失效（删除/停用/上下文不完整）时，把本请求的主分组
+// 换成链上第一个可用成员。只改请求内指针，不写库；下次请求会再次自愈（幂等）。
+func healOrangeKeyChainHead(ctx context.Context, apiKey *APIKey) bool {
+	if apiKey == nil || len(apiKey.Groups) == 0 {
+		return false
+	}
+	// 强制平台路由（/antigravity 等）在中间件阶段就确定了平台，换组会把请求送进别的平台，
+	// 因此这里不自愈，保持上游既有的 403 行为。
+	if ctx != nil {
+		if forcePlatform, _ := ctx.Value(ctxkey.ForcePlatform).(string); forcePlatform != "" {
+			return false
+		}
+	}
+	head := apiKey.Group
+	if head != nil && head.ID > 0 && head.IsActive() && IsGroupContextValid(head) {
+		return false
+	}
+
+	healedIndex := -1
+	var healed *Group
+	for i, entry := range apiKey.Groups {
+		if entry == nil || entry.Group == nil || entry.Group.ID <= 0 {
+			continue
+		}
+		if head != nil && entry.Group.ID == head.ID {
+			continue
+		}
+		group := entry.Group
+		if !group.IsActive() || !IsGroupContextValid(group) {
+			continue
+		}
+		if !orangeGroupBindableForUser(apiKey.User, group) {
+			continue
+		}
+		healedIndex = i
+		healed = group
+		break
+	}
+	if healed == nil || healedIndex < 0 {
+		return false
+	}
+
+	deadGroupID := int64(0)
+	if head != nil {
+		deadGroupID = head.ID
+	}
+	groupID := healed.ID
+	apiKey.GroupID = &groupID
+	apiKey.Group = healed
+	apiKey.Groups = orangeRebuildChainFrom(apiKey.Groups, healedIndex)
+	orangeClearUserGroupRPMOverride(apiKey)
+	slog.Info("orange_key_group_chain_head_healed",
+		"api_key_id", apiKey.ID,
+		"dead_group_id", deadGroupID,
+		"healed_group_id", healed.ID)
+	return true
+}
+
+// orangeRebuildChainFrom 用第 index 项作为新的链首重建链（丢弃它之前的失效项），并重排序号。
+func orangeRebuildChainFrom(entries []*APIKeyGroupEntry, index int) []*APIKeyGroupEntry {
+	if index < 0 || index >= len(entries) {
+		return entries
+	}
+	rebuilt := make([]*APIKeyGroupEntry, 0, len(entries))
+	rebuilt = append(rebuilt, &APIKeyGroupEntry{Group: entries[index].Group, Priority: 1})
+	for i := index + 1; i < len(entries); i++ {
+		if entries[i] == nil || entries[i].Group == nil || entries[i].Group.ID <= 0 {
+			continue
+		}
+		rebuilt = append(rebuilt, &APIKeyGroupEntry{Group: entries[i].Group, Priority: len(rebuilt) + 1})
+	}
+	return rebuilt
+}
+
+// orangeGroupBindableForUser 报告用户是否还能使用该分组（自愈时的权限兜底）。
+func orangeGroupBindableForUser(user *User, group *Group) bool {
+	if user == nil || group == nil {
+		return true
+	}
+	if group.IsSubscriptionType() {
+		// 订阅类分组的可用性由订阅服务在鉴权阶段单独校验。
+		return true
+	}
+	return user.CanBindGroup(group.ID, group.IsExclusive)
+}
+
+// orangeNextChainGroup 判定当前分组选号失败后是否应推进到链上的下一个分组。
+//
+// 只认"分组内无可用账号"两类错误；强制平台路由、链已走完、当前分组不在链上都不推进。
+func orangeNextChainGroup(ctx context.Context, groupID *int64, selectionErr error) (*Group, context.Context, bool) {
+	if ctx == nil || groupID == nil || *groupID <= 0 {
+		return nil, ctx, false
+	}
+	if !errors.Is(selectionErr, ErrNoAvailableAccounts) && !errors.Is(selectionErr, ErrNoAvailableCompactAccounts) {
+		return nil, ctx, false
+	}
+	if forcePlatform, _ := ctx.Value(ctxkey.ForcePlatform).(string); forcePlatform != "" {
+		return nil, ctx, false
+	}
+	routing, ok := orangeKeyRoutingFromContext(ctx)
+	if !ok || len(routing.chain) < 2 {
+		return nil, ctx, false
+	}
+	// groupID 可能已经是链上的中间分组（前一次推进的结果），按当前位置取下一项；
+	// 走到链尾时 orangeChainNextGroup 返回 nil，推进自然终止。
+	if orangeChainGroupByID(routing.chain, *groupID) == nil {
+		return nil, ctx, false
+	}
+	next := orangeChainNextGroup(routing.chain, *groupID)
+	if next == nil || !next.IsActive() || !IsGroupContextValid(next) {
+		return nil, ctx, false
+	}
+	return next, ctx, true
+}
+
+// selectWithOrangeGroupChain 是选号入口的通用外壳：先按当前分组选号，只有"分组内无可用账号"
+// 时才沿链推进；命中后续分组后激活请求级路由，让限流/计费/用量跟随实际分组。
+func selectWithOrangeGroupChain[T any](
+	ctx context.Context,
+	groupID *int64,
+	requestedModel string,
+	selectInGroup func(context.Context, *int64) (T, error),
+	isHit func(T) bool,
+	markRouted func(T, int64),
+) (T, error) {
+	primaryGroupID := derefGroupID(groupID)
+	result, err := selectInGroup(ctx, groupID)
+
+	for attempt := 1; attempt <= maxOrangeChainAttempts; attempt++ {
+		if err == nil && isHit(result) {
+			break
+		}
+		next, nextCtx, ok := orangeNextChainGroup(ctx, groupID, err)
+		if !ok {
+			break
+		}
+		nextGroupID := next.ID
+		slog.Info("orange_key_group_chain_attempt",
+			"primary_group_id", primaryGroupID,
+			"next_group_id", nextGroupID,
+			"model", requestedModel,
+			"attempt", attempt)
+		result, err = selectInGroup(nextCtx, &nextGroupID)
+		ctx = nextCtx
+		groupID = &nextGroupID
+		if err == nil && isHit(result) {
+			activateOrangeKeyRouting(ctx, nextGroupID)
+			if markRouted != nil {
+				markRouted(result, nextGroupID)
+			}
+			slog.Info("orange_key_group_chain_selected",
+				"primary_group_id", primaryGroupID,
+				"routed_group_id", nextGroupID,
+				"model", requestedModel,
+				"attempt", attempt)
+			break
+		}
+	}
+	return result, err
+}
+
+// orangeAccountSelectionHit 报告 *Account 选号是否命中。
+func orangeAccountSelectionHit(account *Account) bool { return account != nil }
+
+// orangeSelectionResultHit 报告 *AccountSelectionResult 选号是否命中。
+func orangeSelectionResultHit(selection *AccountSelectionResult) bool {
+	return selection != nil && selection.Account != nil
+}
+
+// orangeOpenAIScheduleResult 把 OpenAI 调度器的三返回值打包，便于复用同一套链推进逻辑。
+type orangeOpenAIScheduleResult struct {
+	Selection *AccountSelectionResult
+	Decision  OpenAIAccountScheduleDecision
+	Err       error
+}
+
+func (r orangeOpenAIScheduleResult) hit() bool {
+	return r.Err == nil && r.Selection != nil && r.Selection.Account != nil
+}
+
+// selectWithOrangeGroupChainOpenAISchedule 是 OpenAI 调度器三返回值入口的链推进外壳。
+func selectWithOrangeGroupChainOpenAISchedule(
+	ctx context.Context,
+	groupID *int64,
+	requestedModel string,
+	selectInGroup func(context.Context, *int64) orangeOpenAIScheduleResult,
+) orangeOpenAIScheduleResult {
+	primaryGroupID := derefGroupID(groupID)
+	result := selectInGroup(ctx, groupID)
+
+	for attempt := 1; attempt <= maxOrangeChainAttempts; attempt++ {
+		if result.hit() {
+			break
+		}
+		next, nextCtx, ok := orangeNextChainGroup(ctx, groupID, result.Err)
+		if !ok {
+			break
+		}
+		nextGroupID := next.ID
+		slog.Info("orange_key_group_chain_attempt",
+			"primary_group_id", primaryGroupID,
+			"next_group_id", nextGroupID,
+			"model", requestedModel,
+			"attempt", attempt)
+		result = selectInGroup(nextCtx, &nextGroupID)
+		ctx = nextCtx
+		groupID = &nextGroupID
+		if result.hit() {
+			activateOrangeKeyRouting(ctx, nextGroupID)
+			slog.Info("orange_key_group_chain_selected",
+				"primary_group_id", primaryGroupID,
+				"routed_group_id", nextGroupID,
+				"model", requestedModel,
+				"attempt", attempt)
+			break
+		}
+	}
+	return result
+}

@@ -1,0 +1,63 @@
+/**
+ * Orange 特有：管理员费用计算器的中文文案（独立命名空间 `rateCalculator`）。
+ *
+ * 单独成文件是为了避免改动上游 2000+ 行的 `locales/zh/common.ts`（合并冲突热点），
+ * 只在 `locales/zh/index.ts` 里展开挂载。
+ */
+export default {
+  rateCalculator: {
+    title: '上游充值计算器',
+    description: '计算覆盖用户余额所需的稳妥上游充值金额。',
+    navLabel: '费用计算',
+    payAmount: '用户充值金额',
+    payPlaceholder: '如 20',
+    yuan: '元',
+    preset: '充 {amount}',
+    safeUpstream: '最少应充上游（稳妥金额）',
+    expectedProfit: '预计赚取',
+    expectedLoss: '预计亏损',
+    remember: '记住所有输入',
+    remembered: '已记住所有输入',
+    resetAll: '全部重置',
+    rateGroups: '倍率组',
+    addGroup: '添加手动分组',
+    refreshGroups: '刷新分组倍率',
+    joinSeparator: '、',
+    groupsPanelTitle: '参与计算的分组',
+    groupsPanelDescription: '勾选要带入计算器的启用分组。「给用户的倍率」自动取分组倍率；「上游倍率」需人工填写。勾选结果与上游倍率只保存在本浏览器，不写数据库。',
+    groupsPanelLoading: '正在读取分组…',
+    groupsPanelError: '读取分组列表失败，请点击「刷新分组倍率」重试。',
+    groupsPanelEmpty: '没有可选的启用分组，可直接用下方手动分组试算。',
+    groupsSelectedCount: '已选 {count} 个分组',
+    clearSelection: '清空勾选',
+    upstreamRateHint: '上游分组表没有「上游倍率」字段，请按实际成本人工填写；填写内容记忆在本浏览器。',
+    autoSynced: '自动同步',
+    syncLoading: '正在读取最新分组倍率，暂不显示汇总金额。',
+    syncError: '分组数据读取失败或不完整，汇总已暂停，请点击「刷新分组倍率」重试。',
+    syncSuccess: '已带入 {count} 个勾选分组的给用户倍率，请补齐上游倍率后再看汇总。',
+    syncEmpty: '未勾选任何分组，暂无自动带入的倍率组；可在上方勾选分组或添加手动分组试算。',
+    simpleModeManual: '简易模式未提供分组倍率，请手动填写试算。',
+    groupName: '倍率组 {number}',
+    clearGroup: '清空本组',
+    confirmDeleteGroup: '再次点击删除',
+    upstreamRate: '上游倍率',
+    upstreamPlaceholder: '如 0.2',
+    userRate: '给用户的倍率',
+    userPlaceholder: '如 0.22',
+    groupAmount: '按本组倍率，至少应充',
+    groupBlank: '未填写，不参与计算。',
+    groupIncomplete: '请补全本组的两个倍率，或清空本组。',
+    groupInvalid: '上游倍率须大于等于 0，给用户的倍率须大于 0。',
+    groupAwaitingPay: '倍率已填写，等待有效的用户充值金额。',
+    groupReady: '已参与计算，金额向上取整到分。',
+    groupWorst: '本次稳妥充值金额按这组计算。',
+    calculationNotes: '计算说明',
+    formula: '每组所需金额 = 用户充值金额 × 上游倍率 ÷ 给用户的倍率。取已填写各组中的最大值，向上取整到分，覆盖用户使用其中任意一组的情况。',
+    profitFormula: '预计盈亏 = 用户充值金额向下取整到分 − 稳妥充值金额；负数显示为预计亏损。',
+    invalidPay: '请输入大于等于 0 的有效用户充值金额。',
+    invalidGroups: '{groups} 尚未填写完整或数值无效，请补全或清空后查看稳妥金额。',
+    enterPay: '输入用户充值金额，再填写至少一组倍率。',
+    enterRates: '请至少填写一组完整倍率。空白组不参与计算。',
+    coverage: '已覆盖 {count} 组倍率；按 {groups} 的最大需求计算，向上取整到分。'
+  }
+}

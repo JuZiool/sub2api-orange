@@ -89,7 +89,15 @@ func TestAntigravityBuildGeminiTestRequest_UsesPromptAndRoomToAnswer(t *testing.
 	t.Parallel()
 
 	svc := &AntigravityGatewayService{}
-	for _, tc := range []struct{ prompt, want string }{{"hello there", "hello there"}, {"", "hi"}, {"   ", "hi"}} {
+	// Orange 特有：自定义测试提示词时放宽输出 token（1024），默认提示词保持 256。
+	for _, tc := range []struct {
+		prompt, want string
+		limit        int
+	}{
+		{"hello there", "hello there", orangeAccountTestPromptCustomOutputLimit},
+		{"", "hi", antigravityTestMaxOutputTokens},
+		{"   ", "hi", antigravityTestMaxOutputTokens},
+	} {
 		raw, err := svc.buildGeminiTestRequestWithPrompt("proj-123", "gemini-4-argon-high", tc.prompt)
 		require.NoError(t, err)
 		var v1Req map[string]any
@@ -98,7 +106,7 @@ func TestAntigravityBuildGeminiTestRequest_UsesPromptAndRoomToAnswer(t *testing.
 		parts := inner["contents"].([]any)[0].(map[string]any)["parts"].([]any)
 		require.Equal(t, tc.want, parts[0].(map[string]any)["text"], "prompt %q", tc.prompt)
 		genCfg := inner["generationConfig"].(map[string]any)
-		require.EqualValues(t, antigravityTestMaxOutputTokens, genCfg["maxOutputTokens"])
+		require.EqualValues(t, tc.limit, genCfg["maxOutputTokens"], "prompt %q", tc.prompt)
 		require.GreaterOrEqual(t, antigravityTestMaxOutputTokens, 128, "a thinking model needs room to answer")
 	}
 }

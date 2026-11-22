@@ -88,6 +88,9 @@ type APIKey struct {
 
 	User  *User  `json:"user,omitempty"`
 	Group *Group `json:"group,omitempty"`
+
+	// Orange 特有：分组优先级链（含链首，按 priority 升序）。普通 Key 为空数组。
+	Groups []APIKeyGroupEntry `json:"groups"`
 }
 
 type Group struct {

@@ -155,7 +155,15 @@
           </template>
 
           <template #cell-group="{ row }">
-            <div class="group/dropdown relative">
+            <!-- Orange 特有：存在分组链（链长 ≥2）时改为链徽章，点击打开分组链配置弹窗 -->
+            <KeyGroupChainCell
+              v-if="row.groups?.length > 1"
+              :row="row"
+              :user-group-rates="userGroupRates"
+              @edit="openChainDialog(row)"
+            />
+            <div v-else class="flex items-center gap-2">
+              <div class="group/dropdown relative">
               <button
                 :ref="(el) => setGroupButtonRef(row.id, el)"
                 @click="openGroupSelector(row)"
@@ -191,6 +199,17 @@
                     d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"
                   />
                 </svg>
+              </button>
+              </div>
+              <!-- Orange 特有：普通密钥配置分组链（兜底 / 聚合分组）入口 -->
+              <button
+                type="button"
+                class="shrink-0 rounded-lg border border-dashed border-gray-300 px-1.5 py-0.5 text-xs text-gray-400 transition-colors hover:border-blue-400 hover:text-blue-500 dark:border-dark-500 dark:text-dark-400 dark:hover:border-blue-500 dark:hover:text-blue-400"
+                :title="t('keys.groupChain.editTitle')"
+                :aria-label="t('keys.groupChain.configure')"
+                @click.stop="openChainDialog(row)"
+              >
+                {{ t('keys.groupChain.configure') }}
               </button>
             </div>
           </template>
@@ -1042,6 +1061,16 @@
       @updated="handleBulkUpdated"
     />
 
+    <!-- Orange 特有：密钥分组优先级链（单兜底 / 聚合分组）配置弹窗 -->
+    <KeyGroupChainDialog
+      :show="showChainDialog"
+      :api-key="chainDialogKey"
+      :groups="groups"
+      :user-group-rates="userGroupRates"
+      @close="showChainDialog = false"
+      @saved="loadApiKeys"
+    />
+
     <!-- Delete Confirmation Dialog -->
     <ConfirmDialog
       :show="showDeleteDialog"
@@ -1220,6 +1249,9 @@ import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
+// Orange 特有：密钥分组链（兜底/聚合分组）
+import KeyGroupChainCell from '@/components/keys/KeyGroupChainCell.vue'
+import KeyGroupChainDialog from '@/components/keys/KeyGroupChainDialog.vue'
 	import DataTable from '@/components/common/DataTable.vue'
 	import Pagination from '@/components/common/Pagination.vue'
 	import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -1423,6 +1455,13 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const columnDropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
 const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
+// Orange 特有：分组链配置弹窗状态（仅在 Key 存在分组链时由列表的分组列打开）
+const showChainDialog = ref(false)
+const chainDialogKey = ref<ApiKey | null>(null)
+const openChainDialog = (key: ApiKey) => {
+  chainDialogKey.value = key
+  showChainDialog.value = true
+}
 let abortController: AbortController | null = null
 
 // Get the currently selected key for group change

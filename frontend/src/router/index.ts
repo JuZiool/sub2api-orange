@@ -8,6 +8,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
 import { useAdminComplianceStore } from '@/stores/adminCompliance'
+// Orange 特有：Token 排行榜展示开关的路由守卫（仅在路由 meta 声明时生效）
+import { installOrangeTokenRankingGuard } from './orangeTokenRankingGuard'
 import { useNavigationLoadingState } from '@/composables/useNavigationLoading'
 import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
@@ -238,6 +240,20 @@ const routes: RouteRecordRaw[] = [
       title: 'Usage Records',
       titleKey: 'usage.title',
       descriptionKey: 'usage.description'
+    }
+  },
+  // Orange 特有：Token 排行榜（受 orange_settings.token_ranking_enabled 展示开关控制）
+  {
+    path: '/token-ranking',
+    name: 'TokenRanking',
+    component: () => import('@/views/user/TokenRankingView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      requiresOrangeTokenRanking: true,
+      title: 'Token Ranking',
+      titleKey: 'orangeTokenRanking.title',
+      descriptionKey: 'orangeTokenRanking.description'
     }
   },
   {
@@ -618,6 +634,19 @@ const routes: RouteRecordRaw[] = [
       title: 'System Settings',
       titleKey: 'admin.settings.title',
       descriptionKey: 'admin.settings.description'
+    }
+  },
+  // Orange 特有：管理员费用计算器（纯前端计算，仅管理员可见）
+  {
+    path: '/admin/fee-calculator',
+    name: 'AdminFeeCalculator',
+    component: () => import('@/features/fee-calculator/FeeCalculatorView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Fee Calculator',
+      titleKey: 'rateCalculator.title',
+      descriptionKey: 'rateCalculator.description'
     }
   },
   {
@@ -1047,5 +1076,8 @@ router.onError((error) => {
     }
   }
 })
+
+// Orange 特有：安装 Token 排行榜路由守卫（模块体执行早于 app.use(router) 的首次导航）
+installOrangeTokenRankingGuard(router)
 
 export default router

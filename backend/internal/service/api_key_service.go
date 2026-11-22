@@ -611,6 +611,7 @@ func (s *APIKeyService) List(ctx context.Context, userID int64, params paginatio
 		return nil, nil, fmt.Errorf("list api keys: %w", err)
 	}
 	s.fillCurrentConcurrency(ctx, keys)
+	s.OrangeAttachGroupChains(ctx, keys) // Orange 特有：列表展示分组优先级链
 	return keys, pagination, nil
 }
 
@@ -625,6 +626,7 @@ func (s *APIKeyService) listByCurrentConcurrency(ctx context.Context, userID int
 		return nil, nil, fmt.Errorf("list api keys: %w", err)
 	}
 	s.fillCurrentConcurrency(ctx, keys)
+	s.OrangeAttachGroupChains(ctx, keys) // Orange 特有：列表展示分组优先级链
 	sortAPIKeysByCurrentConcurrency(keys, params.NormalizedSortOrder(pagination.SortOrderDesc))
 	return paginateAPIKeys(keys, params), apiKeyPaginationResult(int64(len(keys)), params), nil
 }

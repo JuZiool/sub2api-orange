@@ -47,6 +47,10 @@ type APIKey struct {
 	Group               *Group
 	CurrentConcurrency  int
 
+	// Orange 特有：分组优先级链（含链首，按 priority 升序；普通 Key 为 nil）。
+	// 由 APIKeyService.OrangeAttachGroupChain 在鉴权阶段装载，见 orange_api_key_group_chain*.go。
+	Groups []*APIKeyGroupEntry
+
 	// Quota fields
 	Quota     float64    // Quota limit in USD (0 = unlimited)
 	QuotaUsed float64    // Used quota amount
