@@ -66,7 +66,8 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "Images API is not supported for this platform")
 		return
 	}
-	if !service.GroupAllowsImageGeneration(apiKey.Group) {
+	// Orange 特有：聚合/兜底密钥按链判定，链上任一分组允许生图即放行。
+	if !service.OrangeChainAllowsImageGeneration(apiKey) {
 		imageTaskJSONError(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}

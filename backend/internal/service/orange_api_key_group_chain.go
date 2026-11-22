@@ -378,6 +378,8 @@ func selectWithOrangeGroupChain[T any](
 	markRouted func(T, int64),
 ) (T, error) {
 	primaryGroupID := derefGroupID(groupID)
+	// Orange 特有：当前分组配置层面不支持该模型时，按链优先级预跳到第一个支持的分组。
+	ctx, groupID = orangePreselectChainGroupForModel(ctx, groupID, requestedModel)
 	result, err := selectInGroup(ctx, groupID)
 
 	for attempt := 1; attempt <= maxOrangeChainAttempts; attempt++ {
@@ -440,6 +442,8 @@ func selectWithOrangeGroupChainOpenAISchedule(
 	selectInGroup func(context.Context, *int64) orangeOpenAIScheduleResult,
 ) orangeOpenAIScheduleResult {
 	primaryGroupID := derefGroupID(groupID)
+	// Orange 特有：当前分组配置层面不支持该模型时，按链优先级预跳到第一个支持的分组。
+	ctx, groupID = orangePreselectChainGroupForModel(ctx, groupID, requestedModel)
 	result := selectInGroup(ctx, groupID)
 
 	for attempt := 1; attempt <= maxOrangeChainAttempts; attempt++ {

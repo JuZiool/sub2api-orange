@@ -11,7 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (h *GatewayHandler) pinnedOpenAIModels(c *gin.Context, group *service.Group) {
+// Orange 特有：签名带上 apiKey，便于按分组链合并链上其余分组的模型目录。
+func (h *GatewayHandler) pinnedOpenAIModels(c *gin.Context, apiKey *service.APIKey) {
 	if c.Request.Context().Err() != nil {
 		return
 	}
@@ -19,6 +20,7 @@ func (h *GatewayHandler) pinnedOpenAIModels(c *gin.Context, group *service.Group
 		writeOpenAIModelsError(c, http.StatusInternalServerError, "api_error", "OpenAI model discovery is not configured")
 		return
 	}
+	group := apiKey.Group
 	etag := c.GetHeader("If-None-Match")
 	if c.Param("model") != "" {
 		etag = "" // A collection ETag cannot validate a single-model representation.
@@ -38,6 +40,11 @@ func (h *GatewayHandler) pinnedOpenAIModels(c *gin.Context, group *service.Group
 		return
 	}
 	setOpsSelectedAccount(c, account.ID, account.Platform)
+	// Orange 特有：聚合密钥把链上其余分组的模型并入同一份目录（含各组可调用的生图模型）。
+	if err := h.orangeMergeAggregatedCodexManifest(c.Request.Context(), apiKey, response, false, etag); err != nil {
+		writeOpenAIModelsError(c, http.StatusInternalServerError, "api_error", "Failed to build aggregated model catalogue")
+		return
+	}
 	writeOpenAIModelsResponse(c, response)
 }
 

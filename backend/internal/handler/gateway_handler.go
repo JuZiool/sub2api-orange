@@ -1171,7 +1171,8 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	if platform == service.PlatformOpenAI && apiKey != nil && apiKey.Group != nil &&
 		apiKey.Group.Platform == service.PlatformOpenAI && apiKey.Group.CodexModelsManifestConfig.Enabled {
-		h.pinnedOpenAIModels(c, apiKey.Group)
+		// Orange 特有：pinnedOpenAIModels 内部会按分组链合并链上其余分组的模型目录。
+		h.pinnedOpenAIModels(c, apiKey)
 		return
 	}
 
@@ -1195,6 +1196,12 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	// Get available models from account configurations for the selected group platform.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
+	// Orange 特有：聚合密钥合并链上各分组的模型目录（各分组已套自己的白名单与生图策略），
+	// 因此这里不再套用链首白名单，也不再只按链首分组展开默认列表。
+	if merged, ok := h.orangeAggregateAvailableModels(c.Request.Context(), apiKey, platform); ok {
+		writeModelsList(c, platform, merged)
+		return
+	}
 	if platform == service.PlatformAnthropic {
 		var group *service.Group
 		if apiKey != nil {
@@ -1260,6 +1267,10 @@ func (h *GatewayHandler) CodexModels(c *gin.Context) {
 	}
 	modelIDs := h.codexModelIDsForGroup(c.Request.Context(), apiKey.Group, forcedPlatform)
 	modelIDs = service.FilterCodexModelIDsForGroup(modelIDs, apiKey.Group)
+	// Orange 特有：聚合密钥合并链上各分组的 Codex 模型目录（含各组可调用的生图模型）。
+	if merged, ok := h.orangeAggregateCodexModelIDs(c.Request.Context(), apiKey, forcedPlatform); ok {
+		modelIDs = merged
+	}
 	body, err := h.gatewayService.BuildCodexModelsManifestForGroup(
 		c.Request.Context(),
 		apiKey.Group,
@@ -1584,7 +1595,8 @@ func (h *GatewayHandler) AntigravityModels(c *gin.Context) {
 	if apiKey, ok := middleware2.GetAPIKeyFromContext(c); ok && apiKey != nil && apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
 		filtered := make([]antigravity.ClaudeModel, 0, len(models))
 		for _, model := range models {
-			if apiKey.Group.ModelAllowlist.Allows(model.ID) {
+			// Orange 特有：聚合密钥下链上任一分组允许该模型即保留。
+			if apiKey.Group.ModelAllowlist.Allows(model.ID) || service.OrangeChainAllowsModel(apiKey, model.ID) {
 				filtered = append(filtered, model)
 			}
 		}

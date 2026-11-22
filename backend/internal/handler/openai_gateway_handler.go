@@ -567,7 +567,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// Codex 在所有请求中被动声明 image_gen namespace，宽泛检测会导致禁了生图的
 	// 分组中所有 Codex 请求被 403（#4447），并误占生图并发槽位。
 	imageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, body)
-	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
+	// Orange 特有：聚合/兜底密钥按链判定，链上任一分组允许生图即放行。
+	if imageIntent && !service.OrangeChainAllowsImageGeneration(apiKey) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}
@@ -2611,7 +2612,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// 与 HTTP 准入一致：帧内重复 model 键/大小写变体可能被上游按末值绑定，
 	// 全部候选值逐一校验，任一未命中即拒绝。
 	firstModelCandidates := requestmodel.FromBodyCandidates("", "application/json", firstMessage)
-	if blocked := blockedModelAllowlistCandidate(apiKey.Group, firstModelCandidates); blocked != "" {
+	// Orange 特有：聚合/兜底密钥按分组链判定白名单（链上任一分组允许即放行）。
+	if blocked := orangeBlockedModelAllowlistCandidate(apiKey, firstModelCandidates); blocked != "" {
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
 		middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked))
@@ -2679,7 +2681,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	}
 
 	imageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, firstMessage)
-	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
+	// Orange 特有：聚合/兜底密钥按链判定，链上任一分组允许生图即放行。
+	if imageIntent && !service.OrangeChainAllowsImageGeneration(apiKey) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage())
 		return
 	}
@@ -3100,7 +3103,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 防止候选集非空时掩盖被轮换掉的禁用模型。
 				frameModelCandidates := requestmodel.FromBodyCandidates("", "application/json", payload)
 				candidates := append([]string{model}, frameModelCandidates...)
-				if blocked := blockedModelAllowlistCandidate(apiKey.Group, candidates); blocked != "" {
+				// Orange 特有：聚合/兜底密钥按分组链判定白名单（链上任一分组允许即放行）。
+				if blocked := orangeBlockedModelAllowlistCandidate(apiKey, candidates); blocked != "" {
 					service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
 					middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked), nil)
