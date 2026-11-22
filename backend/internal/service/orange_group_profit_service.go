@@ -495,20 +495,20 @@ func (s *OrangeGroupProfitService) nowTime() time.Time {
 func orangeGroupProfitCacheKey(groupIDs []int64, tzName string, todayStart time.Time) string {
 	var builder strings.Builder
 	builder.Grow(64 + len(groupIDs)*8)
-	builder.WriteString("orange:group-profit:")
-	builder.WriteString(tzName)
-	builder.WriteByte(':')
-	builder.WriteString(strconv.FormatInt(todayStart.Unix(), 10))
-	builder.WriteByte(':')
+	_, _ = builder.WriteString("orange:group-profit:")
+	_, _ = builder.WriteString(tzName)
+	_ = builder.WriteByte(':')
+	_, _ = builder.WriteString(strconv.FormatInt(todayStart.Unix(), 10))
+	_ = builder.WriteByte(':')
 	if len(groupIDs) == 0 {
-		builder.WriteString("all")
+		_, _ = builder.WriteString("all")
 		return builder.String()
 	}
 	for index, groupID := range groupIDs {
 		if index > 0 {
-			builder.WriteByte(',')
+			_ = builder.WriteByte(',')
 		}
-		builder.WriteString(strconv.FormatInt(groupID, 10))
+		_, _ = builder.WriteString(strconv.FormatInt(groupID, 10))
 	}
 	return builder.String()
 }

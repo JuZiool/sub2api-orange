@@ -794,6 +794,10 @@ const router = createRouter({
   }
 })
 
+// Orange 特有：安装 Token 排行榜路由守卫（仅当路由声明 requiresOrangeTokenRanking 时生效）。
+// 必须在上游的全局守卫之前注册：本守卫只对声明了 meta 的路由做判断，其余路由直接放行。
+installOrangeTokenRankingGuard(router)
+
 /**
  * Navigation guard: Authentication check
  */
@@ -1076,8 +1080,5 @@ router.onError((error) => {
     }
   }
 })
-
-// Orange 特有：安装 Token 排行榜路由守卫（模块体执行早于 app.use(router) 的首次导航）
-installOrangeTokenRankingGuard(router)
 
 export default router

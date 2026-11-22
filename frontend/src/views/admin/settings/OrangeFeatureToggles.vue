@@ -85,7 +85,14 @@ interface FeatureRow {
 }
 
 const { t } = useI18n()
-const orangeFeatures = useOrangeFeaturesStore()
+// Orange 特有：单元测试等无 pinia 的环境下不能因为取 store 抛错而打断父组件（SettingsView）渲染。
+const orangeFeatures = (() => {
+  try {
+    return useOrangeFeaturesStore()
+  } catch {
+    return null
+  }
+})()
 
 /** 新增 Orange 开关时只需在这里加一行（键名必须与后端白名单一致）。 */
 const featureRows: FeatureRow[] = [
@@ -156,7 +163,7 @@ async function setValue(key: string, next: boolean): Promise<void> {
     values.value = { ...values.value, ...response.items }
     if (response.updated_at) updatedAt.value = formatUpdatedAt(response.updated_at)
     // 同步公开开关缓存，让侧栏入口与路由守卫立即跟随（无需刷新页面）。
-    orangeFeatures.apply(response.items)
+    orangeFeatures?.apply(response.items)
     savedKey.value = key
   } catch (error) {
     console.warn('[OrangeFeatureToggles] Failed to save Orange feature flag:', error)
