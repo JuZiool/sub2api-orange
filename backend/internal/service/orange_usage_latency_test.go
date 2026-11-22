@@ -122,7 +122,8 @@ func TestOrangeLatencyTraceContextRoundTrip(t *testing.T) {
 	require.Same(t, trace, derived)
 
 	require.Nil(t, WithOrangeLatencyTrace(context.Background(), nil).Value(orangeLatencyTraceKey{}))
-	_, ok = OrangeLatencyTraceFromContext(nil)
+	// 显式验证 nil ctx 的降级行为（不应 panic）。
+	_, ok = OrangeLatencyTraceFromContext(nil) //nolint:staticcheck // SA1012: 故意传 nil ctx 验证降级
 	require.False(t, ok)
 	_, ok = OrangeLatencyTraceFromContext(context.Background())
 	require.False(t, ok)
