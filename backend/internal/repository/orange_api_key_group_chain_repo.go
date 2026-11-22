@@ -16,26 +16,40 @@ import (
 	"github.com/lib/pq"
 )
 
-// orangeAPIKeyGroupChainTable 是分组链表的表名。
-const orangeAPIKeyGroupChainTable = "orange_api_key_group_chain"
+const (
+	// orangeAPIKeyGroupChainTable 是分组链表的表名。
+	orangeAPIKeyGroupChainTable = "orange_api_key_group_chain"
+	// orangeAPIKeyGroupChainMetaTable 记录分组链的展示模式（fallback / aggregate），
+	// 见迁移 8003。它只表达"用户在界面上选的是兜底分组还是聚合密钥"，不参与选号。
+	orangeAPIKeyGroupChainMetaTable = "orange_api_key_group_chain_meta"
+)
 
 // OrangeReplaceGroupChain 用 groupIDs 全量替换某个 API Key 的分组链候选。
 // priority 按 groupIDs 顺序从 1 递增（1 = 链首之后的第一个候选）。
+//
+// groupIDs 为空表示清链：同一事务内一并删除模式元数据，避免残留"已无链却仍是聚合模式"的意图记录。
 func (r *apiKeyRepository) OrangeReplaceGroupChain(ctx context.Context, apiKeyID int64, groupIDs []int64) error {
 	if apiKeyID <= 0 {
 		return service.ErrAPIKeyNotFound
 	}
 	return r.orangeRunInTx(ctx, func(exec sqlExecutor) error {
-		return orangeReplaceGroupChainRows(ctx, exec, apiKeyID, groupIDs)
+		if err := orangeReplaceGroupChainRows(ctx, exec, apiKeyID, groupIDs); err != nil {
+			return err
+		}
+		if len(groupIDs) == 0 {
+			return orangeUpsertGroupChainMode(ctx, exec, apiKeyID, "")
+		}
+		return nil
 	})
 }
 
-// OrangeReplaceGroupChainAndPrimary 在同一事务内把主分组写回 api_keys.group_id 并替换链候选，
-// 避免"链首已改、候选未写"的半成品状态。
+// OrangeReplaceGroupChainAndPrimary 在同一事务内把主分组写回 api_keys.group_id、替换链候选，
+// 并写入模式元数据（fallback / aggregate），避免"链首已改、候选未写、模式未记"的半成品状态。
 //
 // 只更新 api_keys.group_id 这一上游既有语义列（该列的语义就是"Key 属于哪个分组"），
-// 不新增列、不写入 Orange 私有状态。
-func (r *apiKeyRepository) OrangeReplaceGroupChainAndPrimary(ctx context.Context, apiKeyID, primaryGroupID int64, tail []int64) error {
+// 不新增列、不写入 Orange 私有状态；模式元数据落在我方自建表。
+// mode 为空表示删除模式元数据（调用方需要"清链"语义时使用）。
+func (r *apiKeyRepository) OrangeReplaceGroupChainAndPrimary(ctx context.Context, apiKeyID, primaryGroupID int64, tail []int64, mode string) error {
 	if apiKeyID <= 0 {
 		return service.ErrAPIKeyNotFound
 	}
@@ -57,8 +71,54 @@ func (r *apiKeyRepository) OrangeReplaceGroupChainAndPrimary(ctx context.Context
 		if affected == 0 {
 			return service.ErrAPIKeyNotFound
 		}
-		return orangeReplaceGroupChainRows(ctx, exec, apiKeyID, tail)
+		if err := orangeReplaceGroupChainRows(ctx, exec, apiKeyID, tail); err != nil {
+			return err
+		}
+		return orangeUpsertGroupChainMode(ctx, exec, apiKeyID, mode)
 	})
+}
+
+// OrangeSetGroupChainMode 单独写入某个 API Key 的分组链模式（upsert）；mode 为空表示删除记录。
+// 主要供"只改模式、不改链"的场景使用；常规写链请用 OrangeReplaceGroupChainAndPrimary 保持同事务。
+func (r *apiKeyRepository) OrangeSetGroupChainMode(ctx context.Context, apiKeyID int64, mode string) error {
+	if apiKeyID <= 0 {
+		return service.ErrAPIKeyNotFound
+	}
+	if mode != "" && mode != service.OrangeGroupChainModeFallback && mode != service.OrangeGroupChainModeAggregate {
+		return fmt.Errorf("orange api key group chain: invalid mode %q", mode)
+	}
+	return r.orangeRunInTx(ctx, func(exec sqlExecutor) error {
+		return orangeUpsertGroupChainMode(ctx, exec, apiKeyID, mode)
+	})
+}
+
+// OrangeLoadGroupChainModes 批量装载多个 API Key 的分组链模式；无记录的 Key 不会出现在返回的 map 中。
+func (r *apiKeyRepository) OrangeLoadGroupChainModes(ctx context.Context, apiKeyIDs []int64) (map[int64]string, error) {
+	out := make(map[int64]string, len(apiKeyIDs))
+	if len(apiKeyIDs) == 0 || r.sql == nil {
+		return out, nil
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT api_key_id, mode
+		FROM `+orangeAPIKeyGroupChainMetaTable+`
+		WHERE api_key_id = ANY($1)`, pq.Array(apiKeyIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var apiKeyID int64
+		var mode string
+		if err := rows.Scan(&apiKeyID, &mode); err != nil {
+			return nil, err
+		}
+		out[apiKeyID] = mode
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // OrangeLoadGroupChains 批量装载多个 API Key 的分组链候选，按 priority 升序。
@@ -144,6 +204,22 @@ func orangeReplaceGroupChainRows(ctx context.Context, exec sqlExecutor, apiKeyID
 	_, err := exec.ExecContext(ctx,
 		`INSERT INTO `+orangeAPIKeyGroupChainTable+` (api_key_id, group_id, priority) VALUES `+strings.Join(values, ", "),
 		args...)
+	return err
+}
+
+// orangeUpsertGroupChainMode 在给定的执行器（事务内）上 upsert 模式元数据。
+// mode 为空表示删除记录（清链语义）；非法取值由调用方负责校验。
+func orangeUpsertGroupChainMode(ctx context.Context, exec sqlExecutor, apiKeyID int64, mode string) error {
+	if mode == "" {
+		_, err := exec.ExecContext(ctx,
+			`DELETE FROM `+orangeAPIKeyGroupChainMetaTable+` WHERE api_key_id = $1`, apiKeyID)
+		return err
+	}
+	_, err := exec.ExecContext(ctx, `
+		INSERT INTO `+orangeAPIKeyGroupChainMetaTable+` (api_key_id, mode, updated_at)
+		VALUES ($1, $2, NOW())
+		ON CONFLICT (api_key_id) DO UPDATE
+		SET mode = EXCLUDED.mode, updated_at = NOW()`, apiKeyID, mode)
 	return err
 }
 

@@ -91,6 +91,9 @@ type APIKey struct {
 
 	// Orange 特有：分组优先级链（含链首，按 priority 升序）。普通 Key 为空数组。
 	Groups []APIKeyGroupEntry `json:"groups"`
+	// Orange 特有：分组链的展示模式：none（普通 Key）/ fallback（兜底分组）/ aggregate（聚合密钥）。
+	// 只用于界面区分，不影响选号；聚合密钥的 groups 按优先级竖向展示。
+	GroupChainMode string `json:"group_chain_mode"`
 }
 
 type Group struct {

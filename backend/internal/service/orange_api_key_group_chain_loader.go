@@ -13,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +31,15 @@ var (
 	// ErrOrangeGroupChainTooLong 表示链长度超过上限。
 	ErrOrangeGroupChainTooLong = infraerrors.Conflict("ORANGE_GROUP_CHAIN_TOO_LONG",
 		"分组链过长：链首（主分组）之外最多绑定 8 个候选分组")
+	// ErrOrangeGroupChainModeInvalid 表示 mode 取值非法（只接受 fallback / aggregate）。
+	ErrOrangeGroupChainModeInvalid = infraerrors.BadRequest("ORANGE_GROUP_CHAIN_MODE_INVALID",
+		"分组模式无效：只支持 fallback（兜底分组）或 aggregate（聚合密钥）")
+	// ErrOrangeGroupChainTooFew 表示聚合模式下的分组数量不足。
+	ErrOrangeGroupChainTooFew = infraerrors.BadRequest("ORANGE_GROUP_CHAIN_TOO_FEW",
+		"聚合密钥至少需要两个分组")
+	// ErrOrangeGroupChainFallbackLimit 表示兜底模式下的分组数量超过上限。
+	ErrOrangeGroupChainFallbackLimit = infraerrors.BadRequest("ORANGE_GROUP_CHAIN_FALLBACK_LIMIT",
+		"兜底模式最多只能设置一个兜底分组")
 	// ErrOrangeGroupChainUnavailable 表示仓储层缺少 Orange 分组链能力（部署不完整）。
 	ErrOrangeGroupChainUnavailable = infraerrors.InternalServer("ORANGE_GROUP_CHAIN_UNAVAILABLE",
 		"当前部署不支持分组链功能")
@@ -46,17 +56,20 @@ const (
 // 通过类型断言取用，不扩展上游 APIKeyRepository 接口定义（避免大量测试替身改动）。
 type orangeGroupChainRepository interface {
 	OrangeReplaceGroupChain(ctx context.Context, apiKeyID int64, groupIDs []int64) error
-	OrangeReplaceGroupChainAndPrimary(ctx context.Context, apiKeyID, primaryGroupID int64, tail []int64) error
+	OrangeReplaceGroupChainAndPrimary(ctx context.Context, apiKeyID, primaryGroupID int64, tail []int64, mode string) error
+	OrangeSetGroupChainMode(ctx context.Context, apiKeyID int64, mode string) error
 	OrangeLoadGroupChains(ctx context.Context, apiKeyIDs []int64) (map[int64][]OrangeGroupChainMember, error)
+	OrangeLoadGroupChainModes(ctx context.Context, apiKeyIDs []int64) (map[int64]string, error)
 	OrangeListAPIKeyIDsByChainGroup(ctx context.Context, groupID int64) ([]int64, error)
 }
 
-// orangeGroupChainCacheEntry 是缓存项：原始链候选（按 priority 升序）+ 对齐的水化分组。
-// groups[i] 为 nil 表示该候选分组已软删除或不可读。
+// orangeGroupChainCacheEntry 是缓存项：原始链候选（按 priority 升序）+ 对齐的水化分组 + 展示模式。
+// groups[i] 为 nil 表示该候选分组已软删除或不可读；mode 已按"持久化优先、无记录则按候选数推断"解析。
 type orangeGroupChainCacheEntry struct {
 	expiresAt time.Time
 	members   []OrangeGroupChainMember
 	groups    []*Group
+	mode      string
 }
 
 var orangeGroupChainCache = struct {
@@ -87,6 +100,46 @@ func orangeGroupChainModeForCount(candidates int) string {
 	}
 }
 
+// orangeResolveGroupChainMode 解析一个 Key 的展示模式：持久化的用户意图优先
+// （aggregate 与 fallback 的路由语义相同，只有界面差异，所以必须记住用户选的是哪种），
+// 没有 meta 记录（或值异常）时才按候选数推断：0 → none、1 → fallback、>=2 → aggregate。
+func orangeResolveGroupChainMode(persisted string, candidates int) string {
+	switch persisted {
+	case OrangeGroupChainModeFallback, OrangeGroupChainModeAggregate:
+		return persisted
+	default:
+		return orangeGroupChainModeForCount(candidates)
+	}
+}
+
+// orangeNormalizeGroupChainMode 归一化调用方传入的模式并做数量校验：
+//   - 空串（或 none）→ 按分组数量推断：<=2 个分组 → fallback，>=3 个 → aggregate；
+//   - 显式 fallback → 最多 2 个分组（链首 + 1 个兜底分组）；
+//   - 显式 aggregate → 至少 2 个分组（链首 + 1 个候选），否则"聚合"没有意义。
+//
+// groupCount 是去重后的完整链长度（含链首）。
+func orangeNormalizeGroupChainMode(mode string, groupCount int) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "", OrangeGroupChainModeNone:
+		if groupCount >= 3 {
+			return OrangeGroupChainModeAggregate, nil
+		}
+		return OrangeGroupChainModeFallback, nil
+	case OrangeGroupChainModeFallback:
+		if groupCount > 2 {
+			return "", ErrOrangeGroupChainFallbackLimit
+		}
+		return OrangeGroupChainModeFallback, nil
+	case OrangeGroupChainModeAggregate:
+		if groupCount < 2 {
+			return "", ErrOrangeGroupChainTooFew
+		}
+		return OrangeGroupChainModeAggregate, nil
+	default:
+		return "", ErrOrangeGroupChainModeInvalid
+	}
+}
+
 // OrangeAttachGroupChain 把分组优先级链挂到请求级 API Key 上，并做链首失效自愈。
 // 鉴权中间件在 apiKey 已放入上下文后调用（每次请求都会走到）。
 func (s *APIKeyService) OrangeAttachGroupChain(ctx context.Context, apiKey *APIKey) *APIKey {
@@ -114,7 +167,11 @@ func (s *APIKeyService) OrangeAttachGroupChains(ctx context.Context, keys []APIK
 	}
 	for i := range keys {
 		entry, ok := entries[keys[i].ID]
-		if !ok || len(entry.members) == 0 {
+		if !ok {
+			continue
+		}
+		keys[i].GroupChainMode = orangeResolveGroupChainMode(entry.mode, len(entry.members))
+		if len(entry.members) == 0 {
 			continue
 		}
 		keys[i].Groups = orangeBuildAPIKeyGroupEntries(keys[i].Group, entry)
@@ -127,6 +184,8 @@ func (s *APIKeyService) orangeAttachGroupChain(ctx context.Context, apiKey *APIK
 		return
 	}
 	entry, ok := s.orangeGroupChainEntry(ctx, apiKey.ID)
+	// 模式随链一起装载：无候选的普通 Key 也要带上持久化模式，供列表/详情区分「兜底分组 / 聚合密钥」。
+	apiKey.GroupChainMode = orangeResolveGroupChainMode(entry.mode, len(entry.members))
 	if !ok || len(entry.members) == 0 {
 		apiKey.Groups = nil
 		return
@@ -218,6 +277,11 @@ func (s *APIKeyService) orangeGroupChainEntries(ctx context.Context, apiKeyIDs [
 		slog.Warn("orange_key_group_chain_load_failed", "api_key_count", len(missing), "error", err)
 		return out
 	}
+	// 模式元数据是"锦上添花"：读取失败时退化为按候选数推断（兜底模式 = 1 个候选）。
+	modes, modeErr := repo.OrangeLoadGroupChainModes(ctx, missing)
+	if modeErr != nil {
+		slog.Warn("orange_key_group_chain_mode_load_failed", "api_key_count", len(missing), "error", modeErr)
+	}
 
 	loaded := make(map[int64]orangeGroupChainCacheEntry, len(missing))
 	expiresAt := now.Add(orangeGroupChainCacheTTL)
@@ -227,6 +291,7 @@ func (s *APIKeyService) orangeGroupChainEntries(ctx context.Context, apiKeyIDs [
 			expiresAt: expiresAt,
 			members:   chainMembers,
 			groups:    orangeHydrateChainGroups(ctx, s.groupRepo, chainMembers),
+			mode:      orangeResolveGroupChainMode(modes[id], len(chainMembers)),
 		}
 		out[id] = loaded[id]
 	}
@@ -331,7 +396,8 @@ func (s *APIKeyService) OrangeBuildAPIKeyGroupChainView(ctx context.Context, api
 	}
 
 	entry, _ := s.orangeGroupChainEntry(ctx, apiKey.ID)
-	view.Mode = orangeGroupChainModeForCount(len(entry.members))
+	// 模式取"持久化值（无记录则按候选数推断）"：聚合密钥即使只配了 2 个分组也必须显示成聚合。
+	view.Mode = orangeResolveGroupChainMode(entry.mode, len(entry.members))
 
 	chain := make([]*APIKeyGroupEntry, 0, len(entry.members)+1)
 	head := apiKey.Group
@@ -369,9 +435,12 @@ func (s *APIKeyService) OrangeBuildAPIKeyGroupChainView(ctx context.Context, api
 
 // OrangeSetAPIKeyGroupChain 设置某个 Key 的分组优先级链（groupIDs[0] 成为新的主分组）。
 //
-// groupIDs 为空表示清空链（保留当前主分组）；否则要求：全部可用、可绑定、同平台、
-// 同订阅类型、去重后不超过 8 组。写链首（api_keys.group_id）与写候选在同一事务内完成。
-func (s *APIKeyService) OrangeSetAPIKeyGroupChain(ctx context.Context, userID, apiKeyID int64, groupIDs []int64) (OrangeAPIKeyGroupChainView, error) {
+// groupIDs 为空表示清空链（保留当前主分组）并删除模式元数据；否则要求：全部可用、可绑定、
+// 同平台、同订阅类型、去重后不超过 8 组。写链首（api_keys.group_id）、写候选与写模式在同一事务内完成。
+//
+// mode 是展示模式（fallback / aggregate），空串表示按分组数量推断：<=2 个分组 → fallback，
+// >=3 个 → aggregate。模式只影响界面，路由（选号推进）对两者完全一致。
+func (s *APIKeyService) OrangeSetAPIKeyGroupChain(ctx context.Context, userID, apiKeyID int64, groupIDs []int64, mode string) (OrangeAPIKeyGroupChainView, error) {
 	empty := OrangeAPIKeyGroupChainView{}
 	if s == nil || apiKeyID <= 0 {
 		return empty, ErrAPIKeyNotFound
@@ -396,6 +465,7 @@ func (s *APIKeyService) OrangeSetAPIKeyGroupChain(ctx context.Context, userID, a
 
 	unique := orangeDedupeGroupIDs(groupIDs)
 	if len(unique) == 0 {
+		// 清链：链候选与模式元数据在同一事务内删除（仓储层负责），保留当前主分组。
 		if err := repo.OrangeReplaceGroupChain(ctx, apiKeyID, nil); err != nil {
 			return empty, fmt.Errorf("replace orange key group chain: %w", err)
 		}
@@ -404,6 +474,10 @@ func (s *APIKeyService) OrangeSetAPIKeyGroupChain(ctx context.Context, userID, a
 	}
 	if len(unique) > orangeChainMaxCandidates+1 {
 		return empty, ErrOrangeGroupChainTooLong
+	}
+	resolvedMode, err := orangeNormalizeGroupChainMode(mode, len(unique))
+	if err != nil {
+		return empty, err
 	}
 
 	user, err := s.userRepo.GetByID(ctx, userID)
@@ -434,7 +508,7 @@ func (s *APIKeyService) OrangeSetAPIKeyGroupChain(ctx context.Context, userID, a
 	for _, group := range groups[1:] {
 		tail = append(tail, group.ID)
 	}
-	if err := repo.OrangeReplaceGroupChainAndPrimary(ctx, apiKeyID, head.ID, tail); err != nil {
+	if err := repo.OrangeReplaceGroupChainAndPrimary(ctx, apiKeyID, head.ID, tail, resolvedMode); err != nil {
 		return empty, fmt.Errorf("replace orange key group chain: %w", err)
 	}
 	s.orangeInvalidateAfterChainWrite(ctx, apiKey)

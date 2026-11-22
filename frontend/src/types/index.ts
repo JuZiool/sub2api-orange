@@ -773,6 +773,8 @@ export interface ApiKey {
   group?: Group
   /** Orange 特有：分组优先级链（含链首，按 priority 升序）。普通 Key 为空数组或缺省。 */
   groups?: ApiKeyGroupEntry[]
+  /** Orange 特有：分组链意图模式（none=普通 Key，fallback=兜底分组，aggregate=聚合密钥）。 */
+  group_chain_mode?: 'none' | 'fallback' | 'aggregate'
   rate_limit_5h: number
   rate_limit_1d: number
   rate_limit_7d: number

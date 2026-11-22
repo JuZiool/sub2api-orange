@@ -184,9 +184,14 @@ export async function getKeyGroupChain(id: number): Promise<ApiKeyGroupChain> {
  * @param id - API key ID
  * @param groupIds - Ordered group ids
  */
-export async function setKeyGroupChain(id: number, groupIds: number[]): Promise<ApiKeyGroupChain> {
+export async function setKeyGroupChain(
+  id: number,
+  groupIds: number[],
+  mode?: ApiKeyGroupChainMode
+): Promise<ApiKeyGroupChain> {
   const { data } = await apiClient.put<ApiKeyGroupChain>(`/keys/${id}/group-chain`, {
-    group_ids: groupIds
+    group_ids: groupIds,
+    ...(mode ? { mode } : {})
   })
   return data
 }

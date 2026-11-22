@@ -90,7 +90,11 @@ func (k *APIKey) IsAggregated() bool {
 }
 
 // OrangeGroupChainMode 返回该 Key 的分组链模式：none / fallback / aggregate。
+// 装载链时写入的持久化模式优先（聚合密钥可能只配了 2 个分组），否则按链长推断。
 func (k *APIKey) OrangeGroupChainMode() string {
+	if k != nil && (k.GroupChainMode == OrangeGroupChainModeFallback || k.GroupChainMode == OrangeGroupChainModeAggregate) {
+		return k.GroupChainMode
+	}
 	switch len(k.GroupChain()) {
 	case 0, 1:
 		return OrangeGroupChainModeNone

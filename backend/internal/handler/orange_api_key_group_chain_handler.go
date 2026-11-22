@@ -20,9 +20,12 @@ import (
 )
 
 // OrangeAPIKeyGroupChainRequest 是 PUT /keys/:id/group-chain 的请求体。
-// group_ids 为有序分组 ID 列表：[] = 清除链（保留当前主分组）。
+// group_ids 为有序分组 ID 列表：group_ids[0] 成为新的主分组（链首），[] = 清除链与模式。
+// mode 是可选的展示模式："fallback"（兜底分组）或 "aggregate"（聚合密钥）；
+// 缺省时按 group_ids 长度推断：<=2 个 → fallback，>=3 个 → aggregate。模式不影响选号逻辑。
 type OrangeAPIKeyGroupChainRequest struct {
 	GroupIDs []int64 `json:"group_ids"`
+	Mode     string  `json:"mode"`
 }
 
 // GetGroupChain 读取某个 API Key 的分组优先级链
@@ -69,7 +72,7 @@ func (h *APIKeyHandler) SetGroupChain(c *gin.Context) {
 		return
 	}
 
-	view, err := h.apiKeyService.OrangeSetAPIKeyGroupChain(c.Request.Context(), subject.UserID, keyID, req.GroupIDs)
+	view, err := h.apiKeyService.OrangeSetAPIKeyGroupChain(c.Request.Context(), subject.UserID, keyID, req.GroupIDs, req.Mode)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
