@@ -197,6 +197,8 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 	// 3. Account selection + failover loop
 	fs := NewFailoverState(h.maxAccountSwitches, false)
+	// Orange 特有：上游故障切组的请求级状态（已尝试过的分组），无链时恒为空。
+	orangeFailedGroupIDs := make(map[int64]struct{})
 
 	for {
 		if failoverClientGone(c) {
@@ -229,6 +231,15 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				failoverClientGone(c)
 				return
 			default:
+				// Orange 特有：本组账号换完且最后一次错误属上游故障时，切到分组链上的下一组，
+				// 重置 failover 状态后继续选号（无链时保持原错误返回）。
+				if orangeUpstreamFaultAllowsGroupFailover(fs.LastFailoverErr) {
+					if switchedKey, switched := orangeChainFailoverSwitch(c, apiKey, orangeFailedGroupIDs); switched {
+						apiKey = switchedKey
+						fs = NewFailoverState(h.maxAccountSwitches, false)
+						continue
+					}
+				}
 				if fs.LastFailoverErr != nil {
 					h.handleResponsesFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
 				} else {
@@ -366,6 +377,15 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				case FailoverContinue:
 					continue
 				case FailoverExhausted:
+					// Orange 特有：本组 failover 耗尽且最后一次错误属上游故障时，切到分组链上的
+					// 下一组并重置 failover 状态，继续重试（无链时保持原错误返回）。
+					if orangeUpstreamFaultAllowsGroupFailover(failoverErr) {
+						if switchedKey, switched := orangeChainFailoverSwitch(c, apiKey, orangeFailedGroupIDs); switched {
+							apiKey = switchedKey
+							fs = NewFailoverState(h.maxAccountSwitches, false)
+							continue
+						}
+					}
 					h.handleResponsesFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
 					return
 				case FailoverCanceled:

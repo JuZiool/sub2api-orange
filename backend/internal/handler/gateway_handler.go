@@ -342,6 +342,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	if platform == service.PlatformGemini {
 		fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
+		// Orange 特有：上游故障切组的请求级状态（已尝试过的分组），无链时恒为空。
+		orangeFailedGroupIDs := make(map[int64]struct{})
 
 		// 单账号分组首次 503 就不设模型限流标记，避免设 29s 限流导致后续请求连续快速失败；
 		// 是否单账号分组在 antigravity 账号遇到 503 或模型限流预检查时才判定。
@@ -383,6 +385,16 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					failoverClientGone(c)
 					return
 				default: // FailoverExhausted
+					// Orange 特有：本组换号耗尽且最后一次错误属上游故障时，切到分组链上的
+					// 下一组并重置 failover 状态，继续重试（无链时保持原错误返回）。
+					if orangeUpstreamFaultAllowsGroupFailover(fs.LastFailoverErr) {
+						if switchedKey, switched := orangeChainFailoverSwitch(c, apiKey, orangeFailedGroupIDs); switched {
+							apiKey = switchedKey
+							fs = NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
+							h.orangeRefreshChainGroupRequestContext(c, apiKey)
+							continue
+						}
+					}
 					if fs.LastFailoverErr != nil {
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, service.PlatformGemini, streamStarted)
 					} else {
@@ -529,6 +541,16 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					case FailoverContinue:
 						continue
 					case FailoverExhausted:
+						// Orange 特有：本组 failover 耗尽且最后一次错误属上游故障时，切到分组链
+						// 上的下一组并重置 failover 状态，继续重试（无链时保持原错误返回）。
+						if orangeUpstreamFaultAllowsGroupFailover(fs.LastFailoverErr) {
+							if switchedKey, switched := orangeChainFailoverSwitch(c, apiKey, orangeFailedGroupIDs); switched {
+								apiKey = switchedKey
+								fs = NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
+								h.orangeRefreshChainGroupRequestContext(c, apiKey)
+								continue
+							}
+						}
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, service.PlatformGemini, streamStarted)
 						return
 					case FailoverCanceled:
@@ -662,10 +684,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		}
 	}()
 
+	// Orange 特有：上游故障切组的请求级状态（已尝试过的分组）。跨外层重试循环复用，
+	// 普通 Key 恒为空——无链时切组助手直接返回 false，行为与上游完全一致。
+	orangeFailedGroupIDs := make(map[int64]struct{})
+
 	for {
 		fs := NewFailoverState(h.maxAccountSwitches, hasBoundSession)
 		retryWithFallback := false
 
+	orangeMessagesAttempt:
 		for {
 			attemptParsedReq, err := parsedReq.CloneForBody(body)
 			if err != nil {
@@ -716,6 +743,17 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					failoverClientGone(c)
 					return
 				default: // FailoverExhausted
+					// Orange 特有：本组换号耗尽且最后一次错误属上游故障时，切到分组链上的
+					// 下一组并重置 failover 状态（外层循环会新建 FailoverState），继续重试。
+					if orangeUpstreamFaultAllowsGroupFailover(fs.LastFailoverErr) {
+						if switchedKey, switched := orangeChainFailoverSwitch(c, currentAPIKey, orangeFailedGroupIDs); switched {
+							currentAPIKey = switchedKey
+							h.orangeRefreshChainGroupRequestContext(c, currentAPIKey)
+							sessionSlotAccounts = h.orangeReleaseChainGroupSessions(sessionSlotAccounts, sessionKey)
+							retryWithFallback = true
+							break orangeMessagesAttempt
+						}
+					}
 					if fs.LastFailoverErr != nil {
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, platform, streamStarted)
 					} else {
@@ -1074,6 +1112,17 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						delete(sessionSlotAccounts, account.ID)
 						continue
 					case FailoverExhausted:
+						// Orange 特有：本组 failover 耗尽且最后一次错误属上游故障时，切到分组链
+						// 上的下一组并重置 failover 状态，继续重试（无链时保持原错误返回）。
+						if orangeUpstreamFaultAllowsGroupFailover(failoverErr) {
+							if switchedKey, switched := orangeChainFailoverSwitch(c, currentAPIKey, orangeFailedGroupIDs); switched {
+								currentAPIKey = switchedKey
+								h.orangeRefreshChainGroupRequestContext(c, currentAPIKey)
+								sessionSlotAccounts = h.orangeReleaseChainGroupSessions(sessionSlotAccounts, sessionKey)
+								retryWithFallback = true
+								break orangeMessagesAttempt
+							}
+						}
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, account.Platform, streamStarted)
 						return
 					case FailoverCanceled:
