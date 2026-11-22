@@ -1,11 +1,15 @@
 <!--
-  Orange 特有：管理员费用计算器（纯前端，不落库、不调后端新接口）。
+  Orange 特有：管理员费用计算器（纯前端模拟，不落库；上游倍率从 Orange 自有接口只读同步）。
 
   数据来源与记忆：
   - 分组列表来自上游既有的只读接口 `GET /api/v1/admin/groups/all`（admin-only）；
   - 「哪些分组参与计算」改为页内本地多选，记忆在 `localStorage['orange.rateCalc.groups.v1']`；
-  - 「上游倍率」在上游 `groups` 表没有该字段，改为可编辑并记忆在
-    `localStorage['orange.rateCalc.costMultipliers.v1']`；「给用户的倍率」取分组的 `rate_multiplier`（只读）；
+  - 「上游倍率」自动同步自 Orange 自有接口 `GET /api/v1/admin/orange/groups/profit`，
+    即「分组管理 → 上游倍率」（未配置时后端返回 1.0）；接口失败时保留本地手工输入，只给轻量提示；
+  - 手动改过的上游倍率记忆在 `localStorage['orange.rateCalc.costMultipliers.v1']`，
+    与接口值不同时视为「手动覆盖」，仅本地模拟、不写回数据库，可点「恢复同步值」清除覆盖；
+  - 「给用户的倍率」取分组的 `rate_multiplier`（只读）；
+  - 手动添加的分组（非分组列表带出）上游倍率仍是纯手填，不参与同步；
   - 简易模式（`auth.isSimpleMode`）下分组接口不返回倍率，直接降级为手动填写。
 -->
 <template>
@@ -30,7 +34,9 @@
       <p
         role="status"
         class="text-sm"
-        :class="syncStatus === 'error' ? 'text-amber-700 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'"
+        :class="syncStatus === 'error' || upstreamSyncFailed
+          ? 'text-amber-700 dark:text-amber-400'
+          : 'text-gray-500 dark:text-gray-400'"
       >
         {{ syncMessage }}
       </p>
@@ -201,14 +207,37 @@
             >
               {{ t(pendingDeleteIndex === group.index ? 'rateCalculator.confirmDeleteGroup' : 'rateCalculator.clearGroup') }}
             </button>
-            <span v-else class="shrink-0 text-xs text-gray-500 dark:text-gray-400">{{ t('rateCalculator.autoSynced') }}</span>
+            <!-- Orange 特有：上游倍率手动覆盖时不再显示「自动同步」，改在倍率输入框旁提示 -->
+            <span
+              v-else-if="!groupHasManualOverride(group)"
+              class="shrink-0 text-xs text-gray-500 dark:text-gray-400"
+            >{{ t('rateCalculator.autoSynced') }}</span>
           </div>
 
           <div class="space-y-3">
             <div>
-              <label :for="`rate-cost-${group.index}`" class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
-                {{ t('rateCalculator.upstreamRate') }}
-              </label>
+              <div class="mb-1 flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                <label :for="`rate-cost-${group.index}`" class="block text-xs font-medium text-gray-600 dark:text-gray-400">
+                  {{ t('rateCalculator.upstreamRate') }}
+                </label>
+                <!-- Orange 特有：手动覆盖提示 + 一键恢复同步值（仅分组列表带出的卡片可能出现） -->
+                <span
+                  v-if="groupHasManualOverride(group)"
+                  class="flex min-w-0 items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400"
+                >
+                  <span :title="t('rateCalculator.manualOverrideHint')">
+                    {{ t('rateCalculator.manualOverride') }}
+                  </span>
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-sm px-2 py-0.5 text-xs"
+                    :title="t('rateCalculator.manualOverrideHint')"
+                    @click="restoreSyncedRate(group)"
+                  >
+                    {{ t('rateCalculator.restoreSynced') }}
+                  </button>
+                </span>
+              </div>
               <input
                 :id="`rate-cost-${group.index}`"
                 v-model="group.cost"
@@ -283,6 +312,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getAll } from '@/api/admin/groups'
+import { getOrangeGroupProfits } from '@/api/orange'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
@@ -311,16 +341,26 @@ const syncBlocked = computed(() => syncStatus.value === 'loading' || syncStatus.
 const availableGroups = ref<AdminGroup[]>([])
 const selectedIds = ref<number[]>([])
 const costMultipliers = ref<Record<string, string>>({})
+/** Orange 特有：接口返回的上游倍率（按分组 ID 缓存，仅内存；每次进入页面重新同步）。 */
+const upstreamRates = ref<Record<string, number>>({})
+/** Orange 特有：上游倍率同步失败标记（页内一次轻量提示，不弹窗、不阻塞页面）。 */
+const upstreamSyncFailed = ref(false)
 
 const syncMessage = computed(() => {
   if (syncStatus.value === 'loading') return t('rateCalculator.syncLoading')
   if (syncStatus.value === 'error') return t('rateCalculator.syncError')
   if (syncStatus.value === 'manual') return t('rateCalculator.simpleModeManual')
   const count = state.groups.filter(group => group.groupId !== undefined).length
-  return count > 0 ? t('rateCalculator.syncSuccess', { count }) : t('rateCalculator.syncEmpty')
+  if (count <= 0) return t('rateCalculator.syncEmpty')
+  // Orange 特有：上游倍率同步失败只降级成一条轻量提示，不阻塞分组卡片与手工输入
+  return upstreamSyncFailed.value
+    ? t('rateCalculator.syncUpstreamFailed', { count })
+    : t('rateCalculator.syncSuccess', { count })
 })
 let disposed = false
 let requestId = 0
+/** Orange 特有：上游倍率请求序号，避免快速勾选时旧响应覆盖新状态。 */
+let upstreamRequestId = 0
 let pendingSync: Promise<void> | null = null
 let keepBlankManualGroups = false
 
@@ -431,13 +471,128 @@ function writeCostMultipliers(): void {
   }
 }
 
+// ==================== Orange 特有：上游倍率自动同步 ====================
+// 「分组管理 → 上游倍率」已经落库（orange_group_upstream_rate 表），这里只读同步：
+// 卡片的值优先取接口值，用户手改过的值（localStorage）与接口值不同时保留并标记「手动覆盖」。
+
+/** Orange 特有：与 api 层口径一致地取浏览器时区，取不到时回退 UTC。 */
+function browserTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  } catch {
+    return 'UTC'
+  }
+}
+
+/** Orange 特有：接口数值 → 输入框文本（最多 4 位小数，顺手抹掉浮点噪声）。 */
+function formatUpstreamRate(value: number): string {
+  if (!Number.isFinite(value)) return ''
+  return String(Math.round(value * 10000) / 10000)
+}
+
+/**
+ * Orange 特有：本地记忆是否构成「手动覆盖」。
+ * 只有「已拿到接口值」且「本地值与接口值不同」才算覆盖；接口值未知（未同步/同步失败）
+ * 时按本地手工值照旧处理，避免误报覆盖或给出无法恢复的按钮。
+ */
+function isManualOverride(groupId: number): boolean {
+  const apiRate = upstreamRates.value[String(groupId)]
+  if (typeof apiRate !== 'number') return false
+  const local = (costMultipliers.value[String(groupId)] ?? '').trim()
+  if (!local) return false
+  const parsed = Number(local)
+  return !Number.isFinite(parsed) || Math.abs(parsed - apiRate) > 1e-9
+}
+
+/** Orange 特有：卡片上游倍率取值优先级：手动覆盖 > 接口值 > 本地手工记忆 > 空。 */
+function resolveUpstreamCost(groupId: number): string {
+  if (isManualOverride(groupId)) return costMultipliers.value[String(groupId)] ?? ''
+  const apiRate = upstreamRates.value[String(groupId)]
+  if (typeof apiRate === 'number') return formatUpstreamRate(apiRate)
+  return costMultipliers.value[String(groupId)] ?? ''
+}
+
+/** Orange 特有：模板判定——只有分组列表带出的卡片才可能出现手动覆盖。 */
+function groupHasManualOverride(group: CalculatorGroup): boolean {
+  return group.groupId !== undefined && isManualOverride(group.groupId)
+}
+
+/** Orange 特有：把已缓存的上游倍率回填到同步卡片（手动分组与手动覆盖的值都不动）。 */
+function applySyncedUpstreamRates(): void {
+  for (const group of state.groups) {
+    if (group.groupId === undefined) continue
+    group.cost = resolveUpstreamCost(group.groupId)
+  }
+}
+
+/**
+ * Orange 特有：按分组 ID 拉取上游倍率（GET /admin/orange/groups/profit）。
+ * 失败时不抛错、不动已有输入，只置一个页内轻量提示，返回 false 由调用方决定是否回填。
+ */
+async function fetchUpstreamRates(ids: number[]): Promise<boolean> {
+  const unique = [...new Set(ids)].filter(id => Number.isSafeInteger(id) && id > 0)
+  if (!unique.length || auth.isSimpleMode || disposed) return true
+
+  const currentRequest = ++upstreamRequestId
+  try {
+    const response = await getOrangeGroupProfits({ ids: unique, timezone: browserTimezone() })
+    if (disposed || currentRequest !== upstreamRequestId) return false
+    const next: Record<string, number> = { ...upstreamRates.value }
+    let received = 0
+    for (const item of response.items) {
+      const groupId = Number(item.group_id)
+      if (!Number.isSafeInteger(groupId) || !unique.includes(groupId)) continue
+      const rate = Number(item.upstream_rate_multiplier)
+      if (!Number.isFinite(rate)) continue
+      next[String(groupId)] = rate
+      received += 1
+    }
+    if (received > 0) upstreamRates.value = next
+    upstreamSyncFailed.value = false
+    return true
+  } catch {
+    // 接口未就绪 / 网络失败：保留手工输入与本地记忆，仅提示一次
+    if (!disposed && currentRequest === upstreamRequestId) upstreamSyncFailed.value = true
+    return false
+  }
+}
+
+/** Orange 特有：同步当前参与计算的分组的上游倍率，成功后回填卡片。 */
+async function syncUpstreamRates(): Promise<void> {
+  if (auth.isSimpleMode) return
+  const ids = selectedIds.value.filter(id => Number.isSafeInteger(id) && id > 0)
+  if (!ids.length) return
+  const ok = await fetchUpstreamRates(ids)
+  if (!ok || disposed) return
+  applySyncedUpstreamRates()
+}
+
+/** Orange 特有：清除某个分组的本地覆盖，恢复成接口值（接口值缺失时再同步一次）。 */
+function restoreSyncedRate(group: CalculatorGroup): void {
+  if (group.groupId === undefined) return
+  const key = String(group.groupId)
+  if (Object.prototype.hasOwnProperty.call(costMultipliers.value, key)) {
+    const next = { ...costMultipliers.value }
+    delete next[key]
+    costMultipliers.value = next
+    writeCostMultipliers()
+  }
+  const apiRate = upstreamRates.value[key]
+  if (typeof apiRate === 'number') {
+    group.cost = formatUpstreamRate(apiRate)
+    return
+  }
+  group.cost = ''
+  void syncUpstreamRates()
+}
+
 function reindexGroups() {
   pendingDeleteIndex.value = null
   state.groups.forEach((group, index) => { group.index = index })
 }
 
 /**
- * 用「已选分组 + 人工上游倍率」重建带出的倍率组，并保留手动分组。
+ * 用「已选分组 + 上游倍率（接口值 / 本地覆盖）」重建带出的倍率组，并保留手动分组。
  * 分组数据不完整时抛错（由调用方转成 syncError），绝不静默按倍率 1 计算。
  */
 function rebuildSyncedGroups(): void {
@@ -455,7 +610,8 @@ function rebuildSyncedGroups(): void {
       index: 0,
       groupId: group.id,
       name: group.name,
-      cost: costMultipliers.value[String(group.id)] ?? '',
+      // Orange 特有：上游倍率优先接口值，手动覆盖保留本地值
+      cost: resolveUpstreamCost(group.id),
       sell: String(group.rate_multiplier),
     })
   }
@@ -481,6 +637,8 @@ function toggleSelection(groupId: number, checked: boolean): void {
   } catch {
     syncStatus.value = 'error'
   }
+  // Orange 特有：重新勾选分组后同步一次上游倍率（失败只提示，不阻塞）
+  void syncUpstreamRates()
 }
 
 function clearSelection(): void {
@@ -547,6 +705,11 @@ function resetAll() {
   ]
   reindexGroups()
   clearSaved()
+  // Orange 特有：全部重置时清掉本地手动覆盖，重新同步接口值（不是清空成空）
+  costMultipliers.value = {}
+  writeCostMultipliers()
+  applySyncedUpstreamRates()
+  void syncUpstreamRates()
 }
 
 function restore() {
@@ -611,6 +774,10 @@ async function syncGroups(): Promise<void> {
   if (auth.isSimpleMode) {
     requestId += 1
     pendingSync = null
+    // Orange 特有：简易模式没有分组倍率接口，清空上游倍率缓存并停止同步
+    upstreamRequestId += 1
+    upstreamRates.value = {}
+    upstreamSyncFailed.value = false
     availableGroups.value = []
     state.groups = state.groups.filter(group => group.groupId === undefined)
     if (!state.groups.length) state.groups = createGroups()
@@ -634,8 +801,11 @@ async function syncGroups(): Promise<void> {
         && group.status !== 'inactive')
       selectedIds.value = selectedIds.value.filter(id => availableGroups.value.some(group => group.id === id))
       writeSelectedIds()
+      // Orange 特有：先用本地记忆/已缓存的接口值渲染，避免卡片空白闪烁
       rebuildSyncedGroups()
       syncStatus.value = 'synced'
+      // Orange 特有：分组就绪后同步「分组管理 → 上游倍率」；失败只给轻量提示，不影响汇总可用性
+      await syncUpstreamRates()
     } catch {
       if (!disposed && currentRequest === requestId) syncStatus.value = 'error'
     } finally {
@@ -664,6 +834,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   disposed = true
   requestId += 1
+  upstreamRequestId += 1
   window.removeEventListener('focus', refreshOnReturn)
   document.removeEventListener('visibilitychange', refreshOnReturn)
 })
