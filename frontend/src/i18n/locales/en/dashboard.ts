@@ -397,6 +397,7 @@ export default {
     cacheTtlOverridden1h: 'Billed as 1h',
     totalRequests: 'Total Requests',
     totalTokens: 'Total Tokens',
+    cacheHitHint: 'Cache hit rate = cache read tokens ÷ (input + cache creation + cache read); shows - when there is no cache usage',
     cacheTotal: 'Cache',
     cacheBreakdown: 'Cache Token Breakdown',
     cacheCreationTokensLabel: 'Cache Creation',

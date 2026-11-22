@@ -206,6 +206,16 @@
           </div>
         </template>
 
+        <!-- Orange 特有：缓存命中率（缓存读取 ÷ 提示词总 Token） -->
+        <template #cell-cache_hit="{ row }">
+          <span
+            v-if="cacheHitRatePercent(row) !== null"
+            class="font-medium tabular-nums text-sky-600 dark:text-sky-400"
+            :title="t('usage.cacheHitHint')"
+          >{{ cacheHitRatePercent(row)!.toFixed(1) }}%</span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500" :title="t('usage.cacheHitHint')">-</span>
+        </template>
+
         <template #cell-cost="{ row }">
           <div class="text-sm">
             <div class="flex items-center gap-1.5">
@@ -635,6 +645,16 @@ const showUpstreamEndpoint = props.showUpstreamEndpoint
 const ipGeoBatchLoading = ref(false)
 
 const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))
+
+// Orange 特有：缓存命中率 = 缓存读取 ÷（输入 + 缓存创建 + 缓存读取）；分母为 0 时返回 null（显示 -）
+const cacheHitRatePercent = (row: AdminUsageLog): number | null => {
+  const cacheRead = Number(row.cache_read_tokens ?? 0) || 0
+  const cacheCreation = Number(row.cache_creation_tokens ?? 0) || 0
+  const input = Number(row.input_tokens ?? 0) || 0
+  const total = input + cacheCreation + cacheRead
+  if (total <= 0) return null
+  return (cacheRead / total) * 100
+}
 
 const hasReasoningEffortMapping = (row: AdminUsageLog): boolean => {
   const requested = row.reasoning_effort?.trim() || ''
