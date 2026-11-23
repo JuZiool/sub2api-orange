@@ -264,19 +264,11 @@
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyFirstToken') }}</span>
               <span v-if="row.first_token_ms != null" class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[firstTokenSeverity(row.first_token_ms)]">{{ formatDuration(row.first_token_ms) }}</span>
               <span v-else class="text-gray-400 dark:text-gray-500">-</span>
-              <!-- Orange 特有：首字拆成「网关准备」与「等待上游」两段小字；两项都无记录时保持原样不显示 -->
-              <template v-if="row.gateway_ms != null">
-                <span class="pl-2 text-[11px] leading-tight text-gray-400 dark:text-gray-500">
-                  <span class="mr-0.5 text-gray-300 dark:text-gray-600" aria-hidden="true">└</span>{{ t('usage.gatewayLatency') }}
-                </span>
-                <span data-testid="latency-gateway" class="text-[11px] leading-tight tabular-nums text-gray-500 dark:text-gray-400">{{ formatDuration(row.gateway_ms) }}</span>
-              </template>
-              <template v-if="row.upstream_ms != null">
-                <span class="pl-2 text-[11px] leading-tight text-gray-400 dark:text-gray-500">
-                  <span class="mr-0.5 text-gray-300 dark:text-gray-600" aria-hidden="true">└</span>{{ t('usage.upstreamLatency') }}
-                </span>
-                <span data-testid="latency-upstream" class="text-[11px] leading-tight tabular-nums text-gray-500 dark:text-gray-400">{{ formatDuration(row.upstream_ms) }}</span>
-              </template>
+              <!-- Orange 特有：不再展示「网关 / 上游」两段拆分。
+                   原因见 文档/问题记录/2026-11-23-使用记录网关耗时1到10秒排查.md：
+                   gateway_ms 的起点早于请求体读入、终点早于上游连接建立，口径混装了上传/排队/网关计算；
+                   且 gateway_ms > first_token_ms 时会被 clamp，导致出现「上游 0ms」这类不可能值。
+                   后端字段与 orange_usage_latency 表保持不动（不改库、不动接口契约），仅隐藏展示。 -->
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyDuration') }}</span>
               <span class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[durationSeverity(row.duration_ms ?? 0)]">{{ formatDuration(row.duration_ms) }}</span>
               <span class="text-gray-400 dark:text-gray-500" :title="t('usage.outputTpsHint')">{{ t('usage.outputTps') }}</span>
