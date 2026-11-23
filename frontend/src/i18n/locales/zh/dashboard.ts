@@ -403,6 +403,8 @@ export default {
     totalRequests: '总请求数',
     totalTokens: '总 Token',
     cacheHitHint: '缓存命中率 = 缓存读取 Token ÷（输入 + 缓存创建 + 缓存读取）；无缓存时显示 -',
+    // Orange 特有：命中率并在 TOKEN 单元格内显示时使用的行内标签
+    cacheHitInline: '命中：',
     cacheTotal: '缓存',
     cacheBreakdown: '缓存 Token 明细',
     cacheCreationTokensLabel: '缓存创建',

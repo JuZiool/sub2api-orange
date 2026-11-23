@@ -86,6 +86,8 @@ const messages: Record<string, string> = {
 	'usage.upstreamResponseModel': 'Upstream response',
 	'usage.modelVariant': 'Possible version variant',
 	'usage.modelMismatch': 'Different model',
+	'usage.cacheHitInline': 'Hit: ',
+	'usage.cacheHitHint': 'Cache hit rate',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -932,5 +934,62 @@ describe('admin UsageTable deleted-user badge', () => {
 
     expect(wrapper.text()).not.toContain('Deleted')
     expect(wrapper.text()).toContain('active@test.com')
+  })
+})
+
+
+// Orange 特有：命中率并入 TOKEN 单元格后的展示回归
+describe('admin UsageTable inline cache hit rate', () => {
+  const mountTokenRow = (row: Record<string, unknown>) => mount(UsageTable, {
+    props: { data: [row], loading: false, columns: [] },
+    global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+  })
+
+  it('renders the hit rate under the cache line inside the TOKEN cell', () => {
+    const wrapper = mountTokenRow({
+      ...baseImageRow,
+      request_id: 'req-inline-cache-hit',
+      image_count: 0,
+      billing_mode: 'token',
+      input_tokens: 100,
+      cache_creation_tokens: 100,
+      cache_read_tokens: 800,
+    })
+    const cell = wrapper.find('[data-testid="token-cache-hit"]')
+    expect(cell.exists()).toBe(true)
+    expect(cell.text()).toContain('Hit:')
+    expect(cell.text()).toContain('80.0%')
+    wrapper.unmount()
+  })
+
+  it('shows 0.0% when the request used no cache at all', () => {
+    const wrapper = mountTokenRow({
+      ...baseImageRow,
+      request_id: 'req-inline-cache-miss',
+      image_count: 0,
+      billing_mode: 'token',
+      input_tokens: 1200,
+    })
+    const cell = wrapper.find('[data-testid="token-cache-hit"]')
+    expect(cell.exists()).toBe(true)
+    expect(cell.text()).toContain('0.0%')
+    wrapper.unmount()
+  })
+
+  it('shows - instead of NaN when the prompt token total is zero', () => {
+    const wrapper = mountTokenRow({
+      ...baseImageRow,
+      request_id: 'req-inline-cache-empty',
+      image_count: 0,
+      billing_mode: 'token',
+      input_tokens: 0,
+      cache_creation_tokens: 0,
+      cache_read_tokens: 0,
+    })
+    const cell = wrapper.find('[data-testid="token-cache-hit"]')
+    expect(cell.exists()).toBe(true)
+    expect(cell.text()).not.toContain('NaN')
+    expect(cell.text().replace(/\s+/g, ' ')).toBe('Hit: -')
+    wrapper.unmount()
   })
 })
