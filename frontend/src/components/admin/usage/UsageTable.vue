@@ -264,11 +264,10 @@
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyFirstToken') }}</span>
               <span v-if="row.first_token_ms != null" class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[firstTokenSeverity(row.first_token_ms)]">{{ formatDuration(row.first_token_ms) }}</span>
               <span v-else class="text-gray-400 dark:text-gray-500">-</span>
-              <!-- Orange 特有：不再展示「网关 / 上游」两段拆分。
-                   原因见 文档/问题记录/2026-11-23-使用记录网关耗时1到10秒排查.md：
-                   gateway_ms 的起点早于请求体读入、终点早于上游连接建立，口径混装了上传/排队/网关计算；
-                   且 gateway_ms > first_token_ms 时会被 clamp，导致出现「上游 0ms」这类不可能值。
-                   后端字段与 orange_usage_latency 表保持不动（不改库、不动接口契约），仅隐藏展示。 -->
+              <!-- Orange 特有：已移除「网关 / 上游」两段耗时拆分（前端展示与后端埋点一并删除）。
+                   原口径缺陷见 文档/问题记录/2026-11-23-使用记录网关耗时1到10秒排查.md：
+                   gateway_ms 起点早于请求体读入、终点早于上游连接建立，混装了上传/排队/网关计算；
+                   且 gateway_ms > first_token_ms 时会被 clamp，出现「上游 0ms」这类不可能值。 -->
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyDuration') }}</span>
               <span class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[durationSeverity(row.duration_ms ?? 0)]">{{ formatDuration(row.duration_ms) }}</span>
               <span class="text-gray-400 dark:text-gray-500" :title="t('usage.outputTpsHint')">{{ t('usage.outputTps') }}</span>

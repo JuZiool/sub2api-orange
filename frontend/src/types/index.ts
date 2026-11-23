@@ -1873,10 +1873,6 @@ export interface UsageLog {
   native_compaction_v2: boolean
   duration_ms: number | null
   first_token_ms: number | null
-  // Orange 特有：首字耗时的两段拆分（网关准备 / 等待上游）。
-  // 仅流式请求有记录，无记录时后端返回 null；后端字段未就绪时字段缺省，故声明为可选。
-  gateway_ms?: number | null
-  upstream_ms?: number | null
 
   // 图片生成字段
   image_count: number

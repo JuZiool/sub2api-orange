@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -39,14 +38,6 @@ func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionS
 // 异步生图查询允许已耗尽额度的 Key 拉取自身任务结果。
 func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// ── 0. 请求级延迟追踪（Orange 特有） ─────────────────────────
-		// 安装「首字延迟拆分」追踪对象：起始时间取本中间件开始（=网关收到该请求），
-		// 上游 httpUpstream 在发出请求前 / 收到响应头时打点，usage log 落库时读取并
-		// best-effort 写入自建表 orange_usage_latency。拿不到追踪对象时全链路静默跳过。
-		if traceCtx, trace := service.EnsureOrangeLatencyTrace(c.Request.Context(), time.Now()); trace != nil {
-			c.Request = c.Request.WithContext(traceCtx)
-		}
-
 		// ── 1. 提取 API Key ──────────────────────────────────────────
 		if rejectInvalidAuthAbuse(c, apiKeyService) {
 			AbortWithError(c, http.StatusTooManyRequests, "INVALID_AUTH_RATE_LIMITED", "Too many invalid authentication attempts; retry later")

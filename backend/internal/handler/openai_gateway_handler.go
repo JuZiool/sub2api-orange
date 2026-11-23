@@ -258,11 +258,6 @@ func usageRecordContext(parent context.Context, base context.Context) context.Co
 	if requestID, _ := parent.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
 		base = context.WithValue(base, ctxkey.RequestID, strings.TrimSpace(requestID))
 	}
-	// Orange 特有：把请求级首字延迟追踪对象带进异步计费任务，usage log 落库时才能读到
-	// 上游打点（上游请求 goroutine 早已结束，只能靠 ctx 传递指针）。
-	if trace, ok := service.OrangeLatencyTraceFromContext(parent); ok {
-		base = service.WithOrangeLatencyTrace(base, trace)
-	}
 	return base
 }
 

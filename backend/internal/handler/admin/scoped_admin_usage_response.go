@@ -82,36 +82,17 @@ func scopedAdminUsageLogResponse(record *service.UsageLog) gin.H {
 }
 
 // adminUsageLogResponses 输出一页管理端使用记录。
-// latencies 为 Orange 特有：本页 request_id → 首字延迟拆分（无记录则字段为 null）。
-func adminUsageLogResponses(c *gin.Context, records []service.UsageLog, latencies map[string]service.OrangeUsageLatencyRecord) any {
+func adminUsageLogResponses(c *gin.Context, records []service.UsageLog) any {
 	if adminaccess.RestrictedFromContext(c.Request.Context()) != nil {
 		out := make([]gin.H, 0, len(records))
 		for i := range records {
-			entry := scopedAdminUsageLogResponse(&records[i])
-			// Orange 特有：受限密钥同样返回首字延迟拆分（非敏感展示字段）。
-			entry["gateway_ms"], entry["upstream_ms"] = orangeUsageLatencyValues(latencies, records[i].RequestID)
-			out = append(out, entry)
+			out = append(out, scopedAdminUsageLogResponse(&records[i]))
 		}
 		return out
 	}
 	out := make([]dto.AdminUsageLog, 0, len(records))
 	for i := range records {
-		entry := dto.UsageLogFromServiceAdmin(&records[i])
-		// Orange 特有：回填首字延迟拆分；未采样时保持 null。
-		if latency, ok := latencies[records[i].RequestID]; ok {
-			gatewayMs, upstreamMs := latency.GatewayMs, latency.UpstreamMs
-			entry.GatewayMs, entry.UpstreamMs = &gatewayMs, &upstreamMs
-		}
-		out = append(out, *entry)
+		out = append(out, *dto.UsageLogFromServiceAdmin(&records[i]))
 	}
 	return out
-}
-
-// orangeUsageLatencyValues 返回 (gateway_ms, upstream_ms) 的展示值；无记录时为 (nil, nil) → JSON null。
-func orangeUsageLatencyValues(latencies map[string]service.OrangeUsageLatencyRecord, requestID string) (any, any) {
-	latency, ok := latencies[requestID]
-	if !ok {
-		return nil, nil
-	}
-	return latency.GatewayMs, latency.UpstreamMs
 }

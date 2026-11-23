@@ -650,10 +650,6 @@ type UsageLog struct {
 	NativeCompactionV2 bool `json:"native_compaction_v2"`
 	DurationMs         *int `json:"duration_ms"`
 	FirstTokenMs       *int `json:"first_token_ms"`
-	// Orange 特有：首字延迟拆分（自建表 orange_usage_latency）。无采样记录时为 null，
-	// 前端据此不显示额外行；gateway_ms + upstream_ms == first_token_ms。
-	GatewayMs  *int `json:"gateway_ms"`
-	UpstreamMs *int `json:"upstream_ms"`
 
 	// 图片生成字段
 	ImageCount         int            `json:"image_count"`
