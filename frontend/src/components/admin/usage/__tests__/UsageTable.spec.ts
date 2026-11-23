@@ -1059,4 +1059,43 @@ describe('admin UsageTable inline cache hit rate', () => {
     expect(cell.text().replace(/\s+/g, ' ')).toBe('Cache hit: -')
     wrapper.unmount()
   })
+
+  it('colors the hit rate by tier: red <50, amber 50-80, emerald 80-90, green >=90', () => {
+    const row = (id: string, inputTokens: number, cacheReadTokens: number) => ({
+      ...baseImageRow,
+      request_id: id,
+      image_count: 0,
+      billing_mode: 'token',
+      input_tokens: inputTokens,
+      cache_creation_tokens: 0,
+      cache_read_tokens: cacheReadTokens,
+    })
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          row('rate-30', 70, 30),
+          row('rate-60', 40, 60),
+          row('rate-79-9', 201, 799),
+          row('rate-80', 20, 80),
+          row('rate-90', 10, 90),
+          row('rate-100', 0, 100),
+        ],
+        loading: false,
+        columns: [],
+      },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+
+    const classesOf = (id: string) =>
+      wrapper.get(`[data-request-id="${id}"] [data-testid="cache-hit-rate"]`).classes()
+
+    expect(classesOf('rate-30')).toContain('text-rose-600')
+    expect(classesOf('rate-60')).toContain('text-amber-600')
+    expect(classesOf('rate-79-9')).toContain('text-amber-600')
+    expect(classesOf('rate-80')).toContain('text-emerald-500')
+    expect(classesOf('rate-90')).toContain('text-green-600')
+    expect(classesOf('rate-100')).toContain('text-green-600')
+    expect(wrapper.get('[data-request-id="rate-90"] [data-testid="cache-hit-rate"]').text()).toBe('90.0%')
+    wrapper.unmount()
+  })
 })

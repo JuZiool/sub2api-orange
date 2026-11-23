@@ -189,7 +189,9 @@
                 <span class="text-gray-400 dark:text-gray-500">{{ t('usage.cacheHitInline') }}</span>
                 <span
                   v-if="cacheHitRatePercent(row) !== null"
-                  class="font-medium tabular-nums text-sky-600 dark:text-sky-400"
+                  data-testid="cache-hit-rate"
+                  class="font-medium tabular-nums"
+                  :class="cacheHitRateClass(cacheHitRatePercent(row)!)"
                 >{{ cacheHitRatePercent(row)!.toFixed(1) }}%</span>
                 <span v-else class="text-gray-400 dark:text-gray-500">-</span>
               </div>
@@ -672,6 +674,21 @@ const cacheHitRatePercent = (row: AdminUsageLog): number | null => {
   const total = input + cacheCreation + cacheRead
   if (total <= 0) return null
   return (cacheRead / total) * 100
+}
+
+// Orange 特有：缓存命中率按档位着色（<50% 红 / 50–80% 黄 / 80–90% 浅绿 / ≥90% 深绿），命中越高越绿
+const CACHE_HIT_RATE_CLASSES = {
+  low: 'text-rose-600 dark:text-rose-400',
+  medium: 'text-amber-600 dark:text-amber-400',
+  good: 'text-emerald-500 dark:text-emerald-400',
+  high: 'text-green-600 dark:text-green-400',
+} as const
+
+const cacheHitRateClass = (rate: number): string => {
+  if (rate < 50) return CACHE_HIT_RATE_CLASSES.low
+  if (rate < 80) return CACHE_HIT_RATE_CLASSES.medium
+  if (rate < 90) return CACHE_HIT_RATE_CLASSES.good
+  return CACHE_HIT_RATE_CLASSES.high
 }
 
 const hasReasoningEffortMapping = (row: AdminUsageLog): boolean => {
