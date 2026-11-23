@@ -241,6 +241,73 @@ describe('admin UsageTable tooltip', () => {
     expect(wrapper.text()).not.toContain('x2')
   })
 
+  it('renders the long-context marker on its own line below the account-billed row', () => {
+    locale = 'zh'
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          {
+            ...baseImageRow,
+            request_id: 'req-long-context-below-account',
+            actual_cost: 0.5,
+            total_cost: 0.5,
+            account_rate_multiplier: 1.2,
+            long_context_billing_applied: true,
+          },
+        ],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const row = wrapper.get('[data-request-id="req-long-context-below-account"]')
+    const text = row.text()
+    expect(text.indexOf('$0.500000')).toBeGreaterThan(-1)
+    expect(text.indexOf('A $0.600000')).toBeGreaterThan(text.indexOf('$0.500000'))
+    expect(text.indexOf('长上下文')).toBeGreaterThan(text.indexOf('A $0.600000'))
+    // 标记已移出首行（首行为单价 + 费用明细图标），改为 A$ 行下方的独立行
+    const marker = row.get('[data-testid="long-context-billing-marker"]')
+    expect(marker.element.parentElement?.className).not.toContain('gap-1.5')
+  })
+
+  it('keeps the long-context marker when the account-billed row is hidden', () => {
+    locale = 'zh'
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          {
+            ...baseImageRow,
+            request_id: 'req-long-context-user-side',
+            long_context_billing_applied: true,
+          },
+        ],
+        loading: false,
+        columns: [],
+        showAccountBilling: false,
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const row = wrapper.get('[data-request-id="req-long-context-user-side"]')
+    expect(row.get('[data-testid="long-context-billing-marker"]').text()).toBe('长上下文')
+    expect(row.text()).not.toContain('A $')
+  })
+
   it('keeps the request type badge and adds a separate badge only for native compaction rows', () => {
     const DataTableStreamStub = {
       props: ['data'],

@@ -223,12 +223,6 @@
           <div class="text-sm">
             <div class="flex items-center gap-1.5">
               <span class="font-medium text-green-600 dark:text-green-400">${{ row.actual_cost?.toFixed(6) || '0.000000' }}</span>
-              <span
-                v-if="row.long_context_billing_applied"
-                data-testid="long-context-billing-marker"
-                :title="t('admin.usage.longContextPricingTooltip')"
-                class="inline-flex items-center rounded px-1 py-px text-[10px] font-semibold leading-tight bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-500/30"
-              >{{ t('admin.usage.longContext') }}</span>
               <!-- Cost Detail Tooltip -->
               <div
                 class="group relative"
@@ -242,6 +236,14 @@
             </div>
             <div v-if="showAccountBilling && row.account_rate_multiplier != null" class="mt-0.5 text-[11px] text-orange-500 dark:text-orange-400">
               A ${{ accountBilled(row).toFixed(6) }}
+            </div>
+            <!-- Orange 特有：长上下文计费标记由首行内联改为独立一行，显示在 A$ 账号计费行下方 -->
+            <div v-if="row.long_context_billing_applied" class="mt-0.5 flex items-center">
+              <span
+                data-testid="long-context-billing-marker"
+                :title="t('admin.usage.longContextPricingTooltip')"
+                class="inline-flex items-center rounded px-1 py-px text-[10px] font-semibold leading-tight bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-500/30"
+              >{{ t('admin.usage.longContext') }}</span>
             </div>
           </div>
         </template>
