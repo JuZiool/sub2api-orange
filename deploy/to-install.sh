@@ -496,6 +496,22 @@ state_value() {
   sed -nE 's/.*"'"$key"'"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' "$STATE_FILE" | head -n 1
 }
 
+# 备份时应用与 Redis 仍在运行：日志（data/logs）和 AOF（redis_data/appendonlydir）
+# 会边写边被打包，GNU tar 会以 "file changed as we read it" 退出码 1 结束。
+# 这类"读取期间文件变化"不应当中断更新（否则备份永远做不完、镜像也永远不切换），
+# 只有真正的打包错误（退出码 >= 2）才终止。
+backup_tar() {
+  local archive="$1" base="$2" path="$3" rc=0
+  tar -czf "$archive" -C "$base" "$path" || rc=$?
+  if (( rc > 1 )); then
+    rm -rf -- "$(dirname -- "$archive")"
+    die "备份打包失败（tar 退出码 $rc）：$path"
+  fi
+  if (( rc == 1 )); then
+    warn "$path 在打包期间仍有写入（应用日志 / Redis AOF），tar 报告文件变化，已按容错继续备份。"
+  fi
+}
+
 backup_command() {
   local stamp tmp image image_id compose_image
   stamp="$(date +%Y%m%d-%H%M%S)"
@@ -516,13 +532,13 @@ backup_command() {
   cp -- "$DEPLOY_DIR/.env" "$tmp/env"
   cp -- "$DEPLOY_DIR/docker-compose.local.yml" "$tmp/compose/"
   cp -- "$DEPLOY_DIR/docker-compose.ghcr.yml" "$tmp/compose/"
-  tar -czf "$tmp/data.tar.gz" -C "$DEPLOY_DIR" data
+  backup_tar "$tmp/data.tar.gz" "$DEPLOY_DIR" data
   if ! compose exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' | gzip -9 > "$tmp/postgres.sql.gz"; then
     rm -rf -- "$tmp"
     die "PostgreSQL 逻辑备份失败。"
   fi
   compose exec -T redis sh -c 'redis-cli SAVE' >/dev/null 2>&1 || warn "Redis SAVE 失败，将继续保存数据目录。"
-  tar -czf "$tmp/redis-data.tar.gz" -C "$DEPLOY_DIR" redis_data
+  backup_tar "$tmp/redis-data.tar.gz" "$DEPLOY_DIR" redis_data
   {
     printf 'created_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     printf 'image=%s\n' "$image"
