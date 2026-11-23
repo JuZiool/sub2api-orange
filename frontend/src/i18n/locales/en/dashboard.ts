@@ -399,7 +399,7 @@ export default {
     totalTokens: 'Total Tokens',
     cacheHitHint: 'Cache hit rate = cache read tokens ÷ (input + cache creation + cache read); shows - when there is no cache usage',
     // Orange only: inline label used when the hit rate is rendered inside the TOKEN cell
-    cacheHitInline: 'Hit: ',
+    cacheHitInline: 'Cache hit: ',
     cacheTotal: 'Cache',
     cacheBreakdown: 'Cache Token Breakdown',
     cacheCreationTokensLabel: 'Cache Creation',

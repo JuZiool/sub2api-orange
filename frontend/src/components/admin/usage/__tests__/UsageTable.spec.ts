@@ -86,7 +86,7 @@ const messages: Record<string, string> = {
 	'usage.upstreamResponseModel': 'Upstream response',
 	'usage.modelVariant': 'Possible version variant',
 	'usage.modelMismatch': 'Different model',
-	'usage.cacheHitInline': 'Hit: ',
+	'usage.cacheHitInline': 'Cache hit: ',
 	'usage.cacheHitHint': 'Cache hit rate',
 }
 
@@ -957,7 +957,7 @@ describe('admin UsageTable inline cache hit rate', () => {
     })
     const cell = wrapper.find('[data-testid="token-cache-hit"]')
     expect(cell.exists()).toBe(true)
-    expect(cell.text()).toContain('Hit:')
+    expect(cell.text()).toContain('Cache hit:')
     expect(cell.text()).toContain('80.0%')
     wrapper.unmount()
   })
@@ -989,7 +989,7 @@ describe('admin UsageTable inline cache hit rate', () => {
     const cell = wrapper.find('[data-testid="token-cache-hit"]')
     expect(cell.exists()).toBe(true)
     expect(cell.text()).not.toContain('NaN')
-    expect(cell.text().replace(/\s+/g, ' ')).toBe('Hit: -')
+    expect(cell.text().replace(/\s+/g, ' ')).toBe('Cache hit: -')
     wrapper.unmount()
   })
 })
