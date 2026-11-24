@@ -30,14 +30,22 @@ import (
 // 与 handler.writeOpenAIModelsList 的兜底值保持一致。
 const orangeAggregatedListModelCreated = 1704067200
 
-// OrangeChainGroups 返回该 Key 的分组链（含链首，按 priority 升序，去重、过滤停用）。
+// OrangeChainGroups 返回该 Key 的分组链（含链首，按 priority 升序，去重、过滤停用/失效）。
 //
 // 返回值长度 < 2 表示该 Key 没有可用的兜底/聚合链：调用方必须沿用上游的单分组语义。
 // 链成员来自鉴权快照（orange_api_key_group_chain_loader.go），这里只做只读筛选。
+//
+// 筛选口径含「用户是否仍拥有该分组的绑定权限」（orangeChainMemberUsableForUser）：分组被
+// 改成专属或撤销授权后，链上残留的成员不得再参与模型目录合并 / 白名单放行 / 生图门控，
+// 否则用户可以凭专属分组的白名单与模型清单绕过链首限制。
 func OrangeChainGroups(apiKey *APIKey) []*Group {
 	chain := apiKey.GroupChain()
 	if len(chain) == 0 {
 		return nil
+	}
+	var user *User
+	if apiKey != nil {
+		user = apiKey.User
 	}
 	groups := make([]*Group, 0, len(chain))
 	seen := make(map[int64]struct{}, len(chain))
@@ -49,7 +57,7 @@ func OrangeChainGroups(apiKey *APIKey) []*Group {
 		if _, dup := seen[group.ID]; dup {
 			continue
 		}
-		if !group.IsActive() || !IsGroupContextValid(group) {
+		if !orangeChainMemberUsableForUser(user, group) {
 			continue
 		}
 		seen[group.ID] = struct{}{}

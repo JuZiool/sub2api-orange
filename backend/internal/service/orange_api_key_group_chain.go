@@ -105,9 +105,29 @@ func (k *APIKey) OrangeGroupChainMode() string {
 	}
 }
 
+// orangeChainMemberUsableForUser 报告某个分组作为"分组链成员"在本请求内是否可用：
+// 分组已停用、上下文不完整，或**用户已不再拥有该分组的绑定权限**时返回 false。
+//
+// 权限口径与上游单分组校验（middleware.validateAPIKeyGroupAllowed → user.CanBindGroup）
+// 完全一致：专属分组必须在 user_allowed_groups 中；开启 restrict_public_groups 的用户，
+// 公开分组也必须落在其中。分组链写在 orange_api_key_group_chain 表里是创建时的快照，
+// 分组之后被改成专属 / 授权被撤销都不会回写该表，因此必须每请求判定一次。
+//
+// 链首不靠这里兜底：链首失去权限时由上游鉴权中间件返回 403 GROUP_NOT_ALLOWED
+// （与普通 Key 语义一致），静默换组会掩盖"管理员收回了该分组"这件事。
+func orangeChainMemberUsableForUser(user *User, group *Group) bool {
+	if group == nil || group.ID <= 0 {
+		return false
+	}
+	if !group.IsActive() || !IsGroupContextValid(group) {
+		return false
+	}
+	return orangeGroupBindableForUser(user, group)
+}
+
 // orangeUsableKeyChain 按 priority 顺序构建"本次请求可用"的链：过滤空项、软删（GetByID 已剔除）、
-// 停用、上下文不完整、重复分组，以及与链首不同平台/不同订阅类型的成员。
-// 过滤而不是整链作废，这样单个候选被停用/删除不会让整条链失效。
+// 停用、上下文不完整、**用户已无绑定权限**、重复分组，以及与链首不同平台/不同订阅类型的成员。
+// 过滤而不是整链作废，这样单个候选被停用/删除/收回授权不会让整条链失效。
 func orangeUsableKeyChain(apiKey *APIKey) []APIKeyGroupEntry {
 	entries := apiKey.GroupChain()
 	if len(entries) < 2 {
@@ -115,12 +135,14 @@ func orangeUsableKeyChain(apiKey *APIKey) []APIKeyGroupEntry {
 	}
 	chain := make([]APIKeyGroupEntry, 0, len(entries))
 	seen := make(map[int64]struct{}, len(entries))
+	skipped := 0
 	for _, entry := range entries {
 		group := entry.Group
 		if _, ok := seen[group.ID]; ok {
 			continue
 		}
-		if !group.IsActive() || !IsGroupContextValid(group) {
+		if !orangeChainMemberUsableForUser(apiKey.User, group) {
+			skipped++
 			continue
 		}
 		if len(chain) > 0 {
@@ -131,6 +153,13 @@ func orangeUsableKeyChain(apiKey *APIKey) []APIKeyGroupEntry {
 		}
 		seen[group.ID] = struct{}{}
 		chain = append(chain, APIKeyGroupEntry{Group: group, Priority: entry.Priority})
+	}
+	if skipped > 0 {
+		slog.Debug("orange_key_group_chain_member_skipped",
+			"api_key_id", apiKey.ID,
+			"skipped_count", skipped,
+			"remaining_count", len(chain),
+			"reason", "member_not_entitled_or_unavailable")
 	}
 	if len(chain) < 2 {
 		return nil

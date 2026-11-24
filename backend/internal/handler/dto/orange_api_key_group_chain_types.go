@@ -18,10 +18,15 @@ type APIKeyGroupEntry struct {
 }
 
 // OrangeAPIKeyGroupChainMember 是链详情接口 members[] 的元素。
+//
+// Available / UnavailableReason 由服务层与"请求时链成员过滤"同源判定：分组被改成专属、
+// 或撤销授权后，成员仍留在链上但 Available=false，前端据此提示并让用户自愈（保存时剔除）。
 type OrangeAPIKeyGroupChainMember struct {
-	Priority int    `json:"priority"`
-	GroupID  int64  `json:"group_id"`
-	Group    *Group `json:"group,omitempty"`
+	Priority          int    `json:"priority"`
+	GroupID           int64  `json:"group_id"`
+	Group             *Group `json:"group,omitempty"`
+	Available         bool   `json:"available"`
+	UnavailableReason string `json:"unavailable_reason,omitempty"`
 }
 
 // OrangeAPIKeyGroupChain 是 GET/PUT /keys/:id/group-chain 的响应体。
@@ -53,9 +58,11 @@ func OrangeAPIKeyGroupChainFromService(view service.OrangeAPIKeyGroupChainView) 
 	}
 	for _, member := range view.Members {
 		out.Members = append(out.Members, OrangeAPIKeyGroupChainMember{
-			Priority: member.Priority,
-			GroupID:  member.GroupID,
-			Group:    GroupFromServiceShallow(member.Group),
+			Priority:          member.Priority,
+			GroupID:           member.GroupID,
+			Group:             GroupFromServiceShallow(member.Group),
+			Available:         member.Available,
+			UnavailableReason: member.UnavailableReason,
 		})
 	}
 	return out

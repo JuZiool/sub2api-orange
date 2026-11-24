@@ -353,7 +353,18 @@ type OrangeAPIKeyGroupChainMemberView struct {
 	GroupID  int64
 	Priority int
 	Group    *Group
+	// Available 表示当前用户是否还能使用该分组（与请求时链成员过滤同源判定）。
+	Available bool
+	// UnavailableReason 在 Available=false 时给出原因，取值见 OrangeGroupChainUnavailableReason*。
+	UnavailableReason string
 }
+
+// Orange 特有：链成员「不可用」的原因码（链详情接口对外暴露，前端据此展示文案）。
+const (
+	// OrangeGroupChainUnavailableReasonNotEntitled 表示用户已不再拥有该分组的绑定权限
+	// （分组被改成专属但未授权给该 Key 的主人，或该用户的公开分组访问被限制）。
+	OrangeGroupChainUnavailableReasonNotEntitled = "not_entitled"
+)
 
 // OrangeAPIKeyGroupChainView 是 GET/PUT /keys/:id/group-chain 的返回视图。
 type OrangeAPIKeyGroupChainView struct {
@@ -385,6 +396,10 @@ func (s *APIKeyService) OrangeGetAPIKeyGroupChain(ctx context.Context, userID, a
 
 // OrangeBuildAPIKeyGroupChainView 构建链视图：members[0] 恒为链首（= api_keys.group_id），
 // 软删/停用的成员不返回，其余成员按 priority 升序。
+//
+// 每个成员额外带「当前用户是否还能使用该分组」（Available / UnavailableReason）：
+// 分组被改成专属或撤销授权后，链上残留的成员在请求时会被跳过，界面必须能解释
+// 「我配过这个分组，但现在没有权限了」，而不是让用户看到一个空下拉框。
 func (s *APIKeyService) OrangeBuildAPIKeyGroupChainView(ctx context.Context, apiKey *APIKey) OrangeAPIKeyGroupChainView {
 	view := OrangeAPIKeyGroupChainView{Mode: OrangeGroupChainModeNone}
 	if s == nil || apiKey == nil {
@@ -394,15 +409,16 @@ func (s *APIKeyService) OrangeBuildAPIKeyGroupChainView(ctx context.Context, api
 	if apiKey.GroupID != nil {
 		view.PrimaryGroupID = *apiKey.GroupID
 	}
+	owner := apiKey.User
 
 	entry, _ := s.orangeGroupChainEntry(ctx, apiKey.ID)
 	// 模式取"持久化值（无记录则按候选数推断）"：聚合密钥即使只配了 2 个分组也必须显示成聚合。
 	view.Mode = orangeResolveGroupChainMode(entry.mode, len(entry.members))
 
-	chain := make([]*APIKeyGroupEntry, 0, len(entry.members)+1)
+	chain := make([]OrangeAPIKeyGroupChainMemberView, 0, len(entry.members)+1)
 	head := apiKey.Group
 	if head != nil && head.ID > 0 && head.IsActive() && IsGroupContextValid(head) {
-		chain = append(chain, &APIKeyGroupEntry{Group: head, Priority: 1})
+		chain = append(chain, orangeChainMemberView(head, 1, owner))
 	} else {
 		head = nil
 	}
@@ -417,20 +433,30 @@ func (s *APIKeyService) OrangeBuildAPIKeyGroupChainView(ctx context.Context, api
 		if head != nil && (group.Platform != head.Platform || group.SubscriptionType != head.SubscriptionType) {
 			continue
 		}
-		chain = append(chain, &APIKeyGroupEntry{Group: cloneOrangeGroup(group), Priority: len(chain) + 1})
+		chain = append(chain, orangeChainMemberView(cloneOrangeGroup(group), len(chain)+1, owner))
 	}
 	if len(chain) == 0 {
 		return view
 	}
-	view.Members = make([]OrangeAPIKeyGroupChainMemberView, 0, len(chain))
-	for _, item := range chain {
-		view.Members = append(view.Members, OrangeAPIKeyGroupChainMemberView{
-			GroupID:  item.Group.ID,
-			Priority: item.Priority,
-			Group:    item.Group,
-		})
-	}
+	view.Members = chain
 	return view
+}
+
+// orangeChainMemberView 组装链详情的一项，并标注「当前用户是否还能使用该分组」。
+//
+// 判定与请求时完全同源（orangeGroupBindableForUser）：界面所见 = 请求实际会用的链。
+func orangeChainMemberView(group *Group, priority int, user *User) OrangeAPIKeyGroupChainMemberView {
+	member := OrangeAPIKeyGroupChainMemberView{
+		GroupID:   group.ID,
+		Priority:  priority,
+		Group:     group,
+		Available: true,
+	}
+	if !orangeGroupBindableForUser(user, group) {
+		member.Available = false
+		member.UnavailableReason = OrangeGroupChainUnavailableReasonNotEntitled
+	}
+	return member
 }
 
 // OrangeSetAPIKeyGroupChain 设置某个 Key 的分组优先级链（groupIDs[0] 成为新的主分组）。
