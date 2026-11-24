@@ -30,6 +30,8 @@ export default {
     groupsPanelEmpty: '没有可选的启用分组，可直接用下方手动分组试算。',
     groupsSelectedCount: '已选 {count} 个分组',
     clearSelection: '清空勾选',
+    expandGroups: '展开分组',
+    collapseGroups: '收起分组',
     upstreamRateHint: '上游倍率自动同步自「分组管理 → 上游倍率」；手动修改只在本地模拟，不会写回数据库。',
     autoSynced: '自动同步',
     manualOverride: '手动覆盖',

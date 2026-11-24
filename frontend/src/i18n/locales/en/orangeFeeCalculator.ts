@@ -30,6 +30,8 @@ export default {
     groupsPanelEmpty: 'No active groups are available. Use a manual group below to calculate instead.',
     groupsSelectedCount: '{count} groups selected',
     clearSelection: 'Clear selection',
+    expandGroups: 'Show groups',
+    collapseGroups: 'Hide groups',
     upstreamRateHint: 'The upstream rate syncs automatically from Groups → Upstream rate; manual edits only affect this local simulation and are never written back to the database.',
     autoSynced: 'Auto sync',
     manualOverride: 'Manual override',

@@ -55,6 +55,18 @@
             <span class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('rateCalculator.groupsSelectedCount', { count: selectedIds.length }) }}
             </span>
+            <!-- Orange 特有：分组勾选面板可折叠（默认收起，状态记忆在本浏览器）。 -->
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm inline-flex items-center gap-1"
+              :aria-expanded="!groupsCollapsed"
+              aria-controls="rate-calculator-groups"
+              :title="groupsToggleLabel"
+              @click="toggleGroupsPanel"
+            >
+              <Icon :name="groupsCollapsed ? 'chevronDown' : 'chevronUp'" size="sm" />
+              <span>{{ groupsToggleLabel }}</span>
+            </button>
             <button
               type="button"
               class="btn btn-secondary btn-sm"
@@ -66,40 +78,42 @@
           </div>
         </div>
 
-        <div v-if="syncStatus === 'loading'" class="mt-4 flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
-          <LoadingSpinner size="sm" />
-          <span>{{ t('rateCalculator.groupsPanelLoading') }}</span>
+        <div v-show="!groupsCollapsed" id="rate-calculator-groups">
+          <div v-if="syncStatus === 'loading'" class="mt-4 flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+            <LoadingSpinner size="sm" />
+            <span>{{ t('rateCalculator.groupsPanelLoading') }}</span>
+          </div>
+          <p v-else-if="syncStatus === 'error'" class="mt-4 text-sm text-amber-700 dark:text-amber-400">
+            {{ t('rateCalculator.groupsPanelError') }}
+          </p>
+          <p v-else-if="!availableGroups.length" class="mt-4 text-sm text-gray-500 dark:text-gray-400">
+            {{ t('rateCalculator.groupsPanelEmpty') }}
+          </p>
+          <div v-else class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            <label
+              v-for="group in availableGroups"
+              :key="`pick-${group.id}`"
+              class="flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
+              :class="isSelected(group.id)
+                ? 'border-primary-500 bg-primary-50/60 dark:border-primary-500 dark:bg-primary-900/20'
+                : 'border-gray-200 hover:border-gray-300 dark:border-dark-700 dark:hover:border-dark-600'"
+            >
+              <input
+                type="checkbox"
+                class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                :checked="isSelected(group.id)"
+                @change="toggleSelection(group.id, ($event.target as HTMLInputElement).checked)"
+              />
+              <span class="min-w-0 flex-1 truncate text-gray-800 dark:text-gray-200" :title="group.name">
+                {{ group.name }}
+              </span>
+              <span class="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                {{ t('rateCalculator.userRate') }} × {{ group.rate_multiplier }}
+              </span>
+            </label>
+          </div>
+          <p class="mt-3 text-xs text-gray-400 dark:text-gray-500">{{ t('rateCalculator.upstreamRateHint') }}</p>
         </div>
-        <p v-else-if="syncStatus === 'error'" class="mt-4 text-sm text-amber-700 dark:text-amber-400">
-          {{ t('rateCalculator.groupsPanelError') }}
-        </p>
-        <p v-else-if="!availableGroups.length" class="mt-4 text-sm text-gray-500 dark:text-gray-400">
-          {{ t('rateCalculator.groupsPanelEmpty') }}
-        </p>
-        <div v-else class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          <label
-            v-for="group in availableGroups"
-            :key="`pick-${group.id}`"
-            class="flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors"
-            :class="isSelected(group.id)
-              ? 'border-primary-500 bg-primary-50/60 dark:border-primary-500 dark:bg-primary-900/20'
-              : 'border-gray-200 hover:border-gray-300 dark:border-dark-700 dark:hover:border-dark-600'"
-          >
-            <input
-              type="checkbox"
-              class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-              :checked="isSelected(group.id)"
-              @change="toggleSelection(group.id, ($event.target as HTMLInputElement).checked)"
-            />
-            <span class="min-w-0 flex-1 truncate text-gray-800 dark:text-gray-200" :title="group.name">
-              {{ group.name }}
-            </span>
-            <span class="shrink-0 text-xs tabular-nums text-gray-500 dark:text-gray-400">
-              {{ t('rateCalculator.userRate') }} × {{ group.rate_multiplier }}
-            </span>
-          </label>
-        </div>
-        <p class="mt-3 text-xs text-gray-400 dark:text-gray-500">{{ t('rateCalculator.upstreamRateHint') }}</p>
       </section>
 
       <section class="card p-4 sm:p-5">
@@ -330,6 +344,8 @@ const STORAGE_KEY = 'rateCalc.shared.v2'
 const SELECTED_GROUPS_KEY = 'orange.rateCalc.groups.v1'
 /** Orange 特有：人工填写的上游倍率（按分组 ID 记忆，不落库）。 */
 const COST_MULTIPLIERS_KEY = 'orange.rateCalc.costMultipliers.v1'
+/** Orange 特有：分组勾选面板是否收起（默认收起，本浏览器记忆）。 */
+const GROUPS_COLLAPSED_KEY = 'orange.rateCalc.groupsCollapsed.v1'
 
 const presets = [10, 20, 50, 100, 500, 1000]
 const { t } = useI18n()
@@ -340,6 +356,11 @@ const syncBlocked = computed(() => syncStatus.value === 'loading' || syncStatus.
 
 const availableGroups = ref<AdminGroup[]>([])
 const selectedIds = ref<number[]>([])
+/** Orange 特有：分组勾选面板折叠状态（默认收起，避免一屏铺满分组）。 */
+const groupsCollapsed = ref(readGroupsCollapsed())
+const groupsToggleLabel = computed(() =>
+  groupsCollapsed.value ? t('rateCalculator.expandGroups') : t('rateCalculator.collapseGroups')
+)
 const costMultipliers = ref<Record<string, string>>({})
 /** Orange 特有：接口返回的上游倍率（按分组 ID 缓存，仅内存；每次进入页面重新同步）。 */
 const upstreamRates = ref<Record<string, number>>({})
@@ -447,6 +468,29 @@ function writeSelectedIds(): void {
   } catch {
     // Storage may be disabled by the browser.
   }
+}
+
+/** Orange 特有：读取分组勾选面板的折叠状态；没有记录时默认收起。 */
+function readGroupsCollapsed(): boolean {
+  try {
+    const raw = localStorage.getItem(GROUPS_COLLAPSED_KEY)
+    return raw === null ? true : raw === '1'
+  } catch {
+    return true
+  }
+}
+
+function writeGroupsCollapsed(): void {
+  try {
+    localStorage.setItem(GROUPS_COLLAPSED_KEY, groupsCollapsed.value ? '1' : '0')
+  } catch {
+    // Storage may be disabled by the browser.
+  }
+}
+
+function toggleGroupsPanel(): void {
+  groupsCollapsed.value = !groupsCollapsed.value
+  writeGroupsCollapsed()
 }
 
 function readCostMultipliers(): Record<string, string> {
