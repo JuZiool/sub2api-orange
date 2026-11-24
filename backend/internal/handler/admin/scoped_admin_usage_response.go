@@ -81,6 +81,7 @@ func scopedAdminUsageLogResponse(record *service.UsageLog) gin.H {
 	}
 }
 
+// adminUsageLogResponses 输出一页管理端使用记录。
 func adminUsageLogResponses(c *gin.Context, records []service.UsageLog) any {
 	if adminaccess.RestrictedFromContext(c.Request.Context()) != nil {
 		out := make([]gin.H, 0, len(records))

@@ -31,7 +31,19 @@ func (s *GatewayService) SelectAccountForModel(ctx context.Context, groupID *int
 }
 
 // SelectAccountForModelWithExclusions selects an account supporting the requested model while excluding specified accounts.
+//
+// Orange 特有：外壳先按当前分组选号，分组内无可用账号时沿 API Key 的
+// 分组兜底/聚合链推进（见 orange_api_key_group_chain.go）。
 func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
+	return selectWithOrangeGroupChain(ctx, groupID, requestedModel,
+		func(groupCtx context.Context, chainGroupID *int64) (*Account, error) {
+			return s.selectAccountForModelWithExclusionsInGroup(groupCtx, chainGroupID, sessionHash, requestedModel, excludedIDs)
+		},
+		orangeAccountSelectionHit, nil)
+}
+
+// selectAccountForModelWithExclusionsInGroup 是分组内的选号实现（原公开入口的函数体）。
+func (s *GatewayService) selectAccountForModelWithExclusionsInGroup(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
 	// 优先检查 context 中的强制平台（/antigravity 路由）
 	var platform string
 	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
@@ -97,7 +109,18 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 // SelectAccountWithLoadAwareness selects account with load-awareness and wait plan.
 // metadataUserID: 用于客户端亲和调度，从中提取客户端 ID
 // sub2apiUserID: 系统用户 ID，用于二维亲和调度
+//
+// Orange 特有：外壳在"分组内无可用账号"时沿 API Key 的分组兜底/聚合链推进。
 func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID int64) (*AccountSelectionResult, error) {
+	return selectWithOrangeGroupChain(ctx, groupID, requestedModel,
+		func(groupCtx context.Context, chainGroupID *int64) (*AccountSelectionResult, error) {
+			return s.selectAccountWithLoadAwarenessInGroup(groupCtx, chainGroupID, sessionHash, requestedModel, excludedIDs, metadataUserID, sub2apiUserID)
+		},
+		orangeSelectionResultHit, nil)
+}
+
+// selectAccountWithLoadAwarenessInGroup 是分组内的负载感知选号实现（原公开入口的函数体）。
+func (s *GatewayService) selectAccountWithLoadAwarenessInGroup(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID int64) (*AccountSelectionResult, error) {
 	// 调试日志：记录调度入口参数
 	excludedIDsList := make([]int64, 0, len(excludedIDs))
 	for id := range excludedIDs {
@@ -169,7 +192,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 
 		for {
-			account, err := s.SelectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, localExcluded)
+			account, err := s.selectAccountForModelWithExclusionsInGroup(ctx, groupID, sessionHash, requestedModel, localExcluded)
 			if err != nil {
 				return nil, err
 			}

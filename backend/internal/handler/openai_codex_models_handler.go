@@ -64,6 +64,11 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 				h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
 				return
 			}
+			// Orange 特有：聚合密钥把链上其余分组的模型并入同一份 Codex 清单。
+			if err := h.orangeMergeAggregatedCodexManifest(c.Request.Context(), apiKey, pinnedManifest, true, ifNoneMatch); err != nil {
+				h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
+				return
+			}
 			if c.Request.Context().Err() != nil {
 				return
 			}
@@ -86,6 +91,11 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 			return
 		}
 		if configured {
+			// Orange 特有：聚合密钥把链上其余分组配置的模型并入同一份 Codex 清单。
+			if err := h.orangeMergeAggregatedCodexManifest(c.Request.Context(), apiKey, configuredManifest, true, ifNoneMatch); err != nil {
+				h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
+				return
+			}
 			writeOpenAIModelsResponse(c, configuredManifest)
 			return
 		}
@@ -140,6 +150,11 @@ func (h *OpenAIGatewayHandler) CodexModels(c *gin.Context) {
 			return
 		}
 		if err := h.gatewayService.MergeGroupConfiguredCodexModels(c.Request.Context(), apiKey.Group, manifest, ifNoneMatch); err != nil {
+			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
+			return
+		}
+		// Orange 特有：聚合密钥把链上其余分组的模型并入同一份 Codex 清单。
+		if err := h.orangeMergeAggregatedCodexManifest(c.Request.Context(), apiKey, manifest, true, ifNoneMatch); err != nil {
 			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Failed to build Codex models manifest")
 			return
 		}

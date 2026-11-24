@@ -126,6 +126,11 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// IP 限制等早退中断，也让 Ops 错误日志能回退取到 user/group/platform。
 		SetOpsFallbackAPIKey(c, apiKey)
 
+		// Orange 特有：装载分组优先级链（密钥级兜底 / 聚合分组）并安装请求级路由链。
+		// 必须在分组可用性校验与 setGroupContext 之前，链首失效自愈才能生效。
+		apiKey = apiKeyService.OrangeAttachGroupChain(c.Request.Context(), apiKey)
+		c.Request = c.Request.WithContext(service.WithOrangeKeyGroupRouting(c.Request.Context(), apiKey))
+
 		// ── 3. 基础鉴权（始终执行） ─────────────────────────────────
 
 		// disabled / 未知状态 → 无条件拦截（expired 和 quota_exhausted 留给计费阶段）
