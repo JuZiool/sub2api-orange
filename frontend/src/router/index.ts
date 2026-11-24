@@ -8,8 +8,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
 import { useAdminComplianceStore } from '@/stores/adminCompliance'
-// Orange 特有：Token 排行榜展示开关的路由守卫（仅在路由 meta 声明时生效）
-import { installOrangeTokenRankingGuard } from './orangeTokenRankingGuard'
+// Orange 特有：Orange 路由与守卫集中挂载（Token 排行榜 / 管理员费用计算器）；无该配置时行为与上游一致
+import { installOrangeRouting, orangeRoutes } from './orangeRoutes'
 import { useNavigationLoadingState } from '@/composables/useNavigationLoading'
 import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
@@ -240,20 +240,6 @@ const routes: RouteRecordRaw[] = [
       title: 'Usage Records',
       titleKey: 'usage.title',
       descriptionKey: 'usage.description'
-    }
-  },
-  // Orange 特有：Token 排行榜（受 orange_settings.token_ranking_enabled 展示开关控制）
-  {
-    path: '/token-ranking',
-    name: 'TokenRanking',
-    component: () => import('@/views/user/TokenRankingView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: false,
-      requiresOrangeTokenRanking: true,
-      title: 'Token Ranking',
-      titleKey: 'orangeTokenRanking.title',
-      descriptionKey: 'orangeTokenRanking.description'
     }
   },
   {
@@ -636,19 +622,6 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'admin.settings.description'
     }
   },
-  // Orange 特有：管理员费用计算器（纯前端计算，仅管理员可见）
-  {
-    path: '/admin/fee-calculator',
-    name: 'AdminFeeCalculator',
-    component: () => import('@/features/fee-calculator/FeeCalculatorView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'Fee Calculator',
-      titleKey: 'rateCalculator.title',
-      descriptionKey: 'rateCalculator.description'
-    }
-  },
   {
     path: '/admin/risk-control',
     name: 'AdminRiskControl',
@@ -767,6 +740,9 @@ const routes: RouteRecordRaw[] = [
     }
   },
 
+  // Orange 特有：Orange 路由集中展开（Token 排行榜 / 管理员费用计算器）；无该配置时行为与上游一致
+  ...orangeRoutes,
+
   // ==================== 404 Not Found ====================
   {
     path: '/:pathMatch(.*)*',
@@ -794,9 +770,8 @@ const router = createRouter({
   }
 })
 
-// Orange 特有：安装 Token 排行榜路由守卫（仅当路由声明 requiresOrangeTokenRanking 时生效）。
-// 必须在上游的全局守卫之前注册：本守卫只对声明了 meta 的路由做判断，其余路由直接放行。
-installOrangeTokenRankingGuard(router)
+// Orange 特有：安装 Orange 路由守卫（仅对声明 requiresOrangeTokenRanking 的路由生效），实现见 ./orangeRoutes.ts；无该配置时行为与上游一致
+installOrangeRouting(router)
 
 /**
  * Navigation guard: Authentication check
