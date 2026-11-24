@@ -500,8 +500,7 @@ func (s *AntigravityGatewayService) buildGeminiTestRequestWithPrompt(projectID, 
 		return s.wrapV1InternalRequest(projectID, model, payloadBytes)
 	}
 
-	// Orange 特有：自定义测试提示词放宽输出上限，留空回落默认 "hi" 与上游的 256。
-	testPrompt, outputLimit := OrangeResolveAntigravityTestPrompt(prompt)
+	testPrompt, outputLimit := OrangeResolveAntigravityTestPrompt(prompt) // Orange 特有：自定义提示词放宽输出上限；留空回落上游默认 "hi" 与 256，行为与上游一致。
 	payload := map[string]any{
 		"contents": []map[string]any{
 			{
@@ -533,8 +532,7 @@ func (s *AntigravityGatewayService) buildGeminiTestRequestWithPrompt(projectID, 
 // buildClaudeTestRequest 构建 Claude 格式测试请求并转换为 Gemini 格式
 // 与其他平台一致：发送管理员输入的提示词（默认 "hi"），留出足够的输出 token 以便模型回答。
 func (s *AntigravityGatewayService) buildClaudeTestRequest(projectID, mappedModel, prompt string) ([]byte, error) {
-	// Orange 特有：自定义测试提示词放宽输出上限，留空回落默认 "hi" 与上游的 256。
-	testPrompt, outputLimit := OrangeResolveAntigravityTestPrompt(prompt)
+	testPrompt, outputLimit := OrangeResolveAntigravityTestPrompt(prompt) // Orange 特有：同上，自定义提示词放宽输出上限；留空回落上游默认 "hi" 与 256，行为与上游一致。
 	content, err := json.Marshal(testPrompt)
 	if err != nil {
 		return nil, err
@@ -567,8 +565,13 @@ func (s *AntigravityGatewayService) getClaudeTransformOptions(ctx context.Contex
 // test prompt. It was 1, so gemini-4-argon / gemini-3.8-flash returned no text at all.
 const antigravityTestMaxOutputTokens = 256
 
-// Orange 特有：测试连接提示词与输出上限统一由 OrangeResolveAntigravityTestPrompt 决定
-// （见 orange_account_test_prompt.go），自定义提示词放宽到 1024，留空回落默认 "hi"。
+// antigravityTestPrompt is the admin's test prompt, or "hi" like the other platforms' tests.
+func antigravityTestPrompt(prompt string) string {
+	if trimmed := strings.TrimSpace(prompt); trimmed != "" {
+		return trimmed
+	}
+	return defaultGeminiTextTestPrompt
+}
 
 // extractContentFromSSEResponse 从 SSE 流式响应中提取文本和内联图片
 func extractContentFromSSEResponse(respBody []byte) (string, []TestConnectionImage) {

@@ -70,11 +70,12 @@ func (s *AccountTestService) testCNProviderAdaptiveAnthropicConnection(c *gin.Co
 	}
 	apiURL := strings.TrimRight(baseURL, "/") + "/v1/messages"
 
-	payload, err := createTestPayload(testModelID, orangeAccountTestUserPrompt(c))
+	payload, err := createTestPayload(testModelID)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create adaptive Anthropic test payload")
 	}
 	payloadBytes, _ := json.Marshal(payload)
+	payloadBytes = orangeSetClaudeTestPrompt(c, payloadBytes) // Orange 特有：自定义提示词只覆盖本条测试请求的文本；未填提示词时行为与上游一致（默认 "hi"）。
 
 	s.sendEvent(c, TestEvent{Type: "status", Text: "正在通过原生 /v1/messages 测试自适应 Anthropic 端点"})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
@@ -169,11 +170,12 @@ func (s *AccountTestService) testCNProviderAdaptiveResponsesConnection(c *gin.Co
 	}
 	apiURL := buildOpenAIResponsesURLForPlatform(account.Platform, baseURL)
 
-	payload := createOpenAITestPayload(testModelID, false, orangeAccountTestUserPrompt(c))
+	payload := createOpenAITestPayload(testModelID, false)
 	// DeepSeek / Kimi native Responses endpoints are stateless and do not need
 	// the OpenAI probe's synthetic instructions.
 	delete(payload, "instructions")
 	payloadBytes, _ := json.Marshal(payload)
+	payloadBytes = orangeSetOpenAITestPrompt(c, payloadBytes) // Orange 特有：自定义提示词只覆盖本条测试请求的文本；未填提示词时行为与上游一致（默认 "hi"）。
 	payloadBytes = normalizeDeepSeekResponsesRequestBody(account, payloadBytes)
 
 	s.sendEvent(c, TestEvent{Type: "status", Text: "正在通过原生 /responses 测试自适应 Responses 端点"})
@@ -255,11 +257,12 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	payload, err := createTestPayload(testModelID, orangeAccountTestUserPrompt(c))
+	payload, err := createTestPayload(testModelID)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create Anthropic test payload")
 	}
 	payloadBytes, _ := json.Marshal(payload)
+	payloadBytes = orangeSetClaudeTestPrompt(c, payloadBytes) // Orange 特有：自定义提示词只覆盖本条测试请求的文本；未填提示词时行为与上游一致（默认 "hi"）。
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
 

@@ -30,9 +30,8 @@ var (
 const (
 	updateCacheKey = "update_check_cache"
 	updateCacheTTL = 1200 // 20 minutes
-	// Orange 特有：更新检查、一键更新与版本回退都以 Orange 仓库的 Release 为准，
-	// 不跟随官方上游仓库（参考项目 nova/custom 采取同样做法）。
-	githubRepo = "JuZiool/sub2api-orange"
+	// Orange 特有：更新检查、一键更新与版本回退改用 Orange 仓库的 Release；无该配置时行为与上游一致。
+	githubRepo = orangeUpdateRepo
 
 	// Security: allowed download domains for updates
 	allowedDownloadHost = "github.com"
@@ -639,13 +638,10 @@ func (s *UpdateService) saveToCache(ctx context.Context, info *UpdateInfo) {
 	_ = s.cache.SetUpdateInfo(ctx, string(data), time.Duration(updateCacheTTL)*time.Second)
 }
 
-// compareVersions compares two release versions.
-// Orange 特有：Orange 用 "x.y.z-N" 表示同一上游版本的第 N 次发布（如 0.2.24-6 -> 0.2.24-7），
-// 数字后缀必须参与比较，不能像 semver 预发布标记那样被忽略，否则 Orange 自己的版本更新
-// 永远不会被识别。
+// compareVersions compares two semantic versions
 func compareVersions(current, latest string) int {
-	currentParts, currentRevision := parseVersion(current)
-	latestParts, latestRevision := parseVersion(latest)
+	currentParts := parseVersion(current)
+	latestParts := parseVersion(latest)
 
 	for i := 0; i < 3; i++ {
 		if currentParts[i] < latestParts[i] {
@@ -655,24 +651,12 @@ func compareVersions(current, latest string) int {
 			return 1
 		}
 	}
-	if currentRevision < latestRevision {
-		return -1
-	}
-	if currentRevision > latestRevision {
-		return 1
-	}
-	return 0
+	return orangeCompareVersionRevision(current, latest) // Orange 特有：x.y.z-N 的 N 参与比较；无 -N 后缀时行为与上游一致（两边都算第 0 次发布）。
 }
 
-// parseVersion splits a release version into its numeric triple and optional revision:
-// "v0.2.24-7" -> [0 2 24], 7. A missing or non-numeric suffix counts as revision 0.
-func parseVersion(v string) ([3]int, int) {
+func parseVersion(v string) [3]int {
 	v = strings.TrimPrefix(v, "v")
-	revision := 0
 	if idx := strings.IndexByte(v, '-'); idx != -1 {
-		if parsed, err := strconv.Atoi(v[idx+1:]); err == nil {
-			revision = parsed
-		}
 		v = v[:idx]
 	}
 	parts := strings.Split(v, ".")
@@ -682,5 +666,5 @@ func parseVersion(v string) ([3]int, int) {
 			result[i] = parsed
 		}
 	}
-	return result, revision
+	return result
 }
