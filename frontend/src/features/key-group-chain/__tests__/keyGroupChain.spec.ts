@@ -349,6 +349,26 @@ describe('auto chain update hints', () => {
     expect(showWarning).toHaveBeenCalledWith('orangeKeyGroupChain.autoPruned')
   })
 
+  it('prefers the group names returned by the backend when pruning members', async () => {
+    get.mockResolvedValue({
+      data: {
+        api_key_id: 1,
+        mode: 'fallback',
+        primary_group_id: 1,
+        members: [{ group_id: 1, priority: 1 }],
+        auto_pruned_group_ids: [16],
+        auto_pruned_groups: [{ group_id: 16, name: '国模' }],
+        auto_promoted_group_id: 0
+      }
+    })
+    await hydrateKeyGroupChain(row(), () => true, vi.fn(), translate, groupOptions)
+    // 被移除的分组已不在可绑定选项里，必须用后端回传的名字（否则只会显示 #16）
+    expect(translate).toHaveBeenCalledWith('orangeKeyGroupChain.autoPruned', {
+      count: 1,
+      groups: '国模'
+    })
+  })
+
   it('warns about the primary group the backend promoted when hydrating', async () => {
     get.mockResolvedValue({
       data: {

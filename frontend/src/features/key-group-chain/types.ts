@@ -47,8 +47,16 @@ export interface ApiKeyGroupChain {
   members: ApiKeyGroupEntry[]
   /** 本次自动移除的分组 id（无则为空数组）。 */
   auto_pruned_group_ids?: number[]
+  /** 本次自动移除的分组（含名称），提示里优先用它显示分组名。 */
+  auto_pruned_groups?: ApiKeyPrunedGroup[]
   /** 链首被自动替换后的新主分组 id（0 表示未变）。 */
   auto_promoted_group_id?: number
+}
+
+/** 链自愈时被移除的分组（仅用于提示文案）。 */
+export interface ApiKeyPrunedGroup {
+  group_id: number
+  name: string
 }
 
 /**

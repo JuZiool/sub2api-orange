@@ -246,8 +246,8 @@ func TestOrangeChainSelfHealPlanPrunesMemberAndKeepsHead(t *testing.T) {
 	if !orangeIDsEqual(plan.Tail, []int64{tail.ID}) {
 		t.Fatalf("tail should drop the pruned member, got %v", plan.Tail)
 	}
-	if !orangeIDsEqual(plan.Pruned, []int64{gone.ID}) {
-		t.Fatalf("pruned ids mismatch, got %v", plan.Pruned)
+	if got, want := orangeChainGroupIDs(plan.Pruned), []int64{gone.ID}; !orangeIDsEqual(got, want) {
+		t.Fatalf("pruned ids mismatch, got %v want %v", got, want)
 	}
 	if plan.Mode != OrangeGroupChainModeAggregate {
 		t.Fatalf("user intent (aggregate) must be preserved, got %q", plan.Mode)
@@ -270,8 +270,8 @@ func TestOrangeChainSelfHealPlanPromotesFirstEntitledMember(t *testing.T) {
 	if !orangeIDsEqual(plan.Tail, []int64{third.ID}) {
 		t.Fatalf("tail mismatch, got %v", plan.Tail)
 	}
-	if !orangeIDsEqual(plan.Pruned, []int64{head.ID}) {
-		t.Fatalf("pruned ids mismatch, got %v", plan.Pruned)
+	if got, want := orangeChainGroupIDs(plan.Pruned), []int64{head.ID}; !orangeIDsEqual(got, want) {
+		t.Fatalf("pruned ids mismatch, got %v want %v", got, want)
 	}
 	if plan.Mode != OrangeGroupChainModeAggregate {
 		t.Fatalf("user intent (aggregate) must be preserved, got %q", plan.Mode)

@@ -27,6 +27,12 @@ type OrangeAPIKeyGroupChainMember struct {
 	Group    *Group `json:"group,omitempty"`
 }
 
+// OrangePrunedChainGroup 是链自愈时被移除的分组（只用于提示，不参与任何判定）。
+type OrangePrunedChainGroup struct {
+	GroupID int64  `json:"group_id"`
+	Name    string `json:"name"`
+}
+
 // OrangeAPIKeyGroupChain 是 GET/PUT /keys/:id/group-chain 的响应体。
 type OrangeAPIKeyGroupChain struct {
 	APIKeyID       int64                          `json:"api_key_id"`
@@ -35,6 +41,8 @@ type OrangeAPIKeyGroupChain struct {
 	Members        []OrangeAPIKeyGroupChainMember `json:"members"`
 	// AutoPrunedGroupIDs 是本次读取时自动移除的分组（已失去绑定权限），前端据此提示"已自动更新密钥"。
 	AutoPrunedGroupIDs []int64 `json:"auto_pruned_group_ids"`
+	// AutoPrunedGroups 是同一批分组（含名称），供提示里显示分组名而不是 #id。
+	AutoPrunedGroups []OrangePrunedChainGroup `json:"auto_pruned_groups"`
 	// AutoPromotedGroupID 是链首被自动替换后的新主分组（0 表示未变）。
 	AutoPromotedGroupID int64 `json:"auto_promoted_group_id"`
 }
@@ -58,10 +66,17 @@ func OrangeAPIKeyGroupChainFromService(view service.OrangeAPIKeyGroupChainView) 
 		PrimaryGroupID:      view.PrimaryGroupID,
 		Members:             make([]OrangeAPIKeyGroupChainMember, 0, len(view.Members)),
 		AutoPrunedGroupIDs:  view.AutoPrunedGroupIDs,
+		AutoPrunedGroups:    make([]OrangePrunedChainGroup, 0, len(view.AutoPrunedGroups)),
 		AutoPromotedGroupID: view.AutoPromotedGroupID,
 	}
 	if out.AutoPrunedGroupIDs == nil {
 		out.AutoPrunedGroupIDs = []int64{}
+	}
+	for _, pruned := range view.AutoPrunedGroups {
+		out.AutoPrunedGroups = append(out.AutoPrunedGroups, OrangePrunedChainGroup{
+			GroupID: pruned.ID,
+			Name:    pruned.Name,
+		})
 	}
 	for _, member := range view.Members {
 		out.Members = append(out.Members, OrangeAPIKeyGroupChainMember{

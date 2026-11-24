@@ -396,6 +396,8 @@ type OrangeAPIKeyGroupChainView struct {
 	Members        []OrangeAPIKeyGroupChainMemberView
 	// AutoPrunedGroupIDs 是本次读取时自动从链里移除的分组（失去绑定权限），供前端提示"已自动更新密钥"。
 	AutoPrunedGroupIDs []int64
+	// AutoPrunedGroups 是同一批分组（含名称），供提示里显示分组名而不是 #id。
+	AutoPrunedGroups []OrangePrunedChainGroup
 	// AutoPromotedGroupID 是链首被自动替换后的新主分组 ID（0 表示链首未变）。
 	AutoPromotedGroupID int64
 }
@@ -423,6 +425,7 @@ func (s *APIKeyService) OrangeGetAPIKeyGroupChain(ctx context.Context, userID, a
 	healed := s.OrangeSelfHealKeyGroupChain(ctx, apiKey)
 	view := s.OrangeBuildAPIKeyGroupChainView(ctx, apiKey)
 	view.AutoPrunedGroupIDs = healed.PrunedGroupIDs
+	view.AutoPrunedGroups = healed.PrunedGroups
 	if healed.Promoted != nil {
 		view.AutoPromotedGroupID = healed.Promoted.ID
 	}

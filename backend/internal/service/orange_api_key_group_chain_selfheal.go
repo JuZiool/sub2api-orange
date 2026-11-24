@@ -30,16 +30,24 @@ type orangeChainSelfHealPlanResult struct {
 	Tail []int64
 	// Mode 是修剪后的链模式：长度不足 2 时为空串（清链并删除模式元数据）。
 	Mode string
-	// Pruned 是被移除的分组 ID（失去绑定权限）。
-	Pruned []int64
+	// Pruned 是被移除的分组（失去绑定权限；保留名称供界面提示）。
+	Pruned []*Group
+}
+
+// OrangePrunedChainGroup 是被链自愈移除的分组（保留名称，供界面提示"已自动移除 xxx 分组"）。
+type OrangePrunedChainGroup struct {
+	ID   int64
+	Name string
 }
 
 // orangeChainSelfHealResult 是自愈执行结果（供接口返回给前端提示）。
 type orangeChainSelfHealResult struct {
 	// Changed 表示确实改写了数据库。
 	Changed bool
-	// PrunedGroupIDs 是被移除的分组（失去绑定权限）。
+	// PrunedGroupIDs 是被移除的分组 ID（失去绑定权限）。
 	PrunedGroupIDs []int64
+	// PrunedGroups 是同一批分组（含名称），供前端在提示里显示分组名而不是 #id。
+	PrunedGroups []OrangePrunedChainGroup
 	// Promoted 是被提升为新链首的分组；nil 表示链首未变。
 	Promoted *Group
 }
@@ -63,7 +71,7 @@ func orangeChainSelfHealPlan(user *User, head *Group, candidates []*Group, persi
 	all = append(all, candidates...)
 
 	kept := make([]*Group, 0, len(all))
-	pruned := make([]int64, 0, len(all))
+	pruned := make([]*Group, 0, len(all))
 	seen := make(map[int64]struct{}, len(all))
 	for _, group := range all {
 		if group == nil || group.ID <= 0 {
@@ -74,7 +82,7 @@ func orangeChainSelfHealPlan(user *User, head *Group, candidates []*Group, persi
 		}
 		seen[group.ID] = struct{}{}
 		if !orangeGroupBindableForUser(user, group) {
-			pruned = append(pruned, group.ID)
+			pruned = append(pruned, group)
 			continue
 		}
 		kept = append(kept, group)
@@ -148,10 +156,16 @@ func (s *APIKeyService) OrangeSelfHealKeyGroupChain(ctx context.Context, apiKey 
 		apiKey.Group = plan.Primary
 	}
 	apiKey.GroupChainMode = plan.Mode
+	prunedIDs := make([]int64, 0, len(plan.Pruned))
+	prunedGroups := make([]OrangePrunedChainGroup, 0, len(plan.Pruned))
+	for _, group := range plan.Pruned {
+		prunedIDs = append(prunedIDs, group.ID)
+		prunedGroups = append(prunedGroups, OrangePrunedChainGroup{ID: group.ID, Name: group.Name})
+	}
 	slog.Info("orange_key_group_chain_self_healed",
 		"api_key_id", apiKey.ID,
-		"pruned_group_ids", plan.Pruned,
+		"pruned_group_ids", prunedIDs,
 		"primary_group_id", plan.Primary.ID,
 		"promoted", promoted != nil)
-	return orangeChainSelfHealResult{Changed: true, PrunedGroupIDs: plan.Pruned, Promoted: promoted}
+	return orangeChainSelfHealResult{Changed: true, PrunedGroupIDs: prunedIDs, PrunedGroups: prunedGroups, Promoted: promoted}
 }

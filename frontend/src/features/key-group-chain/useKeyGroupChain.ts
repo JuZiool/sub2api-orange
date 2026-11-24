@@ -64,12 +64,20 @@ function notifyAutoChainUpdate(
   availableGroupOptions?: readonly GroupOptionLike[]
 ): void {
   const appStore = useAppStore()
+  // 优先用后端回传的分组名：被移除的分组已不在「可绑定分组」选项里，前端解析不到名字。
+  const prunedNames = (chain.auto_pruned_groups ?? [])
+    .map((group) => group.name)
+    .filter((name) => !!name)
   const prunedIds = chain.auto_pruned_group_ids ?? []
-  if (prunedIds.length > 0) {
+  const prunedCount = Math.max(prunedIds.length, prunedNames.length)
+  if (prunedCount > 0) {
     appStore.showWarning(
       t('orangeKeyGroupChain.autoPruned', {
-        count: prunedIds.length,
-        groups: prunedIds.map((id) => resolveGroupLabel(id, availableGroupOptions)).join(', ')
+        count: prunedCount,
+        groups:
+          prunedNames.length > 0
+            ? prunedNames.join(', ')
+            : prunedIds.map((id) => resolveGroupLabel(id, availableGroupOptions)).join(', ')
       })
     )
   }
