@@ -81,7 +81,13 @@
         />
       </div>
 
-      <div v-if="supportsPromptInput" class="space-y-1.5">
+      <!-- Orange 特有：文本测试的自定义提示词（与下方媒体提示词字段 v-if/v-else-if 互斥） -->
+      <OrangeAccountTestPromptField
+        v-if="supportsTextPrompt"
+        v-model="textTestPrompt"
+        :disabled="status === 'connecting'"
+      />
+      <div v-else-if="supportsPromptInput" class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
           :label="promptInputLabel"
@@ -372,6 +378,9 @@ import Select from '@/components/common/Select.vue'
 import TextArea from '@/components/common/TextArea.vue'
 import { Icon } from '@/components/icons'
 import { useClipboard } from '@/composables/useClipboard'
+// Orange 特有：账号测试自定义提示词的输入组件与浏览器本地记忆
+import OrangeAccountTestPromptField from './OrangeAccountTestPromptField.vue'
+import { useOrangeAccountTestPrompt } from '@/composables/useOrangeAccountTestPrompt'
 import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { adminAPI } from '@/api/admin'
@@ -407,6 +416,8 @@ const errorMessage = ref('')
 const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
+// Orange 特有：文本测试的自定义提示词（仅本浏览器 localStorage 记忆，留空回落默认 hi）
+const { prompt: textTestPrompt, valid: textPromptValid } = useOrangeAccountTestPrompt()
 const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewMedia[]>([])
@@ -495,6 +506,14 @@ const modelOptionsForMode = computed(() => {
   }
   return []
 })
+
+// Orange 特有：仅在文本测试（非生图、非 OpenAI compact、Grok 仅 text 模式）时接收自定义提示词
+const supportsTextPrompt = computed(
+  () =>
+    testMode.value !== 'compact' &&
+    !supportsImageTest.value &&
+    (!isGrokAccount.value || grokTestMode.value === 'text')
+)
 
 const supportsPromptInput = computed(() => {
   if (!isGrokAccount.value) {
@@ -675,6 +694,8 @@ const testModeSummary = computed(() => {
 
 const canStartTest = computed(() => {
   if (status.value === 'connecting') return false
+  // Orange 特有：自定义提示词超长时不允许开始测试（与后端 8192 字符校验一致）
+  if (supportsTextPrompt.value && !textPromptValid.value) return false
   if (isGrokAccount.value) {
     if (
       grokTestMode.value === 'search' ||
@@ -688,6 +709,13 @@ const canStartTest = computed(() => {
   }
   return Boolean(selectedModelId.value)
 })
+
+// Orange 特有：日志区展示本次真正发送的提示词（自定义时带出内容，默认时沿用原文案）
+const sendingTestMessage = computed(() =>
+  supportsTextPrompt.value && textTestPrompt.value.trim()
+    ? t('admin.accounts.sendingCustomTestMessage', { prompt: textTestPrompt.value })
+    : t('admin.accounts.sendingTestMessage')
+)
 
 const sortTestModels = (models: ClaudeModel[]) => {
   const priorityMap = new Map(prioritizedGeminiModels.map((id, index) => [id, index]))
@@ -852,7 +880,12 @@ const startTest = async () => {
       audio_data_url?: string
     } = {
       model_id: showModelSelect.value ? selectedModelId.value : '',
-      prompt: supportsPromptInput.value ? testPrompt.value.trim() : ''
+      // Orange 特有：文本测试带自定义提示词，媒体测试沿用原媒体提示词
+      prompt: supportsTextPrompt.value
+        ? textTestPrompt.value
+        : supportsPromptInput.value
+          ? testPrompt.value.trim()
+          : ''
     }
     if (isOpenAIAccount.value) {
       requestBody.mode = testMode.value
@@ -969,11 +1002,11 @@ const handleEvent = (event: {
                     ? t('admin.accounts.grok.sendingSTTRequest')
                     : grokTestMode.value === 'realtime'
                       ? t('admin.accounts.grok.sendingRealtimeRequest')
-                      : t('admin.accounts.sendingTestMessage')
+                      : sendingTestMessage.value
           : supportsImageTest.value
             ? t('admin.accounts.sendingImageRequest')
-            : t('admin.accounts.sendingTestMessage'),
-        'text-gray-400'
+            : sendingTestMessage.value,
+        'text-gray-400 whitespace-pre-wrap break-words'
       )
       addLine('', 'text-gray-300')
       addLine(t('admin.accounts.response'), 'text-yellow-400')

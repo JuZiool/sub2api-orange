@@ -180,6 +180,21 @@
                   <span v-if="row.cache_ttl_overridden" :title="t('usage.cacheTtlOverriddenHint')" class="inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:ring-rose-500/30 cursor-help">R</span>
                 </div>
               </div>
+              <!-- Orange 特有：缓存命中率并入 TOKEN 列，紧跟在缓存行下方 -->
+              <div
+                data-testid="token-cache-hit"
+                class="flex items-center gap-1 text-xs leading-tight"
+                :title="t('usage.cacheHitHint')"
+              >
+                <span class="text-gray-400 dark:text-gray-500">{{ t('usage.cacheHitInline') }}</span>
+                <span
+                  v-if="cacheHitRatePercent(row) !== null"
+                  data-testid="cache-hit-rate"
+                  class="font-medium tabular-nums"
+                  :class="cacheHitRateClass(cacheHitRatePercent(row)!)"
+                >{{ cacheHitRatePercent(row)!.toFixed(1) }}%</span>
+                <span v-else class="text-gray-400 dark:text-gray-500">-</span>
+              </div>
               <div v-if="hasImageInputTokens(row)" class="flex items-center gap-2">
                 <div class="inline-flex items-center gap-1">
                   <svg class="h-3.5 w-3.5 text-fuchsia-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -210,12 +225,6 @@
           <div class="text-sm">
             <div class="flex items-center gap-1.5">
               <span class="font-medium text-green-600 dark:text-green-400">${{ row.actual_cost?.toFixed(6) || '0.000000' }}</span>
-              <span
-                v-if="row.long_context_billing_applied"
-                data-testid="long-context-billing-marker"
-                :title="t('admin.usage.longContextPricingTooltip')"
-                class="inline-flex items-center rounded px-1 py-px text-[10px] font-semibold leading-tight bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-500/30"
-              >{{ t('admin.usage.longContext') }}</span>
               <!-- Cost Detail Tooltip -->
               <div
                 class="group relative"
@@ -229,6 +238,14 @@
             </div>
             <div v-if="showAccountBilling && row.account_rate_multiplier != null" class="mt-0.5 text-[11px] text-orange-500 dark:text-orange-400">
               A ${{ accountBilled(row).toFixed(6) }}
+            </div>
+            <!-- Orange 特有：长上下文计费标记由首行内联改为独立一行，显示在 A$ 账号计费行下方 -->
+            <div v-if="row.long_context_billing_applied" class="mt-0.5 flex items-center">
+              <span
+                data-testid="long-context-billing-marker"
+                :title="t('admin.usage.longContextPricingTooltip')"
+                class="inline-flex items-center rounded px-1 py-px text-[10px] font-semibold leading-tight bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-500/30"
+              >{{ t('admin.usage.longContext') }}</span>
             </div>
           </div>
         </template>
@@ -247,6 +264,10 @@
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyFirstToken') }}</span>
               <span v-if="row.first_token_ms != null" class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[firstTokenSeverity(row.first_token_ms)]">{{ formatDuration(row.first_token_ms) }}</span>
               <span v-else class="text-gray-400 dark:text-gray-500">-</span>
+              <!-- Orange 特有：已移除「网关 / 上游」两段耗时拆分（前端展示与后端埋点一并删除）。
+                   原口径缺陷见 文档/问题记录/2026-11-23-使用记录网关耗时1到10秒排查.md：
+                   gateway_ms 起点早于请求体读入、终点早于上游连接建立，混装了上传/排队/网关计算；
+                   且 gateway_ms > first_token_ms 时会被 clamp，出现「上游 0ms」这类不可能值。 -->
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyDuration') }}</span>
               <span class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[durationSeverity(row.duration_ms ?? 0)]">{{ formatDuration(row.duration_ms) }}</span>
               <span class="text-gray-400 dark:text-gray-500" :title="t('usage.outputTpsHint')">{{ t('usage.outputTps') }}</span>
@@ -635,6 +656,31 @@ const showUpstreamEndpoint = props.showUpstreamEndpoint
 const ipGeoBatchLoading = ref(false)
 
 const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))
+
+// Orange 特有：缓存命中率 = 缓存读取 ÷（输入 + 缓存创建 + 缓存读取）；分母为 0 时返回 null（显示 -）
+const cacheHitRatePercent = (row: AdminUsageLog): number | null => {
+  const cacheRead = Number(row.cache_read_tokens ?? 0) || 0
+  const cacheCreation = Number(row.cache_creation_tokens ?? 0) || 0
+  const input = Number(row.input_tokens ?? 0) || 0
+  const total = input + cacheCreation + cacheRead
+  if (total <= 0) return null
+  return (cacheRead / total) * 100
+}
+
+// Orange 特有：缓存命中率按档位着色（<50% 红 / 50–80% 黄 / 80–90% 浅绿 / ≥90% 深绿），命中越高越绿
+const CACHE_HIT_RATE_CLASSES = {
+  low: 'text-rose-600 dark:text-rose-400',
+  medium: 'text-amber-600 dark:text-amber-400',
+  good: 'text-emerald-500 dark:text-emerald-400',
+  high: 'text-green-600 dark:text-green-400',
+} as const
+
+const cacheHitRateClass = (rate: number): string => {
+  if (rate < 50) return CACHE_HIT_RATE_CLASSES.low
+  if (rate < 80) return CACHE_HIT_RATE_CLASSES.medium
+  if (rate < 90) return CACHE_HIT_RATE_CLASSES.good
+  return CACHE_HIT_RATE_CLASSES.high
+}
 
 const hasReasoningEffortMapping = (row: AdminUsageLog): boolean => {
   const requested = row.reasoning_effort?.trim() || ''

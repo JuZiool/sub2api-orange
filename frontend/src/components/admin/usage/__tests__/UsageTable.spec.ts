@@ -86,6 +86,8 @@ const messages: Record<string, string> = {
 	'usage.upstreamResponseModel': 'Upstream response',
 	'usage.modelVariant': 'Possible version variant',
 	'usage.modelMismatch': 'Different model',
+	'usage.cacheHitInline': 'Cache hit: ',
+	'usage.cacheHitHint': 'Cache hit rate',
 }
 
 vi.mock('vue-i18n', async () => {
@@ -237,6 +239,73 @@ describe('admin UsageTable tooltip', () => {
     expect(wrapper.find('[data-request-id="req-long-context-disabled"] [data-testid="long-context-billing-marker"]').exists()).toBe(false)
     expect(wrapper.find('[data-request-id="req-long-context-absent"] [data-testid="long-context-billing-marker"]').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('x2')
+  })
+
+  it('renders the long-context marker on its own line below the account-billed row', () => {
+    locale = 'zh'
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          {
+            ...baseImageRow,
+            request_id: 'req-long-context-below-account',
+            actual_cost: 0.5,
+            total_cost: 0.5,
+            account_rate_multiplier: 1.2,
+            long_context_billing_applied: true,
+          },
+        ],
+        loading: false,
+        columns: [],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const row = wrapper.get('[data-request-id="req-long-context-below-account"]')
+    const text = row.text()
+    expect(text.indexOf('$0.500000')).toBeGreaterThan(-1)
+    expect(text.indexOf('A $0.600000')).toBeGreaterThan(text.indexOf('$0.500000'))
+    expect(text.indexOf('长上下文')).toBeGreaterThan(text.indexOf('A $0.600000'))
+    // 标记已移出首行（首行为单价 + 费用明细图标），改为 A$ 行下方的独立行
+    const marker = row.get('[data-testid="long-context-billing-marker"]')
+    expect(marker.element.parentElement?.className).not.toContain('gap-1.5')
+  })
+
+  it('keeps the long-context marker when the account-billed row is hidden', () => {
+    locale = 'zh'
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          {
+            ...baseImageRow,
+            request_id: 'req-long-context-user-side',
+            long_context_billing_applied: true,
+          },
+        ],
+        loading: false,
+        columns: [],
+        showAccountBilling: false,
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const row = wrapper.get('[data-request-id="req-long-context-user-side"]')
+    expect(row.get('[data-testid="long-context-billing-marker"]').text()).toBe('长上下文')
+    expect(row.text()).not.toContain('A $')
   })
 
   it('keeps the request type badge and adds a separate badge only for native compaction rows', () => {
@@ -932,5 +1001,101 @@ describe('admin UsageTable deleted-user badge', () => {
 
     expect(wrapper.text()).not.toContain('Deleted')
     expect(wrapper.text()).toContain('active@test.com')
+  })
+})
+
+
+// Orange 特有：命中率并入 TOKEN 单元格后的展示回归
+describe('admin UsageTable inline cache hit rate', () => {
+  const mountTokenRow = (row: Record<string, unknown>) => mount(UsageTable, {
+    props: { data: [row], loading: false, columns: [] },
+    global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+  })
+
+  it('renders the hit rate under the cache line inside the TOKEN cell', () => {
+    const wrapper = mountTokenRow({
+      ...baseImageRow,
+      request_id: 'req-inline-cache-hit',
+      image_count: 0,
+      billing_mode: 'token',
+      input_tokens: 100,
+      cache_creation_tokens: 100,
+      cache_read_tokens: 800,
+    })
+    const cell = wrapper.find('[data-testid="token-cache-hit"]')
+    expect(cell.exists()).toBe(true)
+    expect(cell.text()).toContain('Cache hit:')
+    expect(cell.text()).toContain('80.0%')
+    wrapper.unmount()
+  })
+
+  it('shows 0.0% when the request used no cache at all', () => {
+    const wrapper = mountTokenRow({
+      ...baseImageRow,
+      request_id: 'req-inline-cache-miss',
+      image_count: 0,
+      billing_mode: 'token',
+      input_tokens: 1200,
+    })
+    const cell = wrapper.find('[data-testid="token-cache-hit"]')
+    expect(cell.exists()).toBe(true)
+    expect(cell.text()).toContain('0.0%')
+    wrapper.unmount()
+  })
+
+  it('shows - instead of NaN when the prompt token total is zero', () => {
+    const wrapper = mountTokenRow({
+      ...baseImageRow,
+      request_id: 'req-inline-cache-empty',
+      image_count: 0,
+      billing_mode: 'token',
+      input_tokens: 0,
+      cache_creation_tokens: 0,
+      cache_read_tokens: 0,
+    })
+    const cell = wrapper.find('[data-testid="token-cache-hit"]')
+    expect(cell.exists()).toBe(true)
+    expect(cell.text()).not.toContain('NaN')
+    expect(cell.text().replace(/\s+/g, ' ')).toBe('Cache hit: -')
+    wrapper.unmount()
+  })
+
+  it('colors the hit rate by tier: red <50, amber 50-80, emerald 80-90, green >=90', () => {
+    const row = (id: string, inputTokens: number, cacheReadTokens: number) => ({
+      ...baseImageRow,
+      request_id: id,
+      image_count: 0,
+      billing_mode: 'token',
+      input_tokens: inputTokens,
+      cache_creation_tokens: 0,
+      cache_read_tokens: cacheReadTokens,
+    })
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          row('rate-30', 70, 30),
+          row('rate-60', 40, 60),
+          row('rate-79-9', 201, 799),
+          row('rate-80', 20, 80),
+          row('rate-90', 10, 90),
+          row('rate-100', 0, 100),
+        ],
+        loading: false,
+        columns: [],
+      },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+
+    const classesOf = (id: string) =>
+      wrapper.get(`[data-request-id="${id}"] [data-testid="cache-hit-rate"]`).classes()
+
+    expect(classesOf('rate-30')).toContain('text-rose-600')
+    expect(classesOf('rate-60')).toContain('text-amber-600')
+    expect(classesOf('rate-79-9')).toContain('text-amber-600')
+    expect(classesOf('rate-80')).toContain('text-emerald-500')
+    expect(classesOf('rate-90')).toContain('text-green-600')
+    expect(classesOf('rate-100')).toContain('text-green-600')
+    expect(wrapper.get('[data-request-id="rate-90"] [data-testid="cache-hit-rate"]').text()).toBe('90.0%')
+    wrapper.unmount()
   })
 })
