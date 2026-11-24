@@ -281,8 +281,12 @@ func activateOrangeKeyRouting(ctx context.Context, routedGroupID int64) bool {
 	return true
 }
 
-// healOrangeKeyChainHead 在链首分组失效（删除/停用/上下文不完整）时，把本请求的主分组
-// 换成链上第一个可用成员。只改请求内指针，不写库；下次请求会再次自愈（幂等）。
+// healOrangeKeyChainHead 在链首分组失效（删除/停用/上下文不完整/**失去绑定权限**）时，把本请求的
+// 主分组换成链上第一个可用成员。只改请求内指针，不写库（写库由读接口的自愈负责，见
+// orange_api_key_group_chain_selfheal.go）；下次请求会再次自愈（幂等）。
+//
+// 失去绑定权限也归入"失效"的原因：分组链是用户配置的候选列表，站长要求"不显示 + 自动更新"，
+// 因此当链首被改成专属且未授权时，聚合 Key 应继续沿链工作，而不是整条 Key 直接 403。
 func healOrangeKeyChainHead(ctx context.Context, apiKey *APIKey) bool {
 	if apiKey == nil || len(apiKey.Groups) == 0 {
 		return false
@@ -295,7 +299,7 @@ func healOrangeKeyChainHead(ctx context.Context, apiKey *APIKey) bool {
 		}
 	}
 	head := apiKey.Group
-	if head != nil && head.ID > 0 && head.IsActive() && IsGroupContextValid(head) {
+	if head != nil && head.ID > 0 && head.IsActive() && IsGroupContextValid(head) && orangeGroupBindableForUser(apiKey.User, head) {
 		return false
 	}
 

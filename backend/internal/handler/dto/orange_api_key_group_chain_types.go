@@ -19,14 +19,12 @@ type APIKeyGroupEntry struct {
 
 // OrangeAPIKeyGroupChainMember 是链详情接口 members[] 的元素。
 //
-// Available / UnavailableReason 由服务层与"请求时链成员过滤"同源判定：分组被改成专属、
-// 或撤销授权后，成员仍留在链上但 Available=false，前端据此提示并让用户自愈（保存时剔除）。
+// 只包含「用户当前仍有权绑定」的成员：分组被改成专属、或撤销授权后，读接口会先做链自愈
+// （剔除失效成员并写库），因此前端不需要再做可用性判定。
 type OrangeAPIKeyGroupChainMember struct {
-	Priority          int    `json:"priority"`
-	GroupID           int64  `json:"group_id"`
-	Group             *Group `json:"group,omitempty"`
-	Available         bool   `json:"available"`
-	UnavailableReason string `json:"unavailable_reason,omitempty"`
+	Priority int    `json:"priority"`
+	GroupID  int64  `json:"group_id"`
+	Group    *Group `json:"group,omitempty"`
 }
 
 // OrangeAPIKeyGroupChain 是 GET/PUT /keys/:id/group-chain 的响应体。
@@ -35,6 +33,10 @@ type OrangeAPIKeyGroupChain struct {
 	Mode           string                         `json:"mode"` // none | fallback | aggregate
 	PrimaryGroupID int64                          `json:"primary_group_id"`
 	Members        []OrangeAPIKeyGroupChainMember `json:"members"`
+	// AutoPrunedGroupIDs 是本次读取时自动移除的分组（已失去绑定权限），前端据此提示"已自动更新密钥"。
+	AutoPrunedGroupIDs []int64 `json:"auto_pruned_group_ids"`
+	// AutoPromotedGroupID 是链首被自动替换后的新主分组（0 表示未变）。
+	AutoPromotedGroupID int64 `json:"auto_promoted_group_id"`
 }
 
 // Localized 就地本地化链上各分组的名称与描述并返回自身。
@@ -51,18 +53,21 @@ func (c *OrangeAPIKeyGroupChain) Localized(acceptLanguage string) *OrangeAPIKeyG
 // OrangeAPIKeyGroupChainFromService 把服务层链视图映射成响应 DTO。
 func OrangeAPIKeyGroupChainFromService(view service.OrangeAPIKeyGroupChainView) *OrangeAPIKeyGroupChain {
 	out := &OrangeAPIKeyGroupChain{
-		APIKeyID:       view.APIKeyID,
-		Mode:           view.Mode,
-		PrimaryGroupID: view.PrimaryGroupID,
-		Members:        make([]OrangeAPIKeyGroupChainMember, 0, len(view.Members)),
+		APIKeyID:            view.APIKeyID,
+		Mode:                view.Mode,
+		PrimaryGroupID:      view.PrimaryGroupID,
+		Members:             make([]OrangeAPIKeyGroupChainMember, 0, len(view.Members)),
+		AutoPrunedGroupIDs:  view.AutoPrunedGroupIDs,
+		AutoPromotedGroupID: view.AutoPromotedGroupID,
+	}
+	if out.AutoPrunedGroupIDs == nil {
+		out.AutoPrunedGroupIDs = []int64{}
 	}
 	for _, member := range view.Members {
 		out.Members = append(out.Members, OrangeAPIKeyGroupChainMember{
-			Priority:          member.Priority,
-			GroupID:           member.GroupID,
-			Group:             GroupFromServiceShallow(member.Group),
-			Available:         member.Available,
-			UnavailableReason: member.UnavailableReason,
+			Priority: member.Priority,
+			GroupID:  member.GroupID,
+			Group:    GroupFromServiceShallow(member.Group),
 		})
 	}
 	return out
