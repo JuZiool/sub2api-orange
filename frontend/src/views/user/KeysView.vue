@@ -544,7 +544,7 @@
           </p>
         </fieldset>
 
-        <KeyGroupChainFormFields :form-data="formData" :group-options="groupOptions" :form-group-options="formGroupOptions" :show-edit="showEditModal" :selected-key="selectedKey" :create-provider="createProvider"><!-- Orange 特有：聚合/兜底分组链表单区；无该配置时行为与上游一致 -->
+        <KeyGroupChainFormFields :form-data="formData" :group-options="groupOptions" :form-group-options="formGroupOptions" :show-edit="showEditModal" :selected-key="selectedKey" :create-provider="createProvider" @update:primary-group="formData.group_id = $event"><!-- Orange 特有：聚合/兜底分组链表单区；无该配置时行为与上游一致 -->
         <div>
           <label class="input-label" for="key-form-group">{{ t('keys.groupLabel') }}</label>
           <Select

@@ -213,7 +213,7 @@ import {
 import type { FallbackGroupOption, GroupOptionView } from './types'
 
 const props = defineProps<{
-  /** 上游表单数据（只读写 group_id，用于链首同步）。 */
+  /** 上游表单数据（只读；主分组变更通过 update:primary-group 事件回传，避免直接改 prop）。 */
   formData: { group_id: number | null }
   /** 全部分组选项（兜底分组下拉用）。 */
   groupOptions: GroupOptionView[]
@@ -223,6 +223,10 @@ const props = defineProps<{
   selectedKey: ApiKey | null
   createProvider: string
 }>()
+
+/** Orange 特有：主分组（链首）变更统一走事件，由上游 KeysView 回写 formData。 */
+const emit = defineEmits<{ (e: 'update:primary-group', value: number | null): void }>()
+const setPrimaryGroup = (value: number | null) => emit('update:primary-group', value)
 
 const { t } = useI18n()
 
@@ -254,7 +258,7 @@ const toggleAggregateMode = () => {
     form.fallbackGroupId = null
   } else {
     // 退出聚合模式：主分组保留链首，链清空。
-    props.formData.group_id = form.aggregateGroupIds[0] ?? null
+    setPrimaryGroup(form.aggregateGroupIds[0] ?? null)
     form.aggregateGroupIds = []
   }
 }
@@ -264,7 +268,7 @@ const setAggregateGroup = (index: number, value: string | number | boolean | nul
   form.aggregateGroupIds[index] = groupId
   // 链首即主分组，保持同步，供非聚合路径与展示使用。
   if (index === 0) {
-    props.formData.group_id = groupId
+    setPrimaryGroup(groupId)
   }
 }
 
@@ -275,7 +279,7 @@ const addAggregateGroup = () => {
 const removeAggregateGroup = (index: number) => {
   if (form.aggregateGroupIds.length <= 2) return
   form.aggregateGroupIds.splice(index, 1)
-  props.formData.group_id = form.aggregateGroupIds[0] ?? null
+  setPrimaryGroup(form.aggregateGroupIds[0] ?? null)
 }
 
 const moveAggregateGroup = (index: number, offset: number) => {
@@ -284,7 +288,7 @@ const moveAggregateGroup = (index: number, offset: number) => {
   if (target < 0 || target >= list.length) return
   const [item] = list.splice(index, 1)
   list.splice(target, 0, item)
-  props.formData.group_id = list[0] ?? null
+  setPrimaryGroup(list[0] ?? null)
 }
 
 const selectFallbackGroup = (value: string | number | boolean | null) => {
@@ -301,7 +305,7 @@ watch(
         key,
         () => props.showEdit && props.selectedKey?.id === key.id,
         (groupId) => {
-          props.formData.group_id = groupId
+          setPrimaryGroup(groupId)
         }
       )
     } else {

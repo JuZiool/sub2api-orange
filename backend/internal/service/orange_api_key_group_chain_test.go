@@ -15,7 +15,9 @@ import (
 )
 
 func TestOrangeChainGuard(t *testing.T) {
-	require.False(t, orangeChainGuardActive(nil))
+	// 显式类型化 nil：用于验证函数对 nil ctx 的兼容，避免 staticcheck SA1012 误判。
+	var nilContext context.Context
+	require.False(t, orangeChainGuardActive(nilContext))
 
 	parent := context.Background()
 	require.False(t, orangeChainGuardActive(parent))
