@@ -68,6 +68,138 @@ func orangeUpstreamFaultAllowsGroupFailover(lastFailoverErr *service.UpstreamFai
 	return service.OrangeIsUpstreamFaultForGroupFailover(lastFailoverErr)
 }
 
+// orangeGroupChainFailoverState 是「本组换号耗尽后切到分组链下一组」的请求级状态。
+//
+// failedGroupIDs 记录本次请求已经尝试过的分组：既用于跳过重复分组，也充当
+// 「最多切 (链长-1) 次」的预算。普通 Key（无链）时它恒为空，所有切组尝试都返回 false，
+// 调用方随即回落到上游原有的错误返回路径——行为与上游完全一致。
+type orangeGroupChainFailoverState struct {
+	failedGroupIDs map[int64]struct{}
+	// openAIReset 是 OpenAI 网关换号循环里切组后需要清零的请求级计数；
+	// Claude/Gemini 网关（failover 状态由 *FailoverState 承载）为 nil。
+	openAIReset *orangeOpenAIFailoverReset
+}
+
+// newOrangeGroupChainFailoverState 创建请求级切组状态（每个请求一份）。
+func newOrangeGroupChainFailoverState(openAIReset *orangeOpenAIFailoverReset) *orangeGroupChainFailoverState {
+	return &orangeGroupChainFailoverState{
+		failedGroupIDs: make(map[int64]struct{}),
+		openAIReset:    openAIReset,
+	}
+}
+
+// switchGatewayFailoverState 是 Claude/Gemini 网关「换号耗尽」插入点的实现：
+// 只有「上游故障 + 链上还有下一组」才切组，并把 apiKey / FailoverState 换成新分组与
+// 新预算（口径与原代码一致：gemini 走 gemini 预算）。返回 false 表示不切组，
+// 调用方立刻回落到上游原有的错误返回路径。
+func (s *orangeGroupChainFailoverState) switchGatewayFailoverState(h *GatewayHandler, c *gin.Context, lastErr *service.UpstreamFailoverError, apiKey **service.APIKey, failoverState **FailoverState, isGemini bool, hasBoundSession bool, refresh bool) bool {
+	if s == nil || h == nil || apiKey == nil || *apiKey == nil || failoverState == nil {
+		return false
+	}
+	if !orangeUpstreamFaultAllowsGroupFailover(lastErr) {
+		return false
+	}
+	next, switched := orangeChainFailoverSwitch(c, *apiKey, s.failedGroupIDs)
+	if !switched {
+		return false
+	}
+	*apiKey = next
+	if refresh {
+		h.orangeRefreshChainGroupRequestContext(c, next)
+	}
+	if isGemini {
+		*failoverState = NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
+		return true
+	}
+	*failoverState = NewFailoverState(h.maxAccountSwitches, hasBoundSession)
+	return true
+}
+
+// switchGatewayMessagesFailover 是 Messages 主分支「换号耗尽」插入点的实现：
+// 切组 + 刷新请求级分组上下文 + 释放上一分组已注册的会话槽（新分组成功时
+// Messages 的 defer 不会释放它们，见 orangeReleaseChainGroupSessions）。
+func (s *orangeGroupChainFailoverState) switchGatewayMessagesFailover(h *GatewayHandler, c *gin.Context, lastErr *service.UpstreamFailoverError, currentAPIKey **service.APIKey, failoverState **FailoverState, sessionSlotAccounts *map[int64]*service.Account, sessionKey string, hasBoundSession bool) bool {
+	if s == nil || h == nil || currentAPIKey == nil || *currentAPIKey == nil || failoverState == nil {
+		return false
+	}
+	if !orangeUpstreamFaultAllowsGroupFailover(lastErr) {
+		return false
+	}
+	next, switched := orangeChainFailoverSwitch(c, *currentAPIKey, s.failedGroupIDs)
+	if !switched {
+		return false
+	}
+	*currentAPIKey = next
+	h.orangeRefreshChainGroupRequestContext(c, next)
+	if sessionSlotAccounts != nil {
+		*sessionSlotAccounts = h.orangeReleaseChainGroupSessions(*sessionSlotAccounts, sessionKey)
+	}
+	*failoverState = NewFailoverState(h.maxAccountSwitches, hasBoundSession)
+	return true
+}
+
+// switchOpenAIFailover 是 OpenAI 网关（chat completions / responses / messages）插入点的实现：
+// 切组成功后按 openAIReset 清零换号计数，让新分组从零开始选号。
+func (s *orangeGroupChainFailoverState) switchOpenAIFailover(c *gin.Context, lastErr *service.UpstreamFailoverError, apiKey **service.APIKey) bool {
+	if s == nil || apiKey == nil || *apiKey == nil {
+		return false
+	}
+	if !orangeUpstreamFaultAllowsGroupFailover(lastErr) {
+		return false
+	}
+	next, switched := orangeChainFailoverSwitch(c, *apiKey, s.failedGroupIDs)
+	if !switched {
+		return false
+	}
+	*apiKey = next
+	if s.openAIReset != nil {
+		s.openAIReset.reset()
+	}
+	return true
+}
+
+// orangeOpenAIFailoverReset 保存 OpenAI 网关换号循环里需要在切组后清零的请求级计数。
+//
+// 只处理非 nil 字段，因此 Responses / Messages / ChatCompletions 三个入口可以共用同一份
+// 清理逻辑；字段集合与原实现逐个赋值完全一致。
+type orangeOpenAIFailoverReset struct {
+	SwitchCount      *int
+	FirstOutputCount *int
+	ProfitVetoCount  *int
+	FailedAccountIDs *map[int64]struct{}
+	SameAccountRetry *map[int64]int
+	LastFailoverErr  **service.UpstreamFailoverError
+	OAuth429State    *service.OpenAIOAuth429FailoverState
+}
+
+// reset 把绑定的计数逐项清零（新分组从零开始选号）。
+func (r *orangeOpenAIFailoverReset) reset() {
+	if r == nil {
+		return
+	}
+	if r.SwitchCount != nil {
+		*r.SwitchCount = 0
+	}
+	if r.FirstOutputCount != nil {
+		*r.FirstOutputCount = 0
+	}
+	if r.ProfitVetoCount != nil {
+		*r.ProfitVetoCount = 0
+	}
+	if r.FailedAccountIDs != nil {
+		*r.FailedAccountIDs = make(map[int64]struct{})
+	}
+	if r.SameAccountRetry != nil {
+		*r.SameAccountRetry = make(map[int64]int)
+	}
+	if r.LastFailoverErr != nil {
+		*r.LastFailoverErr = nil
+	}
+	if r.OAuth429State != nil {
+		*r.OAuth429State = service.OpenAIOAuth429FailoverState{}
+	}
+}
+
 // orangeRefreshChainGroupRequestContext 在切组成功后刷新请求级上下文：
 // 清掉上一分组残留的「单账号退避重试」标记，并按新分组重挂「是否单账号 antigravity
 // 分组」的延迟判定（网关服务按分组 ID 在首次读取时求值，沿用旧分组会得出错误结论）。

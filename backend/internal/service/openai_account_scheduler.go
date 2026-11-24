@@ -2098,9 +2098,6 @@ func resetOpenAIAdvancedSchedulerSettingCacheForTest() {
 	openAIAdvancedSchedulerSettingSF = singleflight.Group{}
 }
 
-// SelectAccountWithScheduler 按调度器选择账号。
-//
-// Orange 特有：外壳在"分组内无可用账号"时沿 API Key 的分组兜底/聚合链推进。
 func (s *OpenAIGatewayService) SelectAccountWithScheduler(
 	ctx context.Context,
 	groupID *int64,
@@ -2111,19 +2108,12 @@ func (s *OpenAIGatewayService) SelectAccountWithScheduler(
 	requiredTransport OpenAIUpstreamTransport,
 	requireCompact bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
-	result := selectWithOrangeGroupChainOpenAISchedule(ctx, groupID, requestedModel,
-		func(groupCtx context.Context, chainGroupID *int64) orangeOpenAIScheduleResult {
-			selection, decision, err := s.selectAccountWithScheduler(groupCtx, chainGroupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, "", "", requireCompact, PlatformOpenAI, false, true)
-			return orangeOpenAIScheduleResult{Selection: selection, Decision: decision, Err: err}
-		})
-	return result.Selection, result.Decision, result.Err
+	return s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, "", "", requireCompact, PlatformOpenAI, false, true)
 }
 
 // SelectAccountWithSchedulerForCapability 按能力要求调度账号。
 // previousResponseCanMove 表示首包 input 可自行重建工具续链，previous_response_id 允许跨账号迁移
 // （粘性加权模式下改为加权偏好而非硬粘连）。
-//
-// Orange 特有：外壳在"分组内无可用账号"时沿 API Key 的分组兜底/聚合链推进。
 func (s *OpenAIGatewayService) SelectAccountWithSchedulerForCapability(
 	ctx context.Context,
 	groupID *int64,
@@ -2142,18 +2132,9 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForCapability(
 	if len(platformOverride) > 0 {
 		platform = platformOverride[0]
 	}
-	result := selectWithOrangeGroupChainOpenAISchedule(ctx, groupID, requestedModel,
-		func(groupCtx context.Context, chainGroupID *int64) orangeOpenAIScheduleResult {
-			selection, decision, err := s.selectAccountWithScheduler(groupCtx, chainGroupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, "", requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
-			return orangeOpenAIScheduleResult{Selection: selection, Decision: decision, Err: err}
-		})
-	return result.Selection, result.Decision, result.Err
+	return s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, "", requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
 }
 
-// SelectAccountWithSchedulerForImages 调度生图账号。
-//
-// Orange 特有：外壳在"分组内无可用账号"时沿 API Key 的分组兜底/聚合链推进
-// （生图请求级分组策略仍是 P2，见方案文档 §6.3）。
 func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 	ctx context.Context,
 	groupID *int64,
@@ -2162,23 +2143,10 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
 	excludedIDs map[int64]struct{},
 	requiredCapability OpenAIImagesCapability,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
-	result := selectWithOrangeGroupChainOpenAISchedule(ctx, groupID, requestedModel,
-		func(groupCtx context.Context, chainGroupID *int64) orangeOpenAIScheduleResult {
-			selection, decision, err := s.selectAccountWithSchedulerForImagesInGroup(groupCtx, chainGroupID, sessionHash, requestedModel, excludedIDs, requiredCapability)
-			return orangeOpenAIScheduleResult{Selection: selection, Decision: decision, Err: err}
-		})
-	return result.Selection, result.Decision, result.Err
-}
-
-// selectAccountWithSchedulerForImagesInGroup 是分组内的生图选号实现（原公开入口的函数体）。
-func (s *OpenAIGatewayService) selectAccountWithSchedulerForImagesInGroup(
-	ctx context.Context,
-	groupID *int64,
-	sessionHash string,
-	requestedModel string,
-	excludedIDs map[int64]struct{},
-	requiredCapability OpenAIImagesCapability,
-) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	// Orange 特有：生图入口整体换组（组内两次选号 + 回退分支不可拆）；无链时 Handled=false，行为与上游完全一致。
+	if outcome := s.orangeChainOpenAISelectAccountWithSchedulerForImages(ctx, groupID, sessionHash, requestedModel, excludedIDs, requiredCapability); outcome.Handled {
+		return outcome.Value.Selection, outcome.Value.Decision, outcome.Value.Err
+	}
 	selection, decision, err := s.selectAccountWithScheduler(ctx, groupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, "", requiredCapability, false, PlatformOpenAI, false, false)
 	if err == nil && selection != nil && selection.Account != nil {
 		return selection, decision, nil
@@ -2212,6 +2180,10 @@ func (s *OpenAIGatewayService) selectAccountWithScheduler(
 	previousResponseCanMove bool,
 	useUpstreamTokenCost bool,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	// Orange 特有：分组兜底/聚合链推进（三个公开调度入口都收敛到这里）；无链时 Handled=false，行为与上游完全一致。
+	if outcome := s.orangeChainOpenAISelectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost); outcome.Handled {
+		return outcome.Value.Selection, outcome.Value.Decision, outcome.Value.Err
+	}
 	selection, decision, err := s.selectAccountWithSchedulerBySize(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
 	if err == nil || openAIProxyStreamQuarantineBypassed(ctx) {
 		return selection, decision, err

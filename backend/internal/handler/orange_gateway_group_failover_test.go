@@ -172,3 +172,140 @@ func TestOrangeRefreshChainGroupRequestContext(t *testing.T) {
 	// 请求级路由链必须仍在上下文里（切组不能丢掉链本身）。
 	require.True(t, apiKey.HasGroupChain())
 }
+
+// TestOrangeGroupChainFailoverStateOpenAISwitch 覆盖 OpenAI 网关插入点的语义：
+// 上游故障切组成功后清零换号计数；确定性错误与无链（普通 Key）一律不切组、不清零。
+func TestOrangeGroupChainFailoverStateOpenAISwitch(t *testing.T) {
+	upstreamFault := func() *service.UpstreamFailoverError {
+		return &service.UpstreamFailoverError{StatusCode: http.StatusBadGateway}
+	}
+
+	t.Run("上游故障切组后清零换号计数", func(t *testing.T) {
+		head := orangeHandlerTestGroup(201)
+		tail := orangeHandlerTestGroup(202)
+		apiKey := orangeHandlerTestAPIKey(head, tail)
+		c, _ := orangeHandlerTestContext(t, apiKey)
+
+		switchCount := 3
+		profitVetoCount := 2
+		failedAccountIDs := map[int64]struct{}{91: {}}
+		sameAccountRetryCount := map[int64]int{91: 1}
+		lastFailoverErr := upstreamFault()
+		var oauth429 service.OpenAIOAuth429FailoverState
+
+		state := newOrangeGroupChainFailoverState(&orangeOpenAIFailoverReset{
+			SwitchCount:      &switchCount,
+			ProfitVetoCount:  &profitVetoCount,
+			FailedAccountIDs: &failedAccountIDs,
+			SameAccountRetry: &sameAccountRetryCount,
+			LastFailoverErr:  &lastFailoverErr,
+			OAuth429State:    &oauth429,
+		})
+		require.True(t, state.switchOpenAIFailover(c, upstreamFault(), &apiKey))
+		require.Equal(t, tail.ID, *apiKey.GroupID)
+		require.Equal(t, 0, switchCount)
+		require.Equal(t, 0, profitVetoCount)
+		require.Empty(t, failedAccountIDs)
+		require.Empty(t, sameAccountRetryCount)
+		require.Nil(t, lastFailoverErr)
+		require.Equal(t, service.OpenAIOAuth429FailoverState{}, oauth429)
+	})
+
+	t.Run("确定性错误不切组也不清零", func(t *testing.T) {
+		head := orangeHandlerTestGroup(211)
+		tail := orangeHandlerTestGroup(212)
+		apiKey := orangeHandlerTestAPIKey(head, tail)
+		c, _ := orangeHandlerTestContext(t, apiKey)
+
+		switchCount := 2
+		state := newOrangeGroupChainFailoverState(&orangeOpenAIFailoverReset{SwitchCount: &switchCount})
+		require.False(t, state.switchOpenAIFailover(c, &service.UpstreamFailoverError{StatusCode: http.StatusBadRequest}, &apiKey))
+		require.Equal(t, 2, switchCount)
+		require.Equal(t, head.ID, *apiKey.GroupID)
+	})
+
+	t.Run("普通 Key 无链不切组", func(t *testing.T) {
+		head := orangeHandlerTestGroup(221)
+		headID := head.ID
+		apiKey := &service.APIKey{ID: 9, GroupID: &headID, Group: head}
+		c, _ := orangeHandlerTestContext(t, apiKey)
+
+		switchCount := 1
+		state := newOrangeGroupChainFailoverState(&orangeOpenAIFailoverReset{SwitchCount: &switchCount})
+		require.False(t, state.switchOpenAIFailover(c, upstreamFault(), &apiKey))
+		require.Equal(t, 1, switchCount)
+		require.Equal(t, head.ID, *apiKey.GroupID)
+	})
+}
+
+// TestOrangeSwitchGatewayFailoverState 覆盖 Claude/Gemini 网关插入点的语义：
+// 按平台选预算重建 failover 状态；未切组时原状态对象必须原样保留。
+func TestOrangeSwitchGatewayFailoverState(t *testing.T) {
+	upstreamFault := func() *service.UpstreamFailoverError {
+		return &service.UpstreamFailoverError{StatusCode: http.StatusServiceUnavailable}
+	}
+
+	t.Run("gemini 平台按 gemini 预算重建状态", func(t *testing.T) {
+		head := orangeHandlerTestGroup(231)
+		tail := orangeHandlerTestGroup(232)
+		apiKey := orangeHandlerTestAPIKey(head, tail)
+		c, _ := orangeHandlerTestContext(t, apiKey)
+		h := &GatewayHandler{cfg: &config.Config{}, maxAccountSwitches: 2, maxAccountSwitchesGemini: 5}
+		fs := NewFailoverState(2, false)
+		fs.FailedAccountIDs[77] = struct{}{}
+
+		state := newOrangeGroupChainFailoverState(nil)
+		require.True(t, state.switchGatewayFailoverState(h, c, upstreamFault(), &apiKey, &fs, true, false, false))
+		require.Equal(t, tail.ID, *apiKey.GroupID)
+		require.Equal(t, 5, fs.MaxSwitches)
+		require.Empty(t, fs.FailedAccountIDs)
+	})
+
+	t.Run("非 gemini 平台按普通预算重建状态", func(t *testing.T) {
+		head := orangeHandlerTestGroup(241)
+		tail := orangeHandlerTestGroup(242)
+		apiKey := orangeHandlerTestAPIKey(head, tail)
+		c, _ := orangeHandlerTestContext(t, apiKey)
+		h := &GatewayHandler{cfg: &config.Config{}, maxAccountSwitches: 2, maxAccountSwitchesGemini: 5}
+		fs := NewFailoverState(5, false)
+
+		state := newOrangeGroupChainFailoverState(nil)
+		require.True(t, state.switchGatewayFailoverState(h, c, upstreamFault(), &apiKey, &fs, false, true, false))
+		require.Equal(t, 2, fs.MaxSwitches)
+		require.Equal(t, tail.ID, *apiKey.GroupID)
+	})
+
+	t.Run("未切组时保持原有状态对象", func(t *testing.T) {
+		head := orangeHandlerTestGroup(251)
+		headID := head.ID
+		apiKey := &service.APIKey{ID: 10, GroupID: &headID, Group: head}
+		c, _ := orangeHandlerTestContext(t, apiKey)
+		h := &GatewayHandler{cfg: &config.Config{}, maxAccountSwitches: 2}
+		original := NewFailoverState(2, false)
+		fs := original
+
+		state := newOrangeGroupChainFailoverState(nil)
+		require.False(t, state.switchGatewayFailoverState(h, c, upstreamFault(), &apiKey, &fs, false, false, false))
+		require.Same(t, original, fs)
+		require.Equal(t, head.ID, *apiKey.GroupID)
+	})
+}
+
+// TestOrangeSwitchGatewayMessagesFailover 覆盖 Messages 主分支插入点：
+// 切组后释放上一分组已注册的会话槽（换一个空 map），并按普通预算重建状态。
+func TestOrangeSwitchGatewayMessagesFailover(t *testing.T) {
+	head := orangeHandlerTestGroup(261)
+	tail := orangeHandlerTestGroup(262)
+	apiKey := orangeHandlerTestAPIKey(head, tail)
+	c, _ := orangeHandlerTestContext(t, apiKey)
+
+	h := &GatewayHandler{cfg: &config.Config{}, maxAccountSwitches: 3}
+	fs := NewFailoverState(1, true)
+	sessionSlotAccounts := map[int64]*service.Account{55: {ID: 55}}
+	state := newOrangeGroupChainFailoverState(nil)
+
+	require.True(t, state.switchGatewayMessagesFailover(h, c, &service.UpstreamFailoverError{StatusCode: http.StatusGatewayTimeout}, &apiKey, &fs, &sessionSlotAccounts, "session-key", true))
+	require.Equal(t, tail.ID, *apiKey.GroupID)
+	require.Empty(t, sessionSlotAccounts)
+	require.Equal(t, 3, fs.MaxSwitches)
+}

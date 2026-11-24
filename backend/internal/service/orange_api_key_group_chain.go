@@ -367,6 +367,40 @@ func orangeNextChainGroup(ctx context.Context, groupID *int64, selectionErr erro
 	return next, ctx, true
 }
 
+// orangeChainGuardContextKey 标记「本 ctx 已在分组链的组内选号」。
+//
+// 外壳组内选号时递归调用公开入口（这样上游函数体可以原样留在上游文件里，不必劈成
+// InGroup 副本）；被调用的入口看到本标记就直接执行原逻辑，不再推进链——保证一次请求
+// 里链只推进一次，也不会 A→B→A 抖动。
+type orangeChainGuardContextKey struct{}
+
+// withOrangeChainGuard 给「组内选号」的 ctx 打上链外壳标记。
+func withOrangeChainGuard(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, orangeChainGuardContextKey{}, true)
+}
+
+// orangeChainGuardActive 报告 ctx 是否已由链外壳接管（即当前正在组内选号）。
+func orangeChainGuardActive(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	guarded, _ := ctx.Value(orangeChainGuardContextKey{}).(bool)
+	return guarded
+}
+
+// orangeChainOutcome 打包「组内选号结果 + 是否已由链外壳处理」。
+//
+// Handled=false 表示本请求没有分组链（或已在组内选号），调用方必须继续执行上游原有逻辑，
+// 此时 Value/Err 无意义——这正是「无该配置时行为与上游完全一致」的落地点。
+type orangeChainOutcome[T any] struct {
+	Value   T
+	Err     error
+	Handled bool
+}
+
 // selectWithOrangeGroupChain 是选号入口的通用外壳：先按当前分组选号，只有"分组内无可用账号"
 // 时才沿链推进；命中后续分组后激活请求级路由，让限流/计费/用量跟随实际分组。
 func selectWithOrangeGroupChain[T any](
@@ -380,7 +414,7 @@ func selectWithOrangeGroupChain[T any](
 	primaryGroupID := derefGroupID(groupID)
 	// Orange 特有：当前分组配置层面不支持该模型时，按链优先级预跳到第一个支持的分组。
 	ctx, groupID = orangePreselectChainGroupForModel(ctx, groupID, requestedModel)
-	result, err := selectInGroup(ctx, groupID)
+	result, err := selectInGroup(withOrangeChainGuard(ctx), groupID)
 
 	for attempt := 1; attempt <= maxOrangeChainAttempts; attempt++ {
 		if err == nil && isHit(result) {
@@ -396,7 +430,7 @@ func selectWithOrangeGroupChain[T any](
 			"next_group_id", nextGroupID,
 			"model", requestedModel,
 			"attempt", attempt)
-		result, err = selectInGroup(nextCtx, &nextGroupID)
+		result, err = selectInGroup(withOrangeChainGuard(nextCtx), &nextGroupID)
 		ctx = nextCtx
 		groupID = &nextGroupID
 		if err == nil && isHit(result) {
@@ -444,7 +478,7 @@ func selectWithOrangeGroupChainOpenAISchedule(
 	primaryGroupID := derefGroupID(groupID)
 	// Orange 特有：当前分组配置层面不支持该模型时，按链优先级预跳到第一个支持的分组。
 	ctx, groupID = orangePreselectChainGroupForModel(ctx, groupID, requestedModel)
-	result := selectInGroup(ctx, groupID)
+	result := selectInGroup(withOrangeChainGuard(ctx), groupID)
 
 	for attempt := 1; attempt <= maxOrangeChainAttempts; attempt++ {
 		if result.hit() {
@@ -460,7 +494,7 @@ func selectWithOrangeGroupChainOpenAISchedule(
 			"next_group_id", nextGroupID,
 			"model", requestedModel,
 			"attempt", attempt)
-		result = selectInGroup(nextCtx, &nextGroupID)
+		result = selectInGroup(withOrangeChainGuard(nextCtx), &nextGroupID)
 		ctx = nextCtx
 		groupID = &nextGroupID
 		if result.hit() {
@@ -474,4 +508,93 @@ func selectWithOrangeGroupChainOpenAISchedule(
 		}
 	}
 	return result
+}
+
+// ---- 上游选号入口的薄挂载点外壳 ----
+//
+// 每个外壳只做两件事：无链时返回 Handled=false 让上游原逻辑照跑；有链时按链推进。
+// 组内选号一律递归回调「公开入口本身」（ctx 已带链标记，不会再推进），因此上游函数体
+// 可以原样留在上游文件里，只需在入口加 2~4 行挂载。
+
+// orangeChainGatewaySelectAccountForModelExclusions 挂载 GatewayService.SelectAccountForModelWithExclusions。
+func (s *GatewayService) orangeChainGatewaySelectAccountForModelExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) orangeChainOutcome[*Account] {
+	if orangeChainGuardActive(ctx) {
+		return orangeChainOutcome[*Account]{}
+	}
+	account, err := selectWithOrangeGroupChain(ctx, groupID, requestedModel,
+		func(groupCtx context.Context, chainGroupID *int64) (*Account, error) {
+			return s.SelectAccountForModelWithExclusions(groupCtx, chainGroupID, sessionHash, requestedModel, excludedIDs)
+		}, orangeAccountSelectionHit, nil)
+	return orangeChainOutcome[*Account]{Value: account, Err: err, Handled: true}
+}
+
+// orangeChainGatewaySelectAccountWithLoadAwareness 挂载 GatewayService.SelectAccountWithLoadAwareness。
+func (s *GatewayService) orangeChainGatewaySelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, metadataUserID string, sub2apiUserID int64) orangeChainOutcome[*AccountSelectionResult] {
+	if orangeChainGuardActive(ctx) {
+		return orangeChainOutcome[*AccountSelectionResult]{}
+	}
+	selection, err := selectWithOrangeGroupChain(ctx, groupID, requestedModel,
+		func(groupCtx context.Context, chainGroupID *int64) (*AccountSelectionResult, error) {
+			return s.SelectAccountWithLoadAwareness(groupCtx, chainGroupID, sessionHash, requestedModel, excludedIDs, metadataUserID, sub2apiUserID)
+		}, orangeSelectionResultHit, nil)
+	return orangeChainOutcome[*AccountSelectionResult]{Value: selection, Err: err, Handled: true}
+}
+
+// orangeChainOpenAISelectAccountForModelExclusions 挂载 OpenAI 的账号选择原语。
+//
+// OpenAI 侧两个公开入口（SelectAccountForModelWithExclusions / SelectAccountForTokenCount）
+// 都收敛到同一个私有原语 selectAccountForModelWithExclusions，且没有其他调用方，因此挂载点
+// 放在该原语入口即可等价覆盖两者：组内沿用原来的「每个分组重新取一次配额自动暂停设置」。
+func (s *OpenAIGatewayService) orangeChainOpenAISelectAccountForModelExclusions(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, stickyAccountID int64, requiredCapability OpenAIEndpointCapability, preferLowUpstreamRate bool) orangeChainOutcome[*Account] {
+	if orangeChainGuardActive(ctx) {
+		return orangeChainOutcome[*Account]{}
+	}
+	account, err := selectWithOrangeGroupChain(ctx, groupID, requestedModel,
+		func(groupCtx context.Context, chainGroupID *int64) (*Account, error) {
+			return s.selectAccountForModelWithExclusions(s.withOpenAIQuotaAutoPauseContext(groupCtx), chainGroupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, stickyAccountID, requiredCapability, preferLowUpstreamRate)
+		}, orangeAccountSelectionHit, nil)
+	return orangeChainOutcome[*Account]{Value: account, Err: err, Handled: true}
+}
+
+// orangeChainOpenAISelectAccountWithLoadAwareness 挂载 OpenAIGatewayService.SelectAccountWithLoadAwareness。
+func (s *OpenAIGatewayService) orangeChainOpenAISelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) orangeChainOutcome[*AccountSelectionResult] {
+	if orangeChainGuardActive(ctx) {
+		return orangeChainOutcome[*AccountSelectionResult]{}
+	}
+	selection, err := selectWithOrangeGroupChain(ctx, groupID, requestedModel,
+		func(groupCtx context.Context, chainGroupID *int64) (*AccountSelectionResult, error) {
+			return s.SelectAccountWithLoadAwareness(groupCtx, chainGroupID, sessionHash, requestedModel, excludedIDs)
+		}, orangeSelectionResultHit, nil)
+	return orangeChainOutcome[*AccountSelectionResult]{Value: selection, Err: err, Handled: true}
+}
+
+// orangeChainOpenAISelectAccountWithScheduler 挂载 OpenAI 调度原语。
+//
+// 三个公开调度入口（SelectAccountWithScheduler / ForCapability / ForImages 的两次内部调用）
+// 都收敛到同一私有原语，且没有其他调用方；ForImages 需要「整入口换组」语义，因此它另有
+// 自己的入口级挂载，链推进期间由链标记抑制本挂载（与改造前逐行等价）。
+func (s *OpenAIGatewayService) orangeChainOpenAISelectAccountWithScheduler(ctx context.Context, groupID *int64, previousResponseID string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requiredTransport OpenAIUpstreamTransport, requiredCapability OpenAIEndpointCapability, requiredImageCapability OpenAIImagesCapability, requireCompact bool, platform string, previousResponseCanMove bool, useUpstreamTokenCost bool) orangeChainOutcome[orangeOpenAIScheduleResult] {
+	if orangeChainGuardActive(ctx) {
+		return orangeChainOutcome[orangeOpenAIScheduleResult]{}
+	}
+	result := selectWithOrangeGroupChainOpenAISchedule(ctx, groupID, requestedModel,
+		func(groupCtx context.Context, chainGroupID *int64) orangeOpenAIScheduleResult {
+			selection, decision, err := s.selectAccountWithScheduler(groupCtx, chainGroupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+			return orangeOpenAIScheduleResult{Selection: selection, Decision: decision, Err: err}
+		})
+	return orangeChainOutcome[orangeOpenAIScheduleResult]{Value: result, Handled: true}
+}
+
+// orangeChainOpenAISelectAccountWithSchedulerForImages 挂载 SelectAccountWithSchedulerForImages：
+// 生图入口内部有 native→basic 两次选号 + 回退分支，必须整入口换组（不能按单次选号换）。
+func (s *OpenAIGatewayService) orangeChainOpenAISelectAccountWithSchedulerForImages(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requiredCapability OpenAIImagesCapability) orangeChainOutcome[orangeOpenAIScheduleResult] {
+	if orangeChainGuardActive(ctx) {
+		return orangeChainOutcome[orangeOpenAIScheduleResult]{}
+	}
+	result := selectWithOrangeGroupChainOpenAISchedule(ctx, groupID, requestedModel,
+		func(groupCtx context.Context, chainGroupID *int64) orangeOpenAIScheduleResult {
+			selection, decision, err := s.SelectAccountWithSchedulerForImages(groupCtx, chainGroupID, sessionHash, requestedModel, excludedIDs, requiredCapability)
+			return orangeOpenAIScheduleResult{Selection: selection, Decision: decision, Err: err}
+		})
+	return orangeChainOutcome[orangeOpenAIScheduleResult]{Value: result, Handled: true}
 }

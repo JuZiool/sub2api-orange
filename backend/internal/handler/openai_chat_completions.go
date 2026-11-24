@@ -169,18 +169,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 
-	// Orange 特有：上游故障切组的请求级状态。orangeFailedGroupIDs 记录已尝试过的分组
-	// （同时充当「最多切(链长-1)次」的预算）；orangeResetFailover 在切组成功后把换号状态
-	// 清零，让新分组从零开始选号。普通 Key 恒不触发（无链时切组助手直接返回 false）。
-	orangeFailedGroupIDs := make(map[int64]struct{})
-	orangeResetFailover := func() {
-		switchCount = 0
-		profitVetoCount = 0
-		failedAccountIDs = make(map[int64]struct{})
-		sameAccountRetryCount = make(map[int64]int)
-		lastFailoverErr = nil
-		oauth429FailoverState = service.OpenAIOAuth429FailoverState{}
-	}
+	// Orange 特有：切组请求级状态 + 换号计数快照；无链时不触发，行为与上游完全一致。
+	orangeFailover := newOrangeGroupChainFailoverState(&orangeOpenAIFailoverReset{SwitchCount: &switchCount, ProfitVetoCount: &profitVetoCount, FailedAccountIDs: &failedAccountIDs, SameAccountRetry: &sameAccountRetryCount, LastFailoverErr: &lastFailoverErr, OAuth429State: &oauth429FailoverState})
 
 	// 分组利润控制：chat completions 文本入口请求级装门并固定 pricingAt。
 	ccPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
@@ -224,14 +214,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				return
 			} else {
 				if lastFailoverErr != nil {
-					// Orange 特有：本组账号换完且最后一次错误属上游故障时，切到分组链上的
-					// 下一组、重置换号状态后继续选号（无链时保持原错误返回）。
-					if orangeUpstreamFaultAllowsGroupFailover(lastFailoverErr) {
-						if switchedKey, switched := orangeChainFailoverSwitch(c, apiKey, orangeFailedGroupIDs); switched {
-							apiKey = switchedKey
-							orangeResetFailover()
-							continue
-						}
+					// Orange 特有：本组换号耗尽且最后一次错误属上游故障时切到分组链下一组；无链时保持原错误返回。
+					if orangeFailover.switchOpenAIFailover(c, lastFailoverErr, &apiKey) {
+						continue
 					}
 					h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
 				} else {
@@ -397,14 +382,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
-						// Orange 特有：本组换号预算耗尽且最后一次错误属上游故障时，切到分组链
-						// 上的下一组并重置换号状态，继续重试（无链时保持原错误返回）。
-						if orangeUpstreamFaultAllowsGroupFailover(failoverErr) {
-							if switchedKey, switched := orangeChainFailoverSwitch(c, apiKey, orangeFailedGroupIDs); switched {
-								apiKey = switchedKey
-								orangeResetFailover()
-								continue
-							}
+						// Orange 特有：本组换号耗尽且最后一次错误属上游故障时切到分组链下一组；无链时保持原错误返回。
+						if orangeFailover.switchOpenAIFailover(c, failoverErr, &apiKey) {
+							continue
 						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
