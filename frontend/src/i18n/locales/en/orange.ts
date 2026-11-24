@@ -55,9 +55,5 @@ export default {
       label: 'Enable token ranking',
       enabledHint: 'When disabled, the user-side navigation entry disappears, direct visits are blocked, and the ranking API returns 403.'
     }
-  },
-  orangeKeyGroupChain: {
-    autoPruned: 'Automatically removed {count} unavailable group(s): {groups}',
-    autoPromoted: 'The primary group was switched automatically to {group}'
   }
 }

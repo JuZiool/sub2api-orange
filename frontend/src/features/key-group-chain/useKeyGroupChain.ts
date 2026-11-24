@@ -13,8 +13,7 @@
  *
  * 用户已无权限的链成员（分组从「公开」改为「专属」等）由后端负责：读取链详情接口时后端会剔除
  * 这些成员、必要时把第一个可用成员提升为主分组，并把结果写回数据库；列表接口返回的链同样已剔除。
- * 前端因此不做任何可用性判定，只在 `hydrateKeyGroupChain` 里按响应体的
- * `auto_pruned_group_ids` / `auto_promoted_group_id` 给一句“已自动更新密钥”的提示。
+ * 前端不做任何可用性判定，也不弹提示——静默按后端返回的链展示与保存。
  */
 import { reactive } from 'vue'
 import { useAppStore } from '@/stores/app'
@@ -28,8 +27,6 @@ import {
   stageKeyGroupChain
 } from './api'
 import type {
-  ApiKeyGroupChain,
-  GroupOptionLike,
   KeyGroupChainFormState,
   KeyGroupChainIntent,
   KeyGroupChainKey,
@@ -46,50 +43,6 @@ export const keyGroupChainForm = reactive<KeyGroupChainFormState>({
   /** 当前编辑的密钥 id（关闭弹窗后上游会清空 selectedKey，这里提前记住）。 */
   editKeyId: null as number | null
 })
-
-/** Orange 特有：把分组 id 解析成界面上的分组名（选项里找不到时回退成 `#id`）。 */
-function resolveGroupLabel(groupId: number, options?: readonly GroupOptionLike[]): string {
-  return options?.find((option) => option.value === groupId)?.label || `#${groupId}`
-}
-
-/**
- * Orange 特有：提示后端在读取链详情时自动改动过的链。
- *
- * 后端把用户已无权限的成员从链里剔除、必要时把第一个可用成员提升为主分组并已写回数据库，
- * 前端只提示一句，避免用户误以为配置被吞掉（界面不再显示这些成员）。
- */
-function notifyAutoChainUpdate(
-  chain: ApiKeyGroupChain,
-  t: TranslateKey,
-  availableGroupOptions?: readonly GroupOptionLike[]
-): void {
-  const appStore = useAppStore()
-  // 优先用后端回传的分组名：被移除的分组已不在「可绑定分组」选项里，前端解析不到名字。
-  const prunedNames = (chain.auto_pruned_groups ?? [])
-    .map((group) => group.name)
-    .filter((name) => !!name)
-  const prunedIds = chain.auto_pruned_group_ids ?? []
-  const prunedCount = Math.max(prunedIds.length, prunedNames.length)
-  if (prunedCount > 0) {
-    appStore.showWarning(
-      t('orangeKeyGroupChain.autoPruned', {
-        count: prunedCount,
-        groups:
-          prunedNames.length > 0
-            ? prunedNames.join(', ')
-            : prunedIds.map((id) => resolveGroupLabel(id, availableGroupOptions)).join(', ')
-      })
-    )
-  }
-  const promotedGroupId = chain.auto_promoted_group_id ?? 0
-  if (promotedGroupId > 0) {
-    appStore.showWarning(
-      t('orangeKeyGroupChain.autoPromoted', {
-        group: resolveGroupLabel(promotedGroupId, availableGroupOptions)
-      })
-    )
-  }
-}
 
 /**
  * Orange 特有：重置表单状态（弹窗关闭 / 打开创建弹窗时调用）。
@@ -128,25 +81,21 @@ export function initKeyGroupChainFormFromKey(key: ApiKey): void {
  * Orange 特有：编辑弹窗打开后按 GET /keys/:id/group-chain 回填分组链。
  * 接口不可用时保留列表字段的回填结果，弹窗仍可正常使用。
  *
+ * 后端在读取链时会剔除用户已无权限的成员、必要时把第一个可用成员提升为主分组并写回数据库，
+ * 前端按返回的 members 原样回填即可（不做可用性判定，也不弹提示）。
+ *
  * @param key 正在编辑的密钥
  * @param isStillEditing 用于丢弃过期响应（用户已关闭弹窗或改选其它密钥）
  * @param setPrimaryGroupId 回填主分组到上游 formData.group_id
- * @param t 翻译函数（用于“后端已自动更新密钥”的提示文案）
- * @param availableGroupOptions 当前用户可绑定的分组选项（编辑弹窗为 formGroupOptions）；
- *        仅用于把提示里的 group_id 解析成分组名
  */
 export async function hydrateKeyGroupChain(
   key: ApiKey,
   isStillEditing: () => boolean,
-  setPrimaryGroupId: (groupId: number | null) => void,
-  t: TranslateKey,
-  availableGroupOptions?: readonly GroupOptionLike[]
+  setPrimaryGroupId: (groupId: number | null) => void
 ): Promise<void> {
   try {
     const chain = await getKeyGroupChain(key.id)
     if (!isStillEditing()) return
-    // 后端已在读链时剔除无权限成员 / 自动提升链首并写回库：界面只提示，不再做任何前端判定。
-    notifyAutoChainUpdate(chain, t, availableGroupOptions)
     const members = [...(chain.members ?? [])].sort((a, b) => a.priority - b.priority)
     const primaryId = members[0]?.group_id ?? key.group_id ?? null
     if (chain.mode === 'aggregate' && members.length > 1) {

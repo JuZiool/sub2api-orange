@@ -106,12 +106,6 @@ const row = (overrides: Partial<ApiKey> & Record<string, unknown> = {}): ApiKey 
     ...overrides
   }) as unknown as ApiKey
 
-/** 记录 t 的插值参数（组件内 toast 文案断言用）。 */
-const translate = vi.fn((key: string, named?: Record<string, unknown>): string => {
-  void named
-  return key
-})
-
 const stubs = {
   GroupBadge: { props: ['name'], template: '<span data-test="badge">{{ name }}</span>' },
   GroupOptionItem: { props: ['name'], template: '<span data-test="option-item">{{ name }}</span>' },
@@ -316,60 +310,39 @@ describe('submit preparation', () => {
   })
 })
 
-describe('auto chain update hints', () => {
+describe('auto chain update', () => {
   beforeEach(() => {
     resetKeyGroupChainForm()
     vi.clearAllMocks()
   })
 
-  it('warns about groups the backend pruned when hydrating', async () => {
+  it('hydrates the chain the backend already pruned, without any prompt', async () => {
     get.mockResolvedValue({
       data: {
         api_key_id: 1,
         mode: 'aggregate',
         primary_group_id: 1,
-        // 后端已把无权限成员剔除，链上只剩可用的两组
+        // 后端已把无权限成员剔除，链上只剩仍可用的两组
         members: [
           { group_id: 1, priority: 1 },
           { group_id: 2, priority: 2 }
         ],
         auto_pruned_group_ids: [99, 88],
+        auto_pruned_groups: [{ group_id: 99, name: '已下线分组' }],
         auto_promoted_group_id: 0
       }
     })
     const setPrimary = vi.fn()
-    await hydrateKeyGroupChain(row(), () => true, setPrimary, translate, groupOptions)
+    await hydrateKeyGroupChain(row(), () => true, setPrimary)
     expect(keyGroupChainForm.aggregateMode).toBe(true)
     expect(keyGroupChainForm.aggregateGroupIds).toEqual([1, 2])
     expect(setPrimary).toHaveBeenCalledWith(1)
-    expect(translate).toHaveBeenCalledWith('orangeKeyGroupChain.autoPruned', {
-      count: 2,
-      groups: '#99, #88'
-    })
-    expect(showWarning).toHaveBeenCalledWith('orangeKeyGroupChain.autoPruned')
+    // 站长要求静默自愈：不弹任何提示
+    expect(showWarning).not.toHaveBeenCalled()
+    expect(showError).not.toHaveBeenCalled()
   })
 
-  it('prefers the group names returned by the backend when pruning members', async () => {
-    get.mockResolvedValue({
-      data: {
-        api_key_id: 1,
-        mode: 'fallback',
-        primary_group_id: 1,
-        members: [{ group_id: 1, priority: 1 }],
-        auto_pruned_group_ids: [16],
-        auto_pruned_groups: [{ group_id: 16, name: '国模' }],
-        auto_promoted_group_id: 0
-      }
-    })
-    await hydrateKeyGroupChain(row(), () => true, vi.fn(), translate, groupOptions)
-    // 被移除的分组已不在可绑定选项里，必须用后端回传的名字（否则只会显示 #16）
-    expect(translate).toHaveBeenCalledWith('orangeKeyGroupChain.autoPruned', {
-      count: 1,
-      groups: '国模'
-    })
-  })
-
-  it('warns about the primary group the backend promoted when hydrating', async () => {
+  it('hydrates a promoted primary group without any prompt', async () => {
     get.mockResolvedValue({
       data: {
         api_key_id: 1,
@@ -384,29 +357,10 @@ describe('auto chain update hints', () => {
       }
     })
     const setPrimary = vi.fn()
-    await hydrateKeyGroupChain(row(), () => true, setPrimary, translate, groupOptions)
+    await hydrateKeyGroupChain(row(), () => true, setPrimary)
     expect(keyGroupChainForm.aggregateGroupIds).toEqual([2, 3])
     expect(setPrimary).toHaveBeenCalledWith(2)
-    // 分组名优先用可绑定分组选项里的 label 解析
-    expect(translate).toHaveBeenCalledWith('orangeKeyGroupChain.autoPromoted', { group: 'B' })
-    expect(showWarning).toHaveBeenCalledWith('orangeKeyGroupChain.autoPromoted')
-  })
-
-  it('stays silent when the backend did not change the chain', async () => {
-    get.mockResolvedValue({
-      data: {
-        api_key_id: 1,
-        mode: 'fallback',
-        primary_group_id: 1,
-        members: [
-          { group_id: 1, priority: 1 },
-          { group_id: 2, priority: 2 }
-        ]
-      }
-    })
-    await hydrateKeyGroupChain(row(), () => true, vi.fn(), translate, groupOptions)
-    expect(keyGroupChainForm.fallbackGroupId).toBe(2)
-    expect(translate).not.toHaveBeenCalled()
     expect(showWarning).not.toHaveBeenCalled()
+    expect(showError).not.toHaveBeenCalled()
   })
 })

@@ -197,8 +197,7 @@
  * prepareKeyGroupChainSubmit 统一校验；未开启聚合、未设置兜底分组时控件呈现为
  * “关闭 + 未设置”，对上游表单数据的唯一写入是把链首同步回 formData.group_id。
  *
- * 用户已无权限的链成员由后端在读链时剔除 / 自动提升链首并写回库，本组件不做可用性判定；
- * hydrateKeyGroupChain 只按接口回传的 auto_pruned_group_ids / auto_promoted_group_id 提示一句。
+ * 用户已无权限的链成员由后端在读链时剔除 / 自动提升链首并写回库，本组件不做可用性判定，也不弹提示。
  */
 import { computed, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -309,9 +308,7 @@ watch(
         () => props.showEdit && props.selectedKey?.id === key.id,
         (groupId) => {
           setPrimaryGroup(groupId)
-        },
-        t,
-        props.formGroupOptions
+        }
       )
     } else {
       resetKeyGroupChainForm()

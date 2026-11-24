@@ -37,7 +37,8 @@ export type KeyGroupChainKey = ApiKey & {
  * GET/PUT /keys/:id/group-chain 的响应体。members[0] 恒为链首（主分组）。
  *
  * 打开编辑弹窗读取链时，后端会把用户已无权限的成员剔除、必要时把第一个可用成员提升为主分组，
- * 并把结果写回数据库；受影响的分组通过下面两个字段回传，前端只负责给一句提示。
+ * 并把结果写回数据库；界面只按返回的 members 展示（站长要求静默自愈，不做提示）。
+ * `auto_pruned_*` / `auto_promoted_*` 是后端留下的诊断信息，前端不展示。
  */
 export interface ApiKeyGroupChain {
   api_key_id: number
@@ -47,13 +48,13 @@ export interface ApiKeyGroupChain {
   members: ApiKeyGroupEntry[]
   /** 本次自动移除的分组 id（无则为空数组）。 */
   auto_pruned_group_ids?: number[]
-  /** 本次自动移除的分组（含名称），提示里优先用它显示分组名。 */
+  /** 本次自动移除的分组（含名称）。 */
   auto_pruned_groups?: ApiKeyPrunedGroup[]
   /** 链首被自动替换后的新主分组 id（0 表示未变）。 */
   auto_promoted_group_id?: number
 }
 
-/** 链自愈时被移除的分组（仅用于提示文案）。 */
+/** 链自愈时被移除的分组（后端诊断信息，前端不展示）。 */
 export interface ApiKeyPrunedGroup {
   group_id: number
   name: string
@@ -81,17 +82,6 @@ export type GroupOptionView = {
 export type FallbackGroupOption =
   | GroupOptionView
   | { value: null; label: string; description?: string }
-
-/**
- * Orange 特有：分组下拉选项的最小形状。
- *
- * 只用于把后端回传的 group_id（自动移除 / 自动提升）解析成界面上的分组名，
- * 解析不到时前端回退成 `#id`。
- */
-export interface GroupOptionLike {
-  value: number
-  label?: string
-}
 
 /** 分组链表单状态（useKeyGroupChain 的 `keyGroupChainForm`）。 */
 export interface KeyGroupChainFormState {

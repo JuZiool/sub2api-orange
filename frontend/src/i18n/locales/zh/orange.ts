@@ -55,9 +55,5 @@ export default {
       label: '启用 Token 排行榜',
       enabledHint: '关闭后用户侧导航入口消失、直接访问会被拦截，排行接口返回 403。'
     }
-  },
-  orangeKeyGroupChain: {
-    autoPruned: '已自动移除 {count} 个不可用的分组：{groups}',
-    autoPromoted: '主分组已自动切换为 {group}'
   }
 }
