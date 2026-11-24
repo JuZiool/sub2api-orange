@@ -57,12 +57,7 @@ export default {
     }
   },
   orangeKeyGroupChain: {
-    unavailableBadge: 'Unavailable (no access)',
-    unavailableShort: 'Unavailable',
-    unavailableChainHint: 'Groups marked unavailable are no longer accessible; they are skipped automatically when saving.',
-    fallbackUnavailableHint: 'The current fallback group is no longer available; the fallback group will be cleared after saving.',
-    primaryUnavailable: 'The primary group is no longer available. Please choose another primary group first.',
-    fallbackCleared: 'The fallback group is no longer available; it will be cleared after saving.',
-    aggregateChainCleared: 'Fewer than two available groups remain; the group chain will be cleared after saving.'
+    autoPruned: 'Automatically removed {count} unavailable group(s): {groups}',
+    autoPromoted: 'The primary group was switched automatically to {group}'
   }
 }

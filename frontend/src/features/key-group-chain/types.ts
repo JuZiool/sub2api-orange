@@ -13,19 +13,16 @@ export type ApiKeyGroupChainMode = 'none' | 'fallback' | 'aggregate'
 /** Orange 特有：写链时的交互意图（链长为 2 时无法从链本身区分兜底与聚合）。 */
 export type KeyGroupChainIntent = 'fallback' | 'aggregate'
 
-/** 分组链成员（链首 = api_keys.group_id，priority 从 1 起升序）。 */
+/**
+ * 分组链成员（链首 = api_keys.group_id，priority 从 1 起升序）。
+ *
+ * 后端在读取链（GET /keys/:id/group-chain）与列表接口里就已剔除用户无权绑定的成员，
+ * 因此前端不需要任何可用性字段。
+ */
 export interface ApiKeyGroupEntry {
   group_id: number
   priority: number
   group?: Group
-  /**
-   * Orange 特有：链详情接口（GET /keys/:id/group-chain）返回的权威可用性。
-   * false 表示当前用户已无该分组的绑定权限（例如分组被改为专属），请求时会被跳过。
-   * 列表接口的 groups 不返回该字段（缺省）。
-   */
-  available?: boolean
-  /** 不可用原因（available=false 时给出），当前取值：not_entitled。 */
-  unavailable_reason?: string
 }
 
 /** Orange 特有：带分组链字段的 API Key 视图。 */
@@ -36,12 +33,22 @@ export type KeyGroupChainKey = ApiKey & {
   group_chain_mode?: ApiKeyGroupChainMode
 }
 
-/** GET/PUT /keys/:id/group-chain 的响应体。members[0] 恒为链首（主分组）。 */
+/**
+ * GET/PUT /keys/:id/group-chain 的响应体。members[0] 恒为链首（主分组）。
+ *
+ * 打开编辑弹窗读取链时，后端会把用户已无权限的成员剔除、必要时把第一个可用成员提升为主分组，
+ * 并把结果写回数据库；受影响的分组通过下面两个字段回传，前端只负责给一句提示。
+ */
 export interface ApiKeyGroupChain {
   api_key_id: number
   mode: ApiKeyGroupChainMode
   primary_group_id: number
+  /** 已剔除无权限成员后的链成员，按 priority 升序。 */
   members: ApiKeyGroupEntry[]
+  /** 本次自动移除的分组 id（无则为空数组）。 */
+  auto_pruned_group_ids?: number[]
+  /** 链首被自动替换后的新主分组 id（0 表示未变）。 */
+  auto_promoted_group_id?: number
 }
 
 /**
@@ -68,15 +75,14 @@ export type FallbackGroupOption =
   | { value: null; label: string; description?: string }
 
 /**
- * Orange 特有：判定分组“可用性”所需的选项最小形状。
+ * Orange 特有：分组下拉选项的最小形状。
  *
- * 「当前用户可绑定分组」列表就是上游分组下拉的选项：编辑弹窗用 `formGroupOptions`，
- * 列表页用 `groupOptions`。链成员的 group_id 不在该列表中（典型场景：分组被改为专属）
- * 即视为不可用，前端需要显式标注并在保存时自愈，否则下拉框会空白、保存会报
- * ORANGE_GROUP_CHAIN_INVALID。
+ * 只用于把后端回传的 group_id（自动移除 / 自动提升）解析成界面上的分组名，
+ * 解析不到时前端回退成 `#id`。
  */
 export interface GroupOptionLike {
   value: number
+  label?: string
 }
 
 /** 分组链表单状态（useKeyGroupChain 的 `keyGroupChainForm`）。 */
@@ -84,17 +90,6 @@ export interface KeyGroupChainFormState {
   fallbackGroupId: number | null
   aggregateMode: boolean
   aggregateGroupIds: Array<number | null>
-  /**
-   * 链上有、但不在「当前用户可绑定分组」列表中的 group_id。
-   * 由 hydrateKeyGroupChain / KeyGroupChainFormFields 按「后端权威标记 > 选项缺失」的顺序实时计算，
-   * 供界面标注与提交前校验自愈。
-   */
-  unavailableGroupIds: number[]
-  /**
-   * 链详情接口返回的权威可用性（group_id → available）。
-   * 存在该标记时以它为准（与后端请求时的过滤同源），缺失时才回退到「不在可绑定分组列表」的启发式。
-   */
-  backendAvailability: Record<number, boolean>
   /** 当前弹窗是否为编辑模式（决定提交成功后按 update 还是 create 回写链）。 */
   isEdit: boolean
   /** 当前编辑的密钥 id（关闭弹窗后上游会清空 selectedKey，这里提前记住）。 */
@@ -102,4 +97,4 @@ export interface KeyGroupChainFormState {
 }
 
 /** 与 useI18n().t 兼容的最小翻译函数签名（用于非组件模块发提示文案）。 */
-export type TranslateKey = (key: string) => string
+export type TranslateKey = (key: string, named?: Record<string, unknown>) => string

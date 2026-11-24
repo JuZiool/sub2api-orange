@@ -11,12 +11,10 @@
  * 未配置分组链（aggregateMode=false 且 fallbackGroupId=null）时：校验通过、暂存空链，
  * 行为与上游一致（提交后仅清空可能残留的链，与历史实现一致）。
  *
- * 不可用链成员（分组从「公开」改为「专属」后用户无权绑定，但链上仍残留其 group_id）：
- * - `refreshKeyGroupChainAvailability` 把这类 group_id 记入 `keyGroupChainForm.unavailableGroupIds`，
- *   供界面标注；判定优先用链详情接口的 `available`（后端与请求过滤同源），接口未给出时才回退到
- *   「不在当前用户可绑定分组列表里即不可用」；
- * - `prepareKeyGroupChainSubmit` 在提交前自愈（跳过可跳过的，拦截无法自愈的），
- *   避免保存时报 ORANGE_GROUP_CHAIN_INVALID。无不可用成员时行为与历史实现完全一致。
+ * 用户已无权限的链成员（分组从「公开」改为「专属」等）由后端负责：读取链详情接口时后端会剔除
+ * 这些成员、必要时把第一个可用成员提升为主分组，并把结果写回数据库；列表接口返回的链同样已剔除。
+ * 前端因此不做任何可用性判定，只在 `hydrateKeyGroupChain` 里按响应体的
+ * `auto_pruned_group_ids` / `auto_promoted_group_id` 给一句“已自动更新密钥”的提示。
  */
 import { reactive } from 'vue'
 import { useAppStore } from '@/stores/app'
@@ -30,6 +28,7 @@ import {
   stageKeyGroupChain
 } from './api'
 import type {
+  ApiKeyGroupChain,
   GroupOptionLike,
   KeyGroupChainFormState,
   KeyGroupChainIntent,
@@ -42,60 +41,46 @@ export const keyGroupChainForm = reactive<KeyGroupChainFormState>({
   fallbackGroupId: null,
   aggregateMode: false,
   aggregateGroupIds: [],
-  unavailableGroupIds: [],
-  backendAvailability: {},
   /** 当前弹窗是否为编辑模式（决定提交成功后按 update 还是 create 回写链）。 */
   isEdit: false,
   /** 当前编辑的密钥 id（关闭弹窗后上游会清空 selectedKey，这里提前记住）。 */
   editKeyId: null as number | null
 })
 
-/** Orange 特有：把分组下拉选项压成 id 集合（可用性判定的兜底数据来源）。 */
-export function groupOptionIdSet(options: readonly GroupOptionLike[]): Set<number> {
-  return new Set(options.map((option) => option.value))
-}
-
-/** Orange 特有：group_id 是否仍可绑定（不在可用列表内 = 无权限，如分组被改为专属）。 */
-export function isGroupIdAvailable(
-  groupId: number | null,
-  availableGroupIds: ReadonlySet<number>
-): boolean {
-  return groupId !== null && availableGroupIds.has(groupId)
+/** Orange 特有：把分组 id 解析成界面上的分组名（选项里找不到时回退成 `#id`）。 */
+function resolveGroupLabel(groupId: number, options?: readonly GroupOptionLike[]): string {
+  return options?.find((option) => option.value === groupId)?.label || `#${groupId}`
 }
 
 /**
- * Orange 特有：刷新链成员的不可用标记。
+ * Orange 特有：提示后端在读取链详情时自动改动过的链。
  *
- * 判定优先级（与后端请求时的过滤保持同源，避免前端误判）：
- * 1. 链详情接口已给出 `available` → 以它为准（后端与路由过滤用同一个判定）；
- * 2. 没有该标记时回退到启发式：group_id 不在「当前用户可绑定分组」里即视为不可用；
- * 3. 选项列表为空（接口失败 / 尚未加载）时不做启发式判定，避免把整条链误判为不可用。
- *
- * 只标记链上真正引用的分组：聚合模式看整条链，普通/兜底模式看兜底分组。
+ * 后端把用户已无权限的成员从链里剔除、必要时把第一个可用成员提升为主分组并已写回数据库，
+ * 前端只提示一句，避免用户误以为配置被吞掉（界面不再显示这些成员）。
  */
-export function refreshKeyGroupChainAvailability(
-  availableOptions?: readonly GroupOptionLike[]
+function notifyAutoChainUpdate(
+  chain: ApiKeyGroupChain,
+  t: TranslateKey,
+  availableGroupOptions?: readonly GroupOptionLike[]
 ): void {
-  const backend = keyGroupChainForm.backendAvailability ?? {}
-  const hasOptions = !!availableOptions && availableOptions.length > 0
-  const available = hasOptions ? groupOptionIdSet(availableOptions as readonly GroupOptionLike[]) : null
-  const unavailable: number[] = []
-  const consider = (groupId: number | null) => {
-    if (groupId === null) return
-    let isUnavailable = false
-    if (Object.prototype.hasOwnProperty.call(backend, groupId)) {
-      isUnavailable = backend[groupId] === false
-    } else if (available !== null) {
-      isUnavailable = !available.has(groupId)
-    }
-    if (isUnavailable && !unavailable.includes(groupId)) unavailable.push(groupId)
+  const appStore = useAppStore()
+  const prunedIds = chain.auto_pruned_group_ids ?? []
+  if (prunedIds.length > 0) {
+    appStore.showWarning(
+      t('orangeKeyGroupChain.autoPruned', {
+        count: prunedIds.length,
+        groups: prunedIds.map((id) => resolveGroupLabel(id, availableGroupOptions)).join(', ')
+      })
+    )
   }
-  if (keyGroupChainForm.aggregateMode) {
-    keyGroupChainForm.aggregateGroupIds.forEach(consider)
-  } else {
-    consider(keyGroupChainForm.fallbackGroupId)
+  const promotedGroupId = chain.auto_promoted_group_id ?? 0
+  if (promotedGroupId > 0) {
+    appStore.showWarning(
+      t('orangeKeyGroupChain.autoPromoted', {
+        group: resolveGroupLabel(promotedGroupId, availableGroupOptions)
+      })
+    )
   }
-  keyGroupChainForm.unavailableGroupIds = unavailable
 }
 
 /**
@@ -109,8 +94,6 @@ export function resetKeyGroupChainForm(): void {
   keyGroupChainForm.fallbackGroupId = null
   keyGroupChainForm.aggregateMode = false
   keyGroupChainForm.aggregateGroupIds = []
-  keyGroupChainForm.unavailableGroupIds = []
-  keyGroupChainForm.backendAvailability = {}
   keyGroupChainForm.isEdit = false
   keyGroupChainForm.editKeyId = null
 }
@@ -131,9 +114,6 @@ export function initKeyGroupChainFormFromKey(key: ApiKey): void {
       ? [key.group_id]
       : []
   keyGroupChainForm.fallbackGroupId = fallbackGroupOf(chainKey)?.group_id ?? null
-  // 不可用标记与具体密钥绑定：先清空，再由 hydrateKeyGroupChain 按可用分组列表重算。
-  keyGroupChainForm.unavailableGroupIds = []
-  keyGroupChainForm.backendAvailability = {}
 }
 
 /**
@@ -143,31 +123,28 @@ export function initKeyGroupChainFormFromKey(key: ApiKey): void {
  * @param key 正在编辑的密钥
  * @param isStillEditing 用于丢弃过期响应（用户已关闭弹窗或改选其它密钥）
  * @param setPrimaryGroupId 回填主分组到上游 formData.group_id
+ * @param t 翻译函数（用于“后端已自动更新密钥”的提示文案）
  * @param availableGroupOptions 当前用户可绑定的分组选项（编辑弹窗为 formGroupOptions）；
- *        接口未给出 available 标记时用它兜底判定链成员是否仍可绑定
+ *        仅用于把提示里的 group_id 解析成分组名
  */
 export async function hydrateKeyGroupChain(
   key: ApiKey,
   isStillEditing: () => boolean,
   setPrimaryGroupId: (groupId: number | null) => void,
+  t: TranslateKey,
   availableGroupOptions?: readonly GroupOptionLike[]
 ): Promise<void> {
   try {
     const chain = await getKeyGroupChain(key.id)
     if (!isStillEditing()) return
+    // 后端已在读链时剔除无权限成员 / 自动提升链首并写回库：界面只提示，不再做任何前端判定。
+    notifyAutoChainUpdate(chain, t, availableGroupOptions)
     const members = [...(chain.members ?? [])].sort((a, b) => a.priority - b.priority)
-    // 后端权威可用性（与请求时的链成员过滤同源）：存在时优先于选项启发式。
-    keyGroupChainForm.backendAvailability = Object.fromEntries(
-      members
-        .filter((member) => typeof member.available === 'boolean')
-        .map((member) => [member.group_id, member.available === true])
-    )
     const primaryId = members[0]?.group_id ?? key.group_id ?? null
     if (chain.mode === 'aggregate' && members.length > 1) {
       keyGroupChainForm.aggregateMode = true
       keyGroupChainForm.aggregateGroupIds = members.map((member) => member.group_id)
       keyGroupChainForm.fallbackGroupId = null
-      refreshKeyGroupChainAvailability(availableGroupOptions)
       setPrimaryGroupId(primaryId)
       return
     }
@@ -178,7 +155,6 @@ export async function hydrateKeyGroupChain(
     keyGroupChainForm.aggregateMode = false
     keyGroupChainForm.fallbackGroupId = fallbackId
     keyGroupChainForm.aggregateGroupIds = primaryId === null ? [] : [primaryId]
-    refreshKeyGroupChainAvailability(availableGroupOptions)
     setPrimaryGroupId(primaryId)
   } catch (error) {
     // 接口不可用时保留列表字段的回填结果，弹窗仍可正常使用
@@ -191,13 +167,6 @@ export async function hydrateKeyGroupChain(
  * 返回 false 表示校验失败（已弹出错误提示），调用方应中止提交。
  *
  * 校验顺序与历史行为一致：先兜底分组（非聚合模式），再聚合链（至少 2 组、同平台、无重复）。
- * 无不可用链成员时（unavailableGroupIds 为空）不会走到任何自愈分支，行为与历史实现完全一致。
- *
- * 不可用链成员的自愈规则（分组改为专属后链上残留）：
- * - 链首不可用 → 无法自动降级，拦截提交并提示更换主分组；
- * - 非链首成员不可用 → 先剔除再走原有校验；剔除后不足 2 组则退化为普通密钥（提交空链，
- *   模式仍是 aggregate，主分组保持链首）；
- * - 兜底分组不可用 → 自动清空兜底并提示。
  */
 export function prepareKeyGroupChainSubmit(
   formData: { group_id: number | null },
@@ -206,21 +175,6 @@ export function prepareKeyGroupChainSubmit(
 ): boolean {
   const appStore = useAppStore()
   const state = keyGroupChainForm
-  const unavailable = new Set(state.unavailableGroupIds)
-
-  // 聚合链的链首就是密钥主分组，自动跳过会让用户失去对主分组的预期，因此直接拦截。
-  const chainHeadId = state.aggregateGroupIds[0] ?? null
-  if (state.aggregateMode && chainHeadId !== null && unavailable.has(chainHeadId)) {
-    appStore.showError(t('orangeKeyGroupChain.primaryUnavailable'))
-    return false
-  }
-
-  // 兜底分组不可用：自动清空，保存后该 Key 退化为普通密钥（链写入空数组）。
-  const fallbackUnavailable =
-    !state.aggregateMode && state.fallbackGroupId !== null && unavailable.has(state.fallbackGroupId)
-  if (fallbackUnavailable) {
-    state.fallbackGroupId = null
-  }
 
   // 校验兜底分组：必须与主分组不同且同平台（聚合模式下不校验兜底）
   if (!state.aggregateMode && state.fallbackGroupId !== null) {
@@ -237,42 +191,26 @@ export function prepareKeyGroupChainSubmit(
     }
   }
 
-  // 聚合链校验：至少 2 组、同平台、无重复（不可用的非链首成员先剔除）
+  // 聚合链校验：至少 2 组、同平台、无重复
   let aggregateGroupIds: number[] | undefined
   if (state.aggregateMode) {
     const ids = state.aggregateGroupIds.filter((id): id is number => id !== null)
-    const keptIds = ids.filter((id, index) => index === 0 || !unavailable.has(id))
-    const skippedMembers = keptIds.length !== ids.length
-    if (skippedMembers && keptIds.length < 2) {
-      // 剔除后不足 2 组：退化为普通密钥——提交空链、主分组保持链首，模式仍按 aggregate 记录。
-      formData.group_id = keptIds[0] ?? formData.group_id
-      stageKeyGroupChain({
-        kind: state.isEdit ? 'edit' : 'create',
-        keyId: state.editKeyId,
-        groupIds: [],
-        mode: 'aggregate',
-        t
-      })
-      appStore.showWarning(t('orangeKeyGroupChain.aggregateChainCleared'))
-      return true
-    }
-    const effectiveIds = skippedMembers ? keptIds : ids
-    if (new Set(effectiveIds).size !== effectiveIds.length) {
+    if (new Set(ids).size !== ids.length) {
       appStore.showError(t('keys.aggregateGroupDuplicate'))
       return false
     }
-    if (effectiveIds.length < 2) {
+    if (ids.length < 2) {
       appStore.showError(t('keys.aggregateGroupTooFew'))
       return false
     }
     const platforms = new Set(
-      effectiveIds.map((id) => groups.find((group) => group.id === id)?.platform).filter(Boolean)
+      ids.map((id) => groups.find((group) => group.id === id)?.platform).filter(Boolean)
     )
     if (platforms.size > 1) {
       appStore.showError(t('keys.aggregateGroupPlatformMismatch'))
       return false
     }
-    aggregateGroupIds = effectiveIds
+    aggregateGroupIds = ids
   }
 
   // 分组链：聚合密钥提交完整优先级链；普通密钥提交 [主分组, 兜底分组]，未设兜底则清链
@@ -290,9 +228,6 @@ export function prepareKeyGroupChainSubmit(
     mode,
     t
   })
-  if (fallbackUnavailable) {
-    appStore.showWarning(t('orangeKeyGroupChain.fallbackCleared'))
-  }
   return true
 }
 

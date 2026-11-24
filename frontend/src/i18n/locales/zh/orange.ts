@@ -57,12 +57,7 @@ export default {
     }
   },
   orangeKeyGroupChain: {
-    unavailableBadge: '不可用（无权限）',
-    unavailableShort: '不可用',
-    unavailableChainHint: '标记为不可用的分组已无权使用，保存时会自动跳过这些分组。',
-    fallbackUnavailableHint: '当前兜底分组已不可用，保存后将自动清空兜底分组。',
-    primaryUnavailable: '主分组已不可用，请先更换主分组。',
-    fallbackCleared: '兜底分组已不可用，保存后将清空兜底分组。',
-    aggregateChainCleared: '可用分组不足两个，保存后将清空分组链。'
+    autoPruned: '已自动移除 {count} 个不可用的分组：{groups}',
+    autoPromoted: '主分组已自动切换为 {group}'
   }
 }
