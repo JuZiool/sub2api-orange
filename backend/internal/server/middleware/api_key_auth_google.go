@@ -82,11 +82,6 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 		// user/group/platform。
 		SetOpsFallbackAPIKey(c, apiKey)
 
-		// Orange 特有：装载分组优先级链（密钥级兜底 / 聚合分组）并安装请求级路由链。
-		// Gemini 原生端点（/v1beta）走本中间件，必须与主中间件保持一致。
-		apiKey = apiKeyService.OrangeAttachGroupChain(c.Request.Context(), apiKey)
-		c.Request = c.Request.WithContext(service.WithOrangeKeyGroupRouting(c.Request.Context(), apiKey))
-
 		// disabled / 未知状态 → 无条件拦截（expired 和 quota_exhausted 留给计费阶段，
 		// 与主中间件 api_key_auth.go 保持一致）。
 		if !apiKey.IsActive() &&

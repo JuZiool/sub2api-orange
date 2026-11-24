@@ -48,12 +48,6 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 		return
 	}
 
-	// Orange 特有：聚合密钥合并链上各分组的模型目录（各分组已套自己的白名单与生图策略）。
-	if models, merged := h.orangeAggregateGeminiModels(c.Request.Context(), apiKey, effectivePlatform); merged {
-		c.JSON(http.StatusOK, gemini.ModelsListResponse{Models: models})
-		return
-	}
-
 	// 分组级模型白名单开启时过滤 models[].name（名字形如 models/xxx）。
 	filterGeminiModels := func(models []gemini.Model) []gemini.Model {
 		if apiKey.Group == nil || !apiKey.Group.ModelAllowlistEnabled() {

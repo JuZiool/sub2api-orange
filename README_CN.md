@@ -76,11 +76,6 @@
 </tr>
 
 <tr>
-<td width="180"><a href="https://shop.bmoplus.com/?utm_source=github"><img src="assets/partners/logos/bmoplus.jpg" alt="bmoplus" width="150"></a></td>
-<td>感谢 BmoPlus 赞助了本项目！BmoPlus 是一家专为AI订阅重度用户打造的可靠 AI 账号代充服务商，提供稳定的 ChatGPT Plus / ChatGPT Pro(全程质保) / Claude Pro / Super Grok / Gemini Pro 的官方代充&成品账号。 通过<a href="https://shop.bmoplus.com/?utm_source=github">BmoPlus AI成品号专卖/代充</a>注册下单的用户，可享GPT 官网订阅一折 的震撼价格！</td>
-</tr>
-
-<tr>
 <td width="180"><a href="https://bestproxy.com/?keyword=a2e8iuol"><img src="assets/partners/logos/bestproxy.png" alt="bestproxy" width="150"></a></td>
 <td>感谢 Bestproxy 赞助了本项目！<a href="https://bestproxy.com/?keyword=a2e8iuol">Bestproxy</a> 是一家提供高纯度住宅IP，支持一号一IP独享，结合真实家庭网络与指纹隔离，可实现链路环境隔离，降低关联风控概率。</td>
 </tr>
@@ -107,18 +102,6 @@
 <tr>
 <td width="180"><a href="https://roxybrowser.com/invite/bgGKG7"><img src="assets/partners/logos/RoxyBrowser.png" alt="RoxyBrowser" width="150"></a></td>
 <td>感谢 RoxyBrowser 赞助本项目！<a href="https://roxybrowser.com/invite/bgGKG7">RoxyBrowser</a> 是 Sub2API 的理想搭档：内置原生 Roxy AI Agent 与高质量原生住宅 IP，支持通过简单命令实现批量自动化，显著提升多账号管理的安全性与效率！点击<a href="https://roxybrowser.com/invite/bgGKG7">此链接</a>注册，可领取免费住宅 IP 套餐与终身 9 折优惠。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://www.proxy4free.com/?keyword=4yjqecpc"><img src="assets/partners/logos/proxy4free.png" alt="proxy4free" width="150"></a></td>
-<td>感谢 Proxy4Free 赞助本项目！Proxy4Free 是面向开发者和 AI 应用的数据代理服务商，提供住宅代理、静态住宅代理、ISP 代理及数据中心代理等多种代理解决方案，适用于 Web Scraping、Browser Automation、AI Agent 等场景。支持全球 IP 资源、稳定连接与灵活切换，帮助开发者提升数据采集成功率，降低 IP 封禁风险。通过<a href="https://www.proxy4free.com/?keyword=4yjqecpc">此链接注册</a>即可开始体验，轻松构建更稳定、高效的自动化工作流。
-</td>
-</tr>
-
-<tr>
-<td width="180"><a href="http://aimzoon.com"><img src="assets/partners/logos/aimzoon.jpg" alt="aimzoon" width="150"></a></td>
-<td>感谢 Aimzoon 对本项目的赞助！ <a href="http://aimzoon.com">Aimzoon</a> 提供稳定、高性价比的 AI API 接入服务，支持开发者将常用 AI 服务快速接入 Codex、Claude Code、Gemini CLI 等编程工具。无需复杂配置，更快接入，更稳调用，更省成本。codex倍率优惠，特价倍率等促销不断，注册即送免费体验额度，让 AI 编程真正进入日常工作流。<a href="http://aimzoon.com">点击这里</a>注册体验！
 </td>
 </tr>
 
@@ -299,7 +282,7 @@ fast_mode = true
 #### 安装步骤
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash
 ```
 
 脚本会自动：
@@ -349,7 +332,7 @@ sudo journalctl -u sub2api -f
 sudo systemctl restart sub2api
 
 # 卸载
-curl -sSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/install.sh | sudo bash -s -- uninstall -y
+curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash -s -- uninstall -y
 ```
 
 ---
@@ -371,48 +354,22 @@ curl -sSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/i
 # 创建部署目录
 mkdir -p sub2api-deploy && cd sub2api-deploy
 
-# 下载并运行 Docker 部署入口（交互终端会进入菜单）
-curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/to-install.sh | bash
+# 下载并运行部署准备脚本
+curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
 
-菜单选项：
-# 1 全新安装；2 迁移安装；3 更新镜像；4 创建备份；5 健康检查；6 回滚镜像
-
-# 自动化场景可显式选择全新安装
-curl -fsSL https://raw.githubusercontent.com/JuZiool/sub2api-orange/main/deploy/to-install.sh | bash -s -- --mode 1
-
-选择 1 后会询问服务端口、管理员邮箱和管理员初始密码；其他选项使用已有 .env 和数据，不会重新生成密钥。
-
-# 启动或迁移已有部署
-to-install.sh --mode 2
-
-# 查看状态和健康检查
-to-install.sh health
+# 启动服务
+docker compose up -d
 
 # 查看日志
-docker compose --env-file .env -f docker-compose.local.yml -f docker-compose.ghcr.yml logs -f sub2api
+docker compose logs -f sub2api
 ```
 
 **脚本功能：**
-- 下载本地 Compose 配置和 GHCR 镜像 overlay
-- 生成安全密钥，但不打印完整密钥
-- 已有 `.env` 或持久化数据时拒绝全新安装
-- 启动 PostgreSQL、Redis 和 Sub2API
-- 等待容器健康检查和 `/health` 接口通过
-
-已有部署使用：
-
-```bash
-# 迁移安装
-to-install.sh --mode 2
-
-# 更新镜像（默认先备份）
-to-install.sh update
-
-# 创建备份 / 检查健康 / 回滚
-to-install.sh backup
-to-install.sh health
-to-install.sh rollback
-```
+- 下载 `docker-compose.local.yml`（本地保存为 `docker-compose.yml`）和 `.env.example`
+- 自动生成安全凭证（JWT_SECRET、TOTP_ENCRYPTION_KEY、POSTGRES_PASSWORD）
+- 创建 `.env` 文件并填充自动生成的密钥
+- 创建数据目录（使用本地目录，便于备份和迁移）
+- 显示生成的凭证供你记录
 
 #### 手动部署
 
@@ -420,8 +377,8 @@ to-install.sh rollback
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/JuZiool/sub2api-orange.git
-cd sub2api-orange/deploy
+git clone https://github.com/Wei-Shaw/sub2api.git
+cd sub2api/deploy
 
 # 2. 复制环境配置文件
 cp .env.example .env
@@ -516,8 +473,9 @@ docker compose -f docker-compose.local.yml logs sub2api | grep "Generated admin"
 #### 升级
 
 ```bash
-# 拉取最新镜像并安全更新（含备份、健康检查和失败回滚）
-to-install.sh update
+# 拉取最新镜像并重建容器
+docker compose -f docker-compose.local.yml pull
+docker compose -f docker-compose.local.yml up -d
 ```
 
 #### 轻松迁移（本地目录版）
@@ -563,8 +521,8 @@ rm -rf data/ postgres_data/ redis_data/
 Apple 芯片 Mac 在 macOS 26 上可使用 Apple `container` 1.1.0 或更高版本运行完整的 Sub2API、PostgreSQL 和 Redis：
 
 ```bash
-git clone https://github.com/JuZiool/sub2api-orange.git
-cd sub2api-orange/deploy
+git clone https://github.com/Wei-Shaw/sub2api.git
+cd sub2api/deploy
 ./apple-container.sh init
 ./apple-container.sh up
 ./apple-container.sh status
@@ -589,8 +547,9 @@ cd sub2api-orange/deploy
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/JuZiool/sub2api-orange.git
-cd sub2api-orange
+git clone https://github.com/Wei-Shaw/sub2api.git
+cd sub2api
+
 # 2. 安装 pnpm（如果还没有安装）
 npm install -g pnpm
 

@@ -342,8 +342,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	if platform == service.PlatformGemini {
 		fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
-		// Orange 特有：上游故障切组的请求级状态（已尝试过的分组），无链时恒为空。
-		orangeFailedGroupIDs := make(map[int64]struct{})
 
 		// 单账号分组首次 503 就不设模型限流标记，避免设 29s 限流导致后续请求连续快速失败；
 		// 是否单账号分组在 antigravity 账号遇到 503 或模型限流预检查时才判定。
@@ -385,16 +383,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					failoverClientGone(c)
 					return
 				default: // FailoverExhausted
-					// Orange 特有：本组换号耗尽且最后一次错误属上游故障时，切到分组链上的
-					// 下一组并重置 failover 状态，继续重试（无链时保持原错误返回）。
-					if orangeUpstreamFaultAllowsGroupFailover(fs.LastFailoverErr) {
-						if switchedKey, switched := orangeChainFailoverSwitch(c, apiKey, orangeFailedGroupIDs); switched {
-							apiKey = switchedKey
-							fs = NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
-							h.orangeRefreshChainGroupRequestContext(c, apiKey)
-							continue
-						}
-					}
 					if fs.LastFailoverErr != nil {
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, service.PlatformGemini, streamStarted)
 					} else {
@@ -541,16 +529,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					case FailoverContinue:
 						continue
 					case FailoverExhausted:
-						// Orange 特有：本组 failover 耗尽且最后一次错误属上游故障时，切到分组链
-						// 上的下一组并重置 failover 状态，继续重试（无链时保持原错误返回）。
-						if orangeUpstreamFaultAllowsGroupFailover(fs.LastFailoverErr) {
-							if switchedKey, switched := orangeChainFailoverSwitch(c, apiKey, orangeFailedGroupIDs); switched {
-								apiKey = switchedKey
-								fs = NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
-								h.orangeRefreshChainGroupRequestContext(c, apiKey)
-								continue
-							}
-						}
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, service.PlatformGemini, streamStarted)
 						return
 					case FailoverCanceled:
@@ -684,15 +662,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		}
 	}()
 
-	// Orange 特有：上游故障切组的请求级状态（已尝试过的分组）。跨外层重试循环复用，
-	// 普通 Key 恒为空——无链时切组助手直接返回 false，行为与上游完全一致。
-	orangeFailedGroupIDs := make(map[int64]struct{})
-
 	for {
 		fs := NewFailoverState(h.maxAccountSwitches, hasBoundSession)
 		retryWithFallback := false
 
-	orangeMessagesAttempt:
 		for {
 			attemptParsedReq, err := parsedReq.CloneForBody(body)
 			if err != nil {
@@ -743,17 +716,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					failoverClientGone(c)
 					return
 				default: // FailoverExhausted
-					// Orange 特有：本组换号耗尽且最后一次错误属上游故障时，切到分组链上的
-					// 下一组并重置 failover 状态（外层循环会新建 FailoverState），继续重试。
-					if orangeUpstreamFaultAllowsGroupFailover(fs.LastFailoverErr) {
-						if switchedKey, switched := orangeChainFailoverSwitch(c, currentAPIKey, orangeFailedGroupIDs); switched {
-							currentAPIKey = switchedKey
-							h.orangeRefreshChainGroupRequestContext(c, currentAPIKey)
-							sessionSlotAccounts = h.orangeReleaseChainGroupSessions(sessionSlotAccounts, sessionKey)
-							retryWithFallback = true
-							break orangeMessagesAttempt
-						}
-					}
 					if fs.LastFailoverErr != nil {
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, platform, streamStarted)
 					} else {
@@ -1112,17 +1074,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						delete(sessionSlotAccounts, account.ID)
 						continue
 					case FailoverExhausted:
-						// Orange 特有：本组 failover 耗尽且最后一次错误属上游故障时，切到分组链
-						// 上的下一组并重置 failover 状态，继续重试（无链时保持原错误返回）。
-						if orangeUpstreamFaultAllowsGroupFailover(failoverErr) {
-							if switchedKey, switched := orangeChainFailoverSwitch(c, currentAPIKey, orangeFailedGroupIDs); switched {
-								currentAPIKey = switchedKey
-								h.orangeRefreshChainGroupRequestContext(c, currentAPIKey)
-								sessionSlotAccounts = h.orangeReleaseChainGroupSessions(sessionSlotAccounts, sessionKey)
-								retryWithFallback = true
-								break orangeMessagesAttempt
-							}
-						}
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, account.Platform, streamStarted)
 						return
 					case FailoverCanceled:
@@ -1220,8 +1171,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	if platform == service.PlatformOpenAI && apiKey != nil && apiKey.Group != nil &&
 		apiKey.Group.Platform == service.PlatformOpenAI && apiKey.Group.CodexModelsManifestConfig.Enabled {
-		// Orange 特有：pinnedOpenAIModels 内部会按分组链合并链上其余分组的模型目录。
-		h.pinnedOpenAIModels(c, apiKey)
+		h.pinnedOpenAIModels(c, apiKey.Group)
 		return
 	}
 
@@ -1245,12 +1195,6 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	// Get available models from account configurations for the selected group platform.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
-	// Orange 特有：聚合密钥合并链上各分组的模型目录（各分组已套自己的白名单与生图策略），
-	// 因此这里不再套用链首白名单，也不再只按链首分组展开默认列表。
-	if merged, ok := h.orangeAggregateAvailableModels(c.Request.Context(), apiKey, platform); ok {
-		writeModelsList(c, platform, merged)
-		return
-	}
 	if platform == service.PlatformAnthropic {
 		var group *service.Group
 		if apiKey != nil {
@@ -1316,10 +1260,6 @@ func (h *GatewayHandler) CodexModels(c *gin.Context) {
 	}
 	modelIDs := h.codexModelIDsForGroup(c.Request.Context(), apiKey.Group, forcedPlatform)
 	modelIDs = service.FilterCodexModelIDsForGroup(modelIDs, apiKey.Group)
-	// Orange 特有：聚合密钥合并链上各分组的 Codex 模型目录（含各组可调用的生图模型）。
-	if merged, ok := h.orangeAggregateCodexModelIDs(c.Request.Context(), apiKey, forcedPlatform); ok {
-		modelIDs = merged
-	}
 	body, err := h.gatewayService.BuildCodexModelsManifestForGroup(
 		c.Request.Context(),
 		apiKey.Group,
@@ -1644,8 +1584,7 @@ func (h *GatewayHandler) AntigravityModels(c *gin.Context) {
 	if apiKey, ok := middleware2.GetAPIKeyFromContext(c); ok && apiKey != nil && apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
 		filtered := make([]antigravity.ClaudeModel, 0, len(models))
 		for _, model := range models {
-			// Orange 特有：聚合密钥下链上任一分组允许该模型即保留。
-			if apiKey.Group.ModelAllowlist.Allows(model.ID) || service.OrangeChainAllowsModel(apiKey, model.ID) {
+			if apiKey.Group.ModelAllowlist.Allows(model.ID) {
 				filtered = append(filtered, model)
 			}
 		}

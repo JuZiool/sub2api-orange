@@ -36,7 +36,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 // sseDataPrefix matches SSE data lines with optional whitespace after colon.
@@ -314,8 +313,7 @@ func generateSessionString() (string, error) {
 }
 
 // createTestPayload creates a Claude Code style test request payload
-// prompts is optional (Orange 特有): the admin's custom test prompt, empty → default "hi".
-func createTestPayload(modelID string, prompts ...string) (map[string]any, error) {
+func createTestPayload(modelID string) (map[string]any, error) {
 	sessionID, err := generateSessionString()
 	if err != nil {
 		return nil, err
@@ -329,7 +327,7 @@ func createTestPayload(modelID string, prompts ...string) (map[string]any, error
 				"content": []map[string]any{
 					{
 						"type": "text",
-						"text": orangeResolveAccountTestPrompt(prompts...),
+						"text": "hi",
 						"cache_control": map[string]string{
 							"type": "ephemeral",
 						},
@@ -365,11 +363,6 @@ func createTestPayload(modelID string, prompts ...string) (map[string]any, error
 // opts is optional media (image/audio data URLs for real generation / STT).
 func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int64, modelID string, prompt string, mode string, opts ...AccountTestOptions) error {
 	initAccountTestLogger(c, accountID, modelID, mode)
-	// Orange 特有：自定义测试提示词校验 + 请求级传递，供各平台 payload 构造函数读取。
-	if err := OrangeValidateAccountTestPrompt(prompt, modelID, mode); err != nil {
-		return s.sendErrorAndEnd(c, err.Error())
-	}
-	c.Set(orangeAccountTestPromptContextKey, prompt)
 	ctx := c.Request.Context()
 	testOpts := firstAccountTestOptions(opts)
 
@@ -570,7 +563,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	c.Writer.Flush()
 
 	// Create Claude Code style payload (same for all account types)
-	payload, err := createTestPayload(testModelID, orangeAccountTestUserPrompt(c))
+	payload, err := createTestPayload(testModelID)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
@@ -648,7 +641,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	payload, err := createTestPayload(testModelID, orangeAccountTestUserPrompt(c))
+	payload, err := createTestPayload(testModelID)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
@@ -703,9 +696,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	return s.processClaudeStream(c, resp.Body)
 }
 
-// buildBedrockTestPayload builds the non-streaming Bedrock test body.
-// prompts is optional (Orange 特有): the admin's custom test prompt, empty → default "hi".
-func buildBedrockTestPayload(modelID string, prompts ...string) map[string]any {
+func buildBedrockTestPayload(modelID string) map[string]any {
 	payload := map[string]any{
 		"anthropic_version": "bedrock-2023-05-31",
 		"messages": []map[string]any{
@@ -714,7 +705,7 @@ func buildBedrockTestPayload(modelID string, prompts ...string) map[string]any {
 				"content": []map[string]any{
 					{
 						"type": "text",
-						"text": orangeResolveAccountTestPrompt(prompts...),
+						"text": "hi",
 					},
 				},
 			},
@@ -744,7 +735,7 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 	c.Writer.Flush()
 
 	// Create a minimal Bedrock-compatible payload (no stream, no cache_control)
-	bedrockBody, _ := json.Marshal(buildBedrockTestPayload(testModelID, orangeAccountTestUserPrompt(c)))
+	bedrockBody, _ := json.Marshal(buildBedrockTestPayload(testModelID))
 
 	// Use non-streaming endpoint (response is standard Claude JSON)
 	apiURL := BuildBedrockURL(region, testModelID, false)
@@ -908,7 +899,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if isOAuth {
 		upstreamTestModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
 	}
-	payload := createOpenAITestPayload(upstreamTestModelID, isOAuth, prompt)
+	payload := createOpenAITestPayload(upstreamTestModelID, isOAuth)
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event once. A task-invalid Agent Identity response may
@@ -1059,7 +1050,7 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 		if mapped := strings.TrimSpace(account.GetMappedModel(testModelID)); mapped != "" {
 			testModelID = mapped
 		}
-		return s.testGrokResponsesConnection(c, ctx, account, authToken, testModelID, prompt)
+		return s.testGrokResponsesConnection(c, ctx, account, authToken, testModelID)
 	}
 
 	// mode == default: infer from model family (legacy UI / API clients).
@@ -1077,7 +1068,7 @@ func (s *AccountTestService) testGrokAccountConnection(c *gin.Context, account *
 	case isGrokVideoGenerationModel(testModelID):
 		return s.testGrokVideoGeneration(c, ctx, account, authToken, testModelID, resolveGrokVideoPrompt(prompt), opts)
 	default:
-		return s.testGrokResponsesConnection(c, ctx, account, authToken, testModelID, prompt)
+		return s.testGrokResponsesConnection(c, ctx, account, authToken, testModelID)
 	}
 }
 
@@ -1263,7 +1254,7 @@ func (s *AccountTestService) observeGrokTestResponse(ctx context.Context, accoun
 	}
 }
 
-func (s *AccountTestService) testGrokResponsesConnection(c *gin.Context, ctx context.Context, account *Account, authToken, testModelID, prompt string) error {
+func (s *AccountTestService) testGrokResponsesConnection(c *gin.Context, ctx context.Context, account *Account, authToken, testModelID string) error {
 	apiURL, err := buildGrokResponsesURL(account, s.cfg, s.settingService)
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Grok base URL: %s", err.Error()))
@@ -1274,14 +1265,6 @@ func (s *AccountTestService) testGrokResponsesConnection(c *gin.Context, ctx con
 	payloadBytes, err := buildGrokQuotaProbeBody(testModelID)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create Grok test payload")
-	}
-	// Orange 特有：自定义测试提示词只覆盖本条测试请求的 input，共享的配额探测 body
-	// 构造函数（grok_quota_service.go）保持默认 "hi"。
-	if strings.TrimSpace(prompt) != "" {
-		payloadBytes, err = sjson.SetBytes(payloadBytes, "input", prompt)
-		if err != nil {
-			return s.sendErrorAndEnd(c, "Failed to set Grok test prompt")
-		}
 	}
 
 	if !agentIdentityTaskRecoveryWasTried(ctx) {
@@ -2808,8 +2791,7 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 }
 
 // createOpenAITestPayload creates a test payload for OpenAI Responses API
-// prompts is optional (Orange 特有): the admin's custom test prompt, empty → default "hi".
-func createOpenAITestPayload(modelID string, isOAuth bool, prompts ...string) map[string]any {
+func createOpenAITestPayload(modelID string, isOAuth bool) map[string]any {
 	payload := map[string]any{
 		"model": modelID,
 		"input": []map[string]any{
@@ -2818,7 +2800,7 @@ func createOpenAITestPayload(modelID string, isOAuth bool, prompts ...string) ma
 				"content": []map[string]any{
 					{
 						"type": "input_text",
-						"text": orangeResolveAccountTestPrompt(prompts...),
+						"text": "hi",
 					},
 				},
 			},

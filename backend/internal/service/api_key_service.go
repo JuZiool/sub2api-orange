@@ -611,7 +611,6 @@ func (s *APIKeyService) List(ctx context.Context, userID int64, params paginatio
 		return nil, nil, fmt.Errorf("list api keys: %w", err)
 	}
 	s.fillCurrentConcurrency(ctx, keys)
-	s.OrangeAttachGroupChains(ctx, keys) // Orange 特有：列表展示分组优先级链
 	return keys, pagination, nil
 }
 
@@ -626,7 +625,6 @@ func (s *APIKeyService) listByCurrentConcurrency(ctx context.Context, userID int
 		return nil, nil, fmt.Errorf("list api keys: %w", err)
 	}
 	s.fillCurrentConcurrency(ctx, keys)
-	s.OrangeAttachGroupChains(ctx, keys) // Orange 特有：列表展示分组优先级链
 	sortAPIKeysByCurrentConcurrency(keys, params.NormalizedSortOrder(pagination.SortOrderDesc))
 	return paginateAPIKeys(keys, params), apiKeyPaginationResult(int64(len(keys)), params), nil
 }
@@ -1043,6 +1041,22 @@ func (s *APIKeyService) IncrementUsage(ctx context.Context, keyID int64) error {
 		_ = s.cache.SetDailyUsageExpiry(ctx, cacheKey, 24*time.Hour)
 	}
 	return nil
+}
+
+// BillingGroupInfo contains the display text for the group bound to an API key.
+type BillingGroupInfo struct {
+	Name        string `json:"group_name"`
+	Description string `json:"group_description"`
+}
+
+// GetBillingGroupInfo loads display text only when requested by the billing endpoint.
+func (s *APIKeyService) GetBillingGroupInfo(ctx context.Context, groupID int64, language string) (*BillingGroupInfo, error) {
+	group, err := s.groupRepo.GetByIDLite(ctx, groupID)
+	if err != nil {
+		return nil, err
+	}
+	name, description := group.I18n.Localize(language, group.Name, group.Description)
+	return &BillingGroupInfo{Name: name, Description: description}, nil
 }
 
 // GetAvailableGroups 获取用户有权限绑定的分组列表

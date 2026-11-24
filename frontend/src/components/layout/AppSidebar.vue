@@ -199,8 +199,6 @@ import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
-// Orange 特有：Token 排行榜展示开关（Orange 自有开关接口，独立 store，不改上游 featureFlags 注册表）
-import { ORANGE_FEATURE_KEYS, useOrangeFeaturesStore } from '@/stores/orangeFeatures'
 
 interface NavItem {
   path: string
@@ -487,11 +485,6 @@ const MCPIcon = {
   render: () => h(Icon, { name: 'mcp' })
 }
 
-// Orange 特有：费用计算器入口图标（复用 Icon 组件内置的 calculator 字形）
-const CalculatorIcon = {
-  render: () => h(Icon, { name: 'calculator' })
-}
-
 const BellIcon = {
   render: () =>
     h(
@@ -724,13 +717,6 @@ const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 const flagBatchImageAccess = () => canUseBatchImage.value
 
-// Orange 特有：Token 排行榜展示开关。开关不在上游 PublicSettings 里，
-// 因此不走 utils/featureFlags.ts 注册表，直接用 store getter（undefined/true 视为显示）。
-const orangeFeatures = useOrangeFeaturesStore()
-const flagOrangeTokenRanking = () => orangeFeatures.isEnabled(ORANGE_FEATURE_KEYS.tokenRankingEnabled)
-// 首次渲染即预取；失败静默（默认开启），不阻塞侧栏渲染。
-void orangeFeatures.ensureLoaded()
-
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
 //
@@ -745,7 +731,6 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
-    { path: '/token-ranking', label: t('orangeNav.tokenRanking'), icon: ChartIcon, hideInSimpleMode: true, featureFlag: flagOrangeTokenRanking },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
@@ -868,8 +853,6 @@ const adminNavItems = computed((): NavItem[] => {
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
     if (flagMCP()) filtered.push({ path: '/settings/mcp', label: t('mcp.title'), icon: MCPIcon })
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
-    // Orange 特有：管理员费用计算器（纯前端，仅管理员入口）
-    filtered.push({ path: '/admin/fee-calculator', label: t('rateCalculator.navLabel'), icon: CalculatorIcon })
     for (const cm of customMenuItemsForAdmin.value) {
       filtered.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
     }
@@ -877,8 +860,6 @@ const adminNavItems = computed((): NavItem[] => {
   }
 
   visible.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
-  // Orange 特有：管理员费用计算器（纯前端，仅管理员入口）
-  visible.push({ path: '/admin/fee-calculator', label: t('rateCalculator.navLabel'), icon: CalculatorIcon })
   for (const cm of customMenuItemsForAdmin.value) {
     visible.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
   }

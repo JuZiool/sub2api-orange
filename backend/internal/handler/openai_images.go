@@ -95,8 +95,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		zap.String("img_size", parsed.Size),
 	)
 
-	// Orange 特有：聚合/兜底密钥按链判定，链上任一分组允许生图即放行。
-	if !service.OrangeChainAllowsImageGeneration(apiKey) {
+	if !service.GroupAllowsImageGeneration(apiKey.Group) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}

@@ -867,8 +867,6 @@ export default {
         id: 'ID',
         platform: '平台',
         rateMultiplier: '费率倍数',
-        // Orange 特有：分组上游成本倍率列
-        upstreamRateMultiplier: '上游倍率',
         rpmOverride: 'RPM 覆盖',
         rpmOverrideHint: '该用户在此分组的 RPM 上限；留空 = 使用分组默认；0 = 不限制',
         rateDefault: '默认',
@@ -880,8 +878,6 @@ export default {
         accounts: '账号数',
         capacity: '容量',
         usage: '用量',
-        // Orange 特有：分组利润列
-        profit: '利润',
         status: '状态',
         actions: '操作',
         billingType: '计费类型',
@@ -893,11 +889,6 @@ export default {
       usageToday: '今日',
       usageYesterday: '昨日',
       usageTotal: '累计',
-      // Orange 特有：分组利润列文案（今日 / 昨日 / 累计 + 明细悬浮提示）
-      profitToday: '今日利润',
-      profitYesterday: '昨日利润',
-      profitTotal: '累计利润',
-      profitBreakdown: '实付收入 {income} · 上游成本 {cost}',
       accountsAvailable: '可用:',
       accountsRateLimited: '限流:',
       accountsTotal: '总量:',
@@ -915,10 +906,6 @@ export default {
         descriptionPlaceholder: '请输入描述（可选）',
         rateMultiplierLabel: '费率倍数',
         rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
-        // Orange 特有：上游成本倍率表单字段（仅影响利润统计，不影响用户计费）
-        upstreamRateMultiplier: '上游成本倍率',
-        upstreamRateMultiplierHint: '用于利润统计，不影响用户计费；0 表示免费上游，默认 1.0',
-        upstreamRateMultiplierInvalid: '上游成本倍率需为 0 ~ 1000 之间的数字，最多 4 位小数',
         rpmLimit: '每分钟请求数 (RPM)',
         rpmLimitPlaceholder: '0 表示不限制',
         rpmLimitHint: '每用户在本分组每分钟最大请求数，0 = 不限制；一旦设置即接管该用户的限流（覆盖用户级 rpm_limit）',
@@ -979,8 +966,6 @@ export default {
           '公开分组费率 0.8，您可以创建一个费率 0.7 的专属分组，手动分配给 VIP 用户，让他们享受更优惠的价格。'
       },
       rateMultiplierHint: '1.0 = 标准费率，0.5 = 半价，2.0 = 双倍',
-      // Orange 特有：上游成本倍率保存失败提示（分组本身已保存成功，不回滚）
-      upstreamRateSaveFailed: '分组已保存，但上游成本倍率保存失败，请稍后重试',
       platforms: {
         all: '全部平台',
         anthropic: 'Anthropic',

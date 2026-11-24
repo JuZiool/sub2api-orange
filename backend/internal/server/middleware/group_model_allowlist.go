@@ -71,17 +71,10 @@ func GroupModelAllowlist() gin.HandlerFunc {
 
 		blocked := ""
 		for _, candidate := range models {
-			if allowlist.Allows(candidate) {
-				continue
+			if !allowlist.Allows(candidate) {
+				blocked = candidate
+				break
 			}
-			// Orange 特有：聚合/兜底密钥按"链上任一分组允许即放行"判定，避免链首白名单
-			// 提前堵死只有后续分组支持的模型；真正执行请求的分组仍由自己的白名单裁决
-			// （调度器按模型预选分组，见 service/orange_api_key_group_model_policy.go）。
-			if service.OrangeChainAllowsModel(apiKey, candidate) {
-				continue
-			}
-			blocked = candidate
-			break
 		}
 		if blocked == "" {
 			c.Next()

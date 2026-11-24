@@ -567,8 +567,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// Codex 在所有请求中被动声明 image_gen namespace，宽泛检测会导致禁了生图的
 	// 分组中所有 Codex 请求被 403（#4447），并误占生图并发槽位。
 	imageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, body)
-	// Orange 特有：聚合/兜底密钥按链判定，链上任一分组允许生图即放行。
-	if imageIntent && !service.OrangeChainAllowsImageGeneration(apiKey) {
+	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 		return
 	}
@@ -665,20 +664,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	var passthroughFailoverState openAIPassthroughFailoverState
 
-	// Orange 特有：上游故障切组的请求级状态。orangeFailedGroupIDs 记录已尝试过的分组
-	// （同时充当「最多切(链长-1)次」的预算）；orangeResetFailover 在切组成功后把换号状态
-	// 清零，让新分组从零开始选号。普通 Key 恒不触发（无链时切组助手直接返回 false）。
-	orangeFailedGroupIDs := make(map[int64]struct{})
-	orangeResetFailover := func() {
-		switchCount = 0
-		firstOutputTimeoutSwitchCount = 0
-		profitVetoCount = 0
-		failedAccountIDs = make(map[int64]struct{})
-		sameAccountRetryCount = make(map[int64]int)
-		lastFailoverErr = nil
-		oauth429FailoverState = service.OpenAIOAuth429FailoverState{}
-	}
-
 	// 生图意图的 /v1/responses 请求必须调度到确实支持 Responses API 的账号，否则
 	// 会在 forward 阶段被静默降级为无法生图的 Chat Completions 直转（#4417）。
 	// 仅对 OpenAI 平台生效：Grok 生图走独立的 forwardGrokResponses 路径，不应被过滤。
@@ -754,15 +739,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				return
 			}
 			if lastFailoverErr != nil {
-				// Orange 特有：本组账号换完且最后一次错误属上游故障时，切到分组链上的下一组、
-				// 重置换号状态后继续选号（无链时保持原错误返回）。
-				if orangeUpstreamFaultAllowsGroupFailover(lastFailoverErr) {
-					if switchedKey, switched := orangeChainFailoverSwitch(c, apiKey, orangeFailedGroupIDs); switched {
-						apiKey = switchedKey
-						orangeResetFailover()
-						continue
-					}
-				}
 				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
 			} else {
 				h.handleFailoverExhaustedSimple(c, 502, streamStarted)
@@ -965,15 +941,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						return
 					}
 					if openAIFirstOutputFailoverExhausted(failoverErr, &firstOutputTimeoutSwitchCount) {
-						// Orange 特有：上游超时类故障且首个输出超时的换号预算耗尽时，切到分组链
-						// 上的下一组并重置状态（无链时保持原错误返回）。
-						if orangeUpstreamFaultAllowsGroupFailover(failoverErr) {
-							if switchedKey, switched := orangeChainFailoverSwitch(c, apiKey, orangeFailedGroupIDs); switched {
-								apiKey = switchedKey
-								orangeResetFailover()
-								continue
-							}
-						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -1002,15 +969,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
-						// Orange 特有：本组换号预算耗尽且最后一次错误属上游故障时，切到分组链
-						// 上的下一组并重置换号状态，继续重试（无链时保持原错误返回）。
-						if orangeUpstreamFaultAllowsGroupFailover(failoverErr) {
-							if switchedKey, switched := orangeChainFailoverSwitch(c, apiKey, orangeFailedGroupIDs); switched {
-								apiKey = switchedKey
-								orangeResetFailover()
-								continue
-							}
-						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -1370,19 +1328,6 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	effectiveMappedModel := preferredMappedModel
 
-	// Orange 特有：上游故障切组的请求级状态。orangeFailedGroupIDs 记录已尝试过的分组
-	// （同时充当「最多切(链长-1)次」的预算）；orangeResetFailover 在切组成功后把换号状态
-	// 清零，让新分组从零开始选号。普通 Key 恒不触发（无链时切组助手直接返回 false）。
-	orangeFailedGroupIDs := make(map[int64]struct{})
-	orangeResetFailover := func() {
-		switchCount = 0
-		profitVetoCount = 0
-		failedAccountIDs = make(map[int64]struct{})
-		sameAccountRetryCount = make(map[int64]int)
-		lastFailoverErr = nil
-		oauth429FailoverState = service.OpenAIOAuth429FailoverState{}
-	}
-
 	// 分组利润控制：Messages 文本入口同样请求级装门并固定 pricingAt。
 	msgPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
 	c.Request = c.Request.WithContext(msgPricingCtx)
@@ -1430,15 +1375,6 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				}
 			} else {
 				if lastFailoverErr != nil {
-					// Orange 特有：本组账号换完且最后一次错误属上游故障时，切到分组链上的
-					// 下一组、重置换号状态后继续选号（无链时保持原错误返回）。
-					if orangeUpstreamFaultAllowsGroupFailover(lastFailoverErr) {
-						if switchedKey, switched := orangeChainFailoverSwitch(c, apiKey, orangeFailedGroupIDs); switched {
-							apiKey = switchedKey
-							orangeResetFailover()
-							continue
-						}
-					}
 					h.handleAnthropicFailoverExhausted(c, lastFailoverErr, streamStarted)
 				} else {
 					h.anthropicStreamingAwareError(c, http.StatusBadGateway, "api_error", "Upstream request failed", streamStarted)
@@ -1610,15 +1546,6 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
-						// Orange 特有：本组换号预算耗尽且最后一次错误属上游故障时，切到分组链
-						// 上的下一组并重置换号状态，继续重试（无链时保持原错误返回）。
-						if orangeUpstreamFaultAllowsGroupFailover(failoverErr) {
-							if switchedKey, switched := orangeChainFailoverSwitch(c, apiKey, orangeFailedGroupIDs); switched {
-								apiKey = switchedKey
-								orangeResetFailover()
-								continue
-							}
-						}
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -2684,8 +2611,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// 与 HTTP 准入一致：帧内重复 model 键/大小写变体可能被上游按末值绑定，
 	// 全部候选值逐一校验，任一未命中即拒绝。
 	firstModelCandidates := requestmodel.FromBodyCandidates("", "application/json", firstMessage)
-	// Orange 特有：聚合/兜底密钥按分组链判定白名单（链上任一分组允许即放行）。
-	if blocked := orangeBlockedModelAllowlistCandidate(apiKey, firstModelCandidates); blocked != "" {
+	if blocked := blockedModelAllowlistCandidate(apiKey.Group, firstModelCandidates); blocked != "" {
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
 		middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked))
@@ -2753,8 +2679,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	}
 
 	imageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, firstMessage)
-	// Orange 特有：聚合/兜底密钥按链判定，链上任一分组允许生图即放行。
-	if imageIntent && !service.OrangeChainAllowsImageGeneration(apiKey) {
+	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage())
 		return
 	}
@@ -3175,8 +3100,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 防止候选集非空时掩盖被轮换掉的禁用模型。
 				frameModelCandidates := requestmodel.FromBodyCandidates("", "application/json", payload)
 				candidates := append([]string{model}, frameModelCandidates...)
-				// Orange 特有：聚合/兜底密钥按分组链判定白名单（链上任一分组允许即放行）。
-				if blocked := orangeBlockedModelAllowlistCandidate(apiKey, candidates); blocked != "" {
+				if blocked := blockedModelAllowlistCandidate(apiKey.Group, candidates); blocked != "" {
 					service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
 					middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked), nil)

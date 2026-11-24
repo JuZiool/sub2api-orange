@@ -230,8 +230,6 @@ func TestAPIContracts(t *testing.T) {
 					"key": "sk_custom_1234567890",
 					"name": "Key One",
 					"group_id": null,
-					"groups": [],
-					"group_chain_mode": "",
 					"status": "active",
 					"ip_whitelist": null,
 					"ip_blacklist": null,
@@ -283,8 +281,6 @@ func TestAPIContracts(t *testing.T) {
 							"key": "sk_custom_1234567890",
 							"name": "Key One",
 							"group_id": null,
-							"groups": [],
-							"group_chain_mode": "",
 							"status": "active",
 							"ip_whitelist": null,
 							"ip_blacklist": null,
@@ -1912,9 +1908,7 @@ func (s *stubAccountRepo) Update(ctx context.Context, account *service.Account) 
 func (s *stubAccountRepo) UpdateWithAccountBillingSettings(
 	ctx context.Context,
 	account *service.Account,
-	probeEnabled *bool,
-	rateSyncEnabled *bool,
-	rateMultiplier *float64,
+	settings service.AccountBillingSettingsUpdate,
 ) error {
 	return errors.New("not implemented")
 }

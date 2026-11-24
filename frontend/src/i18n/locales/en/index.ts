@@ -7,9 +7,6 @@ import channelMonitorV2 from './channelMonitorV2'
 import batchImage from './batchImage'
 import admin from './admin'
 import misc from './misc'
-// Orange 特有：Orange 自有命名空间（orangeNav / orangeTokenRanking / orangeSettings / rateCalculator）
-import orange from './orange'
-import orangeFeeCalculator from './orangeFeeCalculator'
 
 export default {
   adminAccessKeys,
@@ -21,6 +18,4 @@ export default {
   ...batchImage,
   admin,
   ...misc,
-  ...orange,
-  ...orangeFeeCalculator,
 }

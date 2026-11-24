@@ -310,8 +310,7 @@ func doUpstreamRequest(client *http.Client, req *http.Request, drainTimeouts ...
 		drainTimeout = drainTimeouts[0]
 	}
 	ctx, cancel := pkghttputil.NewUpstreamAttemptContext(req.Context(), drainTimeout)
-	attemptReq := req.WithContext(ctx)
-	resp, err := servertiming.Do(client, attemptReq)
+	resp, err := servertiming.Do(client, req.WithContext(ctx))
 	if err != nil {
 		cancel()
 		return resp, err

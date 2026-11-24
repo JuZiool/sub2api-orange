@@ -267,20 +267,6 @@
             >
           </template>
 
-          <!-- Orange 特有：上游成本倍率列（数据来自 Orange 利润接口，不走 groups 表） -->
-          <template #cell-upstream_rate_multiplier="{ row }">
-            <span
-              v-if="profitLoading"
-              class="text-sm text-gray-400 dark:text-gray-500"
-              >—</span
-            >
-            <span v-else class="text-sm text-gray-700 dark:text-gray-300">{{
-              formatUpstreamRate(
-                profitMap.get(row.id)?.upstream_rate_multiplier,
-              )
-            }}</span>
-          </template>
-
           <template #cell-is_exclusive="{ value }">
             <span :class="['badge', value ? 'badge-primary' : 'badge-gray']">
               {{
@@ -376,75 +362,6 @@
                 <span class="ml-1 font-medium text-gray-700 dark:text-gray-300"
                   >${{
                     formatCost(usageMap.get(row.id)?.total_cost ?? 0)
-                  }}</span
-                >
-              </div>
-            </div>
-          </template>
-
-          <!-- Orange 特有：利润列（收入 - 上游成本；数据来自 Orange 利润接口） -->
-          <template #cell-profit="{ row }">
-            <div v-if="profitLoading" class="text-xs text-gray-400">—</div>
-            <div v-else class="space-y-0.5 text-xs">
-              <div class="text-gray-500 dark:text-gray-400">
-                <span class="text-gray-400 dark:text-gray-500">{{
-                  t("admin.groups.profitToday")
-                }}</span>
-                <span
-                  class="ml-1 font-semibold"
-                  :class="getProfitClass(profitMap.get(row.id)?.today_profit ?? 0)"
-                  :title="
-                    t('admin.groups.profitBreakdown', {
-                      income: formatUsd(profitMap.get(row.id)?.today_revenue),
-                      cost: formatUsd(
-                        profitMap.get(row.id)?.today_upstream_cost,
-                      ),
-                    })
-                  "
-                  >{{
-                    formatProfit(profitMap.get(row.id)?.today_profit ?? 0)
-                  }}</span
-                >
-              </div>
-              <div class="text-gray-500 dark:text-gray-400">
-                <span class="text-gray-400 dark:text-gray-500">{{
-                  t("admin.groups.profitYesterday")
-                }}</span>
-                <span
-                  class="ml-1 font-semibold"
-                  :class="
-                    getProfitClass(profitMap.get(row.id)?.yesterday_profit ?? 0)
-                  "
-                  :title="
-                    t('admin.groups.profitBreakdown', {
-                      income: formatUsd(profitMap.get(row.id)?.yesterday_revenue),
-                      cost: formatUsd(
-                        profitMap.get(row.id)?.yesterday_upstream_cost,
-                      ),
-                    })
-                  "
-                  >{{
-                    formatProfit(profitMap.get(row.id)?.yesterday_profit ?? 0)
-                  }}</span
-                >
-              </div>
-              <div class="text-gray-500 dark:text-gray-400">
-                <span class="text-gray-400 dark:text-gray-500">{{
-                  t("admin.groups.profitTotal")
-                }}</span>
-                <span
-                  class="ml-1 font-semibold"
-                  :class="getProfitClass(profitMap.get(row.id)?.total_profit ?? 0)"
-                  :title="
-                    t('admin.groups.profitBreakdown', {
-                      income: formatUsd(profitMap.get(row.id)?.total_revenue),
-                      cost: formatUsd(
-                        profitMap.get(row.id)?.total_upstream_cost,
-                      ),
-                    })
-                  "
-                  >{{
-                    formatProfit(profitMap.get(row.id)?.total_profit ?? 0)
                   }}</span
                 >
               </div>
@@ -708,25 +625,6 @@
             data-tour="group-form-multiplier"
           />
           <p class="input-hint">{{ t("admin.groups.rateMultiplierHint") }}</p>
-        </div>
-        <!-- Orange 特有：上游成本倍率（仅用于利润统计，单独保存到 Orange 自建表） -->
-        <div>
-          <label class="input-label">{{
-            t("admin.groups.form.upstreamRateMultiplier")
-          }}</label>
-          <input
-            v-model.number="createForm.upstream_rate_multiplier"
-            type="number"
-            min="0"
-            max="1000"
-            step="0.0001"
-            required
-            class="input"
-            data-testid="create-upstream-rate-multiplier"
-          />
-          <p class="input-hint">
-            {{ t("admin.groups.form.upstreamRateMultiplierHint") }}
-          </p>
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
@@ -2392,26 +2290,6 @@
             class="input"
             data-tour="group-form-multiplier"
           />
-        </div>
-        <!-- Orange 特有：上游成本倍率（仅用于利润统计，单独保存到 Orange 自建表） -->
-        <div>
-          <label class="input-label">{{
-            t("admin.groups.form.upstreamRateMultiplier")
-          }}</label>
-          <input
-            v-model.number="editForm.upstream_rate_multiplier"
-            type="number"
-            min="0"
-            max="1000"
-            step="0.0001"
-            required
-            class="input"
-            data-testid="edit-upstream-rate-multiplier"
-            @input="editUpstreamRateDirty = true"
-          />
-          <p class="input-hint">
-            {{ t("admin.groups.form.upstreamRateMultiplierHint") }}
-          </p>
         </div>
         <div>
           <label class="input-label">{{ t("admin.groups.form.rpmLimit") }}</label>
@@ -4447,12 +4325,6 @@ import { useAppStore } from "@/stores/app";
 import { useAuthStore } from "@/stores/auth";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
-// Orange 特有：分组利润 / 上游成本倍率接口（Orange 自建表，走独立 API 文件）
-import {
-  getOrangeGroupProfits,
-  updateOrangeGroupUpstreamRate,
-  type OrangeGroupProfitItem,
-} from "@/api/orange";
 import type {
   AdminGroup,
   CodexModelsManifestConfig,
@@ -4667,18 +4539,10 @@ const allColumns = computed<Column[]>(() => {
     ...basic.slice(0, 3),
     { key: "billing_type", label: t("admin.groups.columns.billingType"), sortable: true },
     { key: "rate_multiplier", label: t("admin.groups.columns.rateMultiplier"), sortable: true },
-    // Orange 特有：上游成本倍率 / 利润列。数据来自 Orange 自建表，服务端排序只认 groups 表列，
-    // 故两列均不可排序（避免把不存在的列名传给官方排序接口）。
-    {
-      key: "upstream_rate_multiplier",
-      label: t("admin.groups.columns.upstreamRateMultiplier"),
-      sortable: false,
-    },
     { key: "is_exclusive", label: t("admin.groups.columns.type"), sortable: true },
     basic[3],
     { key: "capacity", label: t("admin.groups.columns.capacity"), sortable: false },
     { key: "usage", label: t("admin.groups.columns.usage"), sortable: false },
-    { key: "profit", label: t("admin.groups.columns.profit"), sortable: false },
     ...basic.slice(4),
   ];
 });
@@ -4763,12 +4627,6 @@ const isColumnVisible = (key: string) => !hiddenColumns.has(key);
 const hasVisibleUsageSummaryConsumer = computed(
   () => !authStore.isSimpleMode && (isColumnVisible("usage") || isColumnVisible("billing_type")),
 );
-// Orange 特有：上游成本倍率列与利润列共用 Orange 利润接口，任一可见才请求。
-const hasVisibleProfitConsumer = computed(
-  () =>
-    !authStore.isSimpleMode &&
-    (isColumnVisible("profit") || isColumnVisible("upstream_rate_multiplier")),
-);
 const hasVisibleCapacityColumn = computed(() => !authStore.isSimpleMode && isColumnVisible("capacity"));
 
 const toggleColumn = (key: string) => {
@@ -4785,10 +4643,6 @@ const toggleColumn = (key: string) => {
 
   if (wasHidden && (key === "usage" || key === "billing_type")) {
     loadUsageSummary();
-  }
-  // Orange 特有：显示上游倍率 / 利润列时补拉利润数据
-  if (wasHidden && (key === "profit" || key === "upstream_rate_multiplier")) {
-    loadGroupProfits();
   }
   if (wasHidden && key === "capacity") {
     loadCapacitySummary();
@@ -4995,9 +4849,6 @@ type GroupUsageSummary = {
 
 const usageMap = ref<Map<number, GroupUsageSummary>>(new Map());
 const usageLoading = ref(false);
-// Orange 特有：分组利润与上游成本倍率（数据来源为 Orange 自建表，不走 groups 表）
-const profitMap = ref<Map<number, OrangeGroupProfitItem>>(new Map());
-const profitLoading = ref(false);
 const capacityMap = ref<
   Map<
     number,
@@ -5153,8 +5004,6 @@ const createForm = reactive({
   i18n: {} as GroupI18n,
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
-  // Orange 特有：上游成本倍率（不进官方分组接口，创建成功后单独写入 Orange 自建表）
-  upstream_rate_multiplier: 1,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
   daily_limit_usd: null as number | null,
@@ -5522,8 +5371,6 @@ const editForm = reactive({
   i18n: {} as GroupI18n,
   platform: "anthropic" as GroupPlatform,
   rate_multiplier: 1.0,
-  // Orange 特有：上游成本倍率（不进官方分组接口，保存成功后单独写入 Orange 自建表）
-  upstream_rate_multiplier: 1,
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
@@ -5856,12 +5703,6 @@ const loadGroups = async () => {
     } else {
       usageLoading.value = false;
     }
-    // Orange 特有：列出分组后按可见列加载利润 / 上游成本倍率
-    if (hasVisibleProfitConsumer.value) {
-      loadGroupProfits();
-    } else {
-      profitLoading.value = false;
-    }
     if (hasVisibleCapacityColumn.value) {
       loadCapacitySummary();
     }
@@ -5890,27 +5731,6 @@ const formatCost = (cost: number): string => {
 
 const formatUsd = (cost: number | null | undefined): string =>
   `$${formatCost(cost ?? 0)}`;
-
-// Orange 特有：利润展示（正数绿色 / 负数红色 / 0 灰色），金额格式沿用 formatCost 口径。
-const formatProfit = (profit: number): string =>
-  `${profit < 0 ? "-" : ""}$${formatCost(Math.abs(profit))}`;
-
-// Orange 特有：利润配色
-const getProfitClass = (profit: number): string =>
-  profit > 0
-    ? "text-emerald-600 dark:text-emerald-400"
-    : profit < 0
-      ? "text-red-600 dark:text-red-400"
-      : "text-gray-700 dark:text-gray-300";
-
-// Orange 特有：上游成本倍率展示，默认 1.0；最多 4 位小数并去掉末尾多余的 0。
-const formatUpstreamRate = (rate: number | null | undefined): string => {
-  const numeric = Number(rate);
-  const value = Number.isFinite(numeric) ? numeric : 1;
-  const fixed = value.toFixed(4).replace(/0+$/, "");
-  const trimmed = fixed.endsWith(".") ? `${fixed}0` : fixed;
-  return `${trimmed}x`;
-};
 
 const getQuotaUsageClass = (
   used: number,
@@ -5950,86 +5770,6 @@ const loadUsageSummary = async () => {
     console.error("Error loading group usage summary:", error);
   } finally {
     usageLoading.value = false;
-  }
-};
-
-// Orange 特有：加载当前页分组的利润与上游成本倍率（未显示相关列时不发请求）
-const loadGroupProfits = async () => {
-  if (!hasVisibleProfitConsumer.value) {
-    profitLoading.value = false;
-    return;
-  }
-  const ids = groups.value.map((group) => group.id);
-  if (ids.length === 0) {
-    profitMap.value = new Map();
-    profitLoading.value = false;
-    return;
-  }
-  profitLoading.value = true;
-  try {
-    const data = await getOrangeGroupProfits({ ids });
-    const map = new Map<number, OrangeGroupProfitItem>();
-    for (const item of data.items) {
-      map.set(item.group_id, item);
-    }
-    profitMap.value = map;
-  } catch (error) {
-    // 接口未就绪或失败时保留上一份数据，界面按 0 / 默认倍率展示，不打断分组列表
-    console.error("Error loading group profit summary:", error);
-  } finally {
-    profitLoading.value = false;
-  }
-};
-
-// Orange 特有：单独查询某个分组的利润数据（编辑弹窗回填上游成本倍率时兜底使用）
-const loadGroupProfitForGroup = async (
-  groupId: number,
-): Promise<OrangeGroupProfitItem | null> => {
-  try {
-    const data = await getOrangeGroupProfits({ ids: [groupId] });
-    const item = data.items.find((entry) => entry.group_id === groupId) ?? null;
-    if (item) {
-      const next = new Map(profitMap.value);
-      next.set(groupId, item);
-      profitMap.value = next;
-    }
-    return item;
-  } catch (error) {
-    console.error("Error loading group profit detail:", error);
-    return null;
-  }
-};
-
-// Orange 特有：保存上游成本倍率（独立于官方分组接口；失败只提示，不回滚分组本身）
-const persistUpstreamRate = async (
-  groupId: number | null | undefined,
-  upstreamRateMultiplier: number,
-) => {
-  if (!groupId || authStore.isSimpleMode) return;
-  try {
-    await updateOrangeGroupUpstreamRate(groupId, upstreamRateMultiplier);
-  } catch (error: unknown) {
-    appStore.showError(
-      extractApiErrorMessage(error, t("admin.groups.upstreamRateSaveFailed")),
-    );
-    console.error("Error saving group upstream rate:", error);
-  }
-};
-
-// Orange 特有：编辑弹窗打开时若利润数据尚未就绪，异步补拉上游成本倍率。
-// 不阻塞弹窗打开，也不阻塞保存：补拉未完成且用户未改过该字段时，保存会跳过倍率写入，
-// 避免用默认 1.0 覆盖已配置的倍率。
-// 当前编辑表单里的上游倍率是否为“已知值”（来自利润缓存或补拉结果）
-const editUpstreamRateKnown = ref(false);
-// 用户是否手动改过上游倍率输入框
-const editUpstreamRateDirty = ref(false);
-const fillUpstreamRateForEdit = async (groupId: number): Promise<void> => {
-  const item = await loadGroupProfitForGroup(groupId);
-  if (!item) return;
-  editUpstreamRateKnown.value = true;
-  // 用户已手动改过则不覆盖输入框，避免抢掉用户的输入
-  if (!editUpstreamRateDirty.value && editingGroup.value?.id === groupId) {
-    editForm.upstream_rate_multiplier = item.upstream_rate_multiplier;
   }
 };
 
@@ -6109,8 +5849,6 @@ const closeCreateModal = () => {
   createForm.i18n = {};
   createForm.platform = "anthropic";
   createForm.rate_multiplier = 1.0;
-  // Orange 特有：重置上游成本倍率
-  createForm.upstream_rate_multiplier = 1;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
   createForm.daily_limit_usd = null;
@@ -6221,19 +5959,6 @@ const validateGroupReasoningMultipliers = (pricing: PricingFormEntry[]): boolean
   return true;
 };
 
-// Orange 特有：上游成本倍率前端校验，与后端契约一致（0 ~ 1000，最多 4 位小数）
-const isValidUpstreamRateMultiplier = (value: unknown): boolean => {
-  const rate = Number(value);
-  if (!Number.isFinite(rate) || rate < 0 || rate > 1000) return false;
-  return Math.abs(rate * 10000 - Math.round(rate * 10000)) < 1e-6;
-};
-
-const validateUpstreamRateMultiplier = (value: unknown): boolean => {
-  if (isValidUpstreamRateMultiplier(value)) return true;
-  appStore.showError(t("admin.groups.form.upstreamRateMultiplierInvalid"));
-  return false;
-};
-
 const handleCreateGroup = async () => {
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
@@ -6247,10 +5972,6 @@ const handleCreateGroup = async () => {
     return;
   }
   if (!validateProfitControlForm(createForm)) {
-    return;
-  }
-  // Orange 特有：上游成本倍率校验（在创建分组之前拦住，避免建完后才发现倍率非法）
-  if (!validateUpstreamRateMultiplier(createForm.upstream_rate_multiplier)) {
     return;
   }
   if (!validateGroupReasoningMultipliers(createForm.model_pricing)) return;
@@ -6336,8 +6057,6 @@ const handleCreateGroup = async () => {
     };
     delete (requestData as Record<string, unknown>).profit_min_margin_percent;
     delete (requestData as Record<string, unknown>).profit_safety_buffer_percent;
-    // Orange 特有：上游成本倍率走独立接口，官方分组接口不发送该字段（官方请求体保持不变）
-    delete (requestData as Record<string, unknown>).upstream_rate_multiplier;
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
     const emptyToNull = (v: any) => (v === "" ? null : v);
     requestData.daily_limit_usd = emptyToNull(requestData.daily_limit_usd);
@@ -6393,13 +6112,9 @@ const handleCreateGroup = async () => {
           platform: createForm.platform,
         }
       : requestData;
-    const createdGroup = await adminAPI.groups.create(payload);
-    // Orange 特有：关闭弹窗会重置表单，先暂存待保存的上游成本倍率
-    const upstreamRateMultiplier = createForm.upstream_rate_multiplier;
+    await adminAPI.groups.create(payload);
     appStore.showSuccess(t("admin.groups.groupCreated"));
     closeCreateModal();
-    // Orange 特有：上游成本倍率写入 Orange 自建表（失败只提示，不回滚已创建的分组）
-    await persistUpstreamRate(createdGroup?.id, upstreamRateMultiplier);
     loadGroups();
     // Only advance tour if active, on submit step, and creation succeeded
     if (onboardingStore.isCurrentStep('[data-tour="group-form-submit"]')) {
@@ -6428,15 +6143,6 @@ const handleEdit = async (group: AdminGroup) => {
   );
   editForm.platform = group.platform;
   editForm.rate_multiplier = group.rate_multiplier;
-  // Orange 特有：回填上游成本倍率（优先复用已加载的利润 Map；缺失时异步补拉，不阻塞弹窗打开）
-  const cachedUpstreamRate =
-    profitMap.value.get(group.id)?.upstream_rate_multiplier;
-  editForm.upstream_rate_multiplier = cachedUpstreamRate ?? 1;
-  editUpstreamRateKnown.value = cachedUpstreamRate !== undefined;
-  editUpstreamRateDirty.value = false;
-  if (cachedUpstreamRate === undefined && !authStore.isSimpleMode) {
-    void fillUpstreamRateForEdit(group.id);
-  }
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
@@ -6574,10 +6280,6 @@ const closeEditModal = () => {
   editForm.profit_control_enabled = false;
   editForm.profit_min_margin_percent = 0;
   editForm.profit_safety_buffer_percent = 0;
-  // Orange 特有：重置上游成本倍率回填值
-  editForm.upstream_rate_multiplier = 1;
-  editUpstreamRateKnown.value = false;
-  editUpstreamRateDirty.value = false;
   editForm.video_rate_independent = false;
   editForm.video_rate_multiplier = 1;
   editForm.video_price_480p = null;
@@ -6618,10 +6320,6 @@ const handleUpdateGroup = async () => {
   if (!validateProfitControlForm(editForm)) {
     return;
   }
-  // Orange 特有：上游成本倍率校验（在更新分组之前拦住，避免分组已改完才发现倍率非法）
-  if (!validateUpstreamRateMultiplier(editForm.upstream_rate_multiplier)) {
-    return;
-  }
   if (!validateGroupReasoningMultipliers(editForm.model_pricing)) return;
   // 模型白名单：开启且没有任何条目时阻止提交，与后端 400 对齐。
   if (
@@ -6644,10 +6342,6 @@ const handleUpdateGroup = async () => {
 
   submitting.value = true;
   try {
-    // Orange 特有：上游倍率是否为“已知值 + 是否被用户修改过”决定本次是否写倍率表：
-    // 补拉未完成且用户没改过时跳过写入，既不阻塞保存，也不会用默认 1.0 覆盖已配置值。
-    const saveUpstreamRate =
-      editUpstreamRateKnown.value || editUpstreamRateDirty.value;
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
     const payload = {
       ...editForm,
@@ -6726,8 +6420,6 @@ const handleUpdateGroup = async () => {
     };
     delete (payload as Record<string, unknown>).profit_min_margin_percent;
     delete (payload as Record<string, unknown>).profit_safety_buffer_percent;
-    // Orange 特有：上游成本倍率走独立接口，官方分组接口不发送该字段（官方请求体保持不变）
-    delete (payload as Record<string, unknown>).upstream_rate_multiplier;
     // v-model.number 清空输入框时产生 ""，转为 null 让后端设为无限制
     const emptyToNull = (v: any) => (v === "" ? null : v);
     payload.daily_limit_usd = emptyToNull(payload.daily_limit_usd);
@@ -6784,16 +6476,9 @@ const handleUpdateGroup = async () => {
           i18n: editForm.i18n,
         }
       : payload;
-    const editedGroupId = editingGroup.value.id;
-    // Orange 特有：关闭弹窗会重置表单，先暂存待保存的上游成本倍率
-    const upstreamRateMultiplier = editForm.upstream_rate_multiplier;
-    await adminAPI.groups.update(editedGroupId, requestData);
+    await adminAPI.groups.update(editingGroup.value.id, requestData);
     appStore.showSuccess(t("admin.groups.groupUpdated"));
     closeEditModal();
-    // Orange 特有：上游成本倍率写入 Orange 自建表（失败只提示，不回滚分组本身）
-    if (saveUpstreamRate) {
-      await persistUpstreamRate(editedGroupId, upstreamRateMultiplier);
-    }
     loadGroups();
   } catch (error: any) {
     appStore.showError(

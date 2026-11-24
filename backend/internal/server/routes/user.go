@@ -87,9 +87,6 @@ func RegisterUserRoutes(
 			keys.POST("", h.APIKey.Create)
 			keys.PUT("/:id", h.APIKey.Update)
 			keys.DELETE("/:id", h.APIKey.Delete)
-			// Orange 特有：密钥级分组兜底 / 聚合分组优先级链
-			keys.GET("/:id/group-chain", h.APIKey.GetGroupChain)
-			keys.PUT("/:id/group-chain", h.APIKey.SetGroupChain)
 		}
 
 		// 用户可用分组（非管理员接口）

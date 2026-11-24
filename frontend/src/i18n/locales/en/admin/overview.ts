@@ -874,8 +874,6 @@ export default {
         id: 'ID',
         platform: 'Platform',
         rateMultiplier: 'Rate Multiplier',
-        // Orange 特有：分组上游成本倍率列
-        upstreamRateMultiplier: 'Upstream Multiplier',
         rpmOverride: 'RPM Override',
         rpmOverrideHint: 'Per-user RPM cap in this group; empty = group default; 0 = unlimited',
         rateDefault: 'default',
@@ -887,8 +885,6 @@ export default {
         accounts: 'Accounts',
         capacity: 'Capacity',
         usage: 'Usage',
-        // Orange 特有：分组利润列
-        profit: 'Profit',
         status: 'Status',
         actions: 'Actions',
         billingType: 'Billing Type',
@@ -900,11 +896,6 @@ export default {
       usageToday: 'Today',
       usageYesterday: 'Yesterday',
       usageTotal: 'Total',
-      // Orange 特有：分组利润列文案（今日 / 昨日 / 累计 + 明细悬浮提示）
-      profitToday: 'Profit today',
-      profitYesterday: 'Profit yesterday',
-      profitTotal: 'Profit total',
-      profitBreakdown: 'Billed income {income} · Upstream cost {cost}',
       accountsAvailable: 'Avail:',
       accountsRateLimited: 'Limited:',
       accountsTotal: 'Total:',
@@ -933,10 +924,6 @@ export default {
         descriptionPlaceholder: 'Enter description (optional)',
         rateMultiplierLabel: 'Rate Multiplier',
         rateMultiplierHint: '1.0 = standard rate, 0.5 = half price, 2.0 = double',
-        // Orange 特有：上游成本倍率表单字段（仅影响利润统计，不影响用户计费）
-        upstreamRateMultiplier: 'Upstream cost multiplier',
-        upstreamRateMultiplierHint: 'Used for profit reporting only; does not affect user billing. 0 means free upstream, defaults to 1.0.',
-        upstreamRateMultiplierInvalid: 'Upstream cost multiplier must be a number between 0 and 1000 with at most 4 decimal places',
         rpmLimit: 'Requests Per Minute (RPM)',
         rpmLimitPlaceholder: '0 = unlimited',
         rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).',
@@ -1003,8 +990,6 @@ export default {
       groupUpdatedSuccess: 'Group updated successfully',
       groupDeletedSuccess: 'Group deleted successfully',
       rateMultiplierHint: 'Cost multiplier for this group (e.g., 1.5 = 150% of base cost)',
-      // Orange 特有：上游成本倍率保存失败提示（分组本身已保存成功，不回滚）
-      upstreamRateSaveFailed: 'Group saved, but the upstream cost multiplier could not be saved. Please retry later.',
       exclusiveHint: 'Exclusive group, manually assign to specific users',
       exclusiveTooltip: {
         title: 'What is an exclusive group?',
