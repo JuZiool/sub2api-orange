@@ -33,6 +33,14 @@
     <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">
       {{ t('keys.aggregateGroupChainHint') }}
     </p>
+    <!-- 不可用链成员说明：保存时自动跳过，避免下拉框空白 / 保存报 ORANGE_GROUP_CHAIN_INVALID -->
+    <p
+      v-if="hasUnavailableChainGroup"
+      data-test="chain-unavailable-hint"
+      class="text-xs leading-5 text-red-600 dark:text-red-400"
+    >
+      {{ t('orangeKeyGroupChain.unavailableChainHint') }}
+    </p>
     <div
       v-for="(groupId, index) in form.aggregateGroupIds"
       :key="`chain-${index}`"
@@ -83,6 +91,14 @@
           />
         </template>
       </Select>
+      <!-- 不可用标记：该分组已不在「当前用户可绑定分组」列表中（例如被改为专属） -->
+      <span
+        v-if="isGroupUnavailable(groupId)"
+        data-test="chain-group-unavailable"
+        class="shrink-0 rounded bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-600 dark:bg-red-900/25 dark:text-red-300"
+      >
+        {{ t('orangeKeyGroupChain.unavailableBadge') }}
+      </span>
       <button
         type="button"
         class="rounded p-1 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-dark-700"
@@ -181,6 +197,17 @@
       <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
         {{ t('keys.fallbackGroupHint') }}
       </p>
+      <!-- 兜底分组不可用：当前值已不在可绑定列表内，保存时自动清空（避免保存报错） -->
+      <div
+        v-if="fallbackGroupUnavailable"
+        data-test="fallback-group-unavailable"
+        class="mt-1.5 flex flex-wrap items-center gap-2 text-xs leading-5 text-red-600 dark:text-red-400"
+      >
+        <span class="rounded bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-600 dark:bg-red-900/25 dark:text-red-300">
+          {{ t('orangeKeyGroupChain.unavailableBadge') }}
+        </span>
+        <span>{{ t('orangeKeyGroupChain.fallbackUnavailableHint') }}</span>
+      </div>
     </div>
   </template>
 </template>
@@ -196,6 +223,13 @@
  * 分组链表单状态放在 useKeyGroupChain 的 `keyGroupChainForm` 中，提交前由
  * prepareKeyGroupChainSubmit 统一校验；未开启聚合、未设置兜底分组时控件呈现为
  * “关闭 + 未设置”，对上游表单数据的唯一写入是把链首同步回 formData.group_id。
+ *
+ * 不可用链成员（分组被改为专属后用户无权绑定）：可用性由 useKeyGroupChain 统一维护——优先用
+ * 链详情接口返回的 `available`（与后端请求时的链成员过滤同源），接口未给出时才回退到「不在
+ * formGroupOptions（当前用户可绑定分组）里即不可用」。本组件只负责把不可用成员标注成红色
+ * 「不可用」标签，并把 group_id 同步到 keyGroupChainForm.unavailableGroupIds，由
+ * prepareKeyGroupChainSubmit 在保存时自动跳过 / 清空，避免下拉框空白与保存报
+ * ORANGE_GROUP_CHAIN_INVALID。
  */
 import { computed, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -208,6 +242,7 @@ import {
   hydrateKeyGroupChain,
   initKeyGroupChainFormFromKey,
   keyGroupChainForm as form,
+  refreshKeyGroupChainAvailability,
   resetKeyGroupChainForm
 } from './useKeyGroupChain'
 import type { FallbackGroupOption, GroupOptionView } from './types'
@@ -229,6 +264,23 @@ const emit = defineEmits<{ (e: 'update:primary-group', value: number | null): vo
 const setPrimaryGroup = (value: number | null) => emit('update:primary-group', value)
 
 const { t } = useI18n()
+
+/** Orange 特有：不可用链成员集合（由表单状态统一维护：后端权威标记优先，其次为不在可绑定分组列表）。 */
+const unavailableGroupIdSet = computed(() => new Set(form.unavailableGroupIds))
+
+/** Orange 特有：该分组当前不可用（分组被改为专属后用户已无绑定权限）。 */
+const isGroupUnavailable = (groupId: number | null): boolean =>
+  groupId !== null && unavailableGroupIdSet.value.has(groupId)
+
+/** 聚合链上存在不可用成员：顶部显示「保存时会自动跳过」说明。 */
+const hasUnavailableChainGroup = computed(
+  () => form.aggregateMode && form.aggregateGroupIds.some((id) => isGroupUnavailable(id))
+)
+
+/** 兜底分组当前值不可用：保存时会被自动清空。 */
+const fallbackGroupUnavailable = computed(
+  () => !form.aggregateMode && isGroupUnavailable(form.fallbackGroupId)
+)
 
 const fallbackGroupOptions = computed<FallbackGroupOption[]>(() => {
   const primary = props.groupOptions.find((option) => option.value === props.formData.group_id)
@@ -295,6 +347,18 @@ const selectFallbackGroup = (value: string | number | boolean | null) => {
   form.fallbackGroupId = typeof value === 'number' ? value : null
 }
 
+// 可用分组列表或链结构变化时刷新不可用标记：提交前校验读取的就是这份状态。
+watch(
+  () => [
+    props.formGroupOptions,
+    form.aggregateMode,
+    form.aggregateGroupIds.slice(),
+    form.fallbackGroupId
+  ],
+  () => refreshKeyGroupChainAvailability(props.formGroupOptions),
+  { immediate: true }
+)
+
 watch(
   () => [props.showEdit, props.selectedKey?.id] as const,
   () => {
@@ -306,7 +370,8 @@ watch(
         () => props.showEdit && props.selectedKey?.id === key.id,
         (groupId) => {
           setPrimaryGroup(groupId)
-        }
+        },
+        props.formGroupOptions
       )
     } else {
       resetKeyGroupChainForm()

@@ -55,5 +55,14 @@ export default {
       label: '启用 Token 排行榜',
       enabledHint: '关闭后用户侧导航入口消失、直接访问会被拦截，排行接口返回 403。'
     }
+  },
+  orangeKeyGroupChain: {
+    unavailableBadge: '不可用（无权限）',
+    unavailableShort: '不可用',
+    unavailableChainHint: '标记为不可用的分组已无权使用，保存时会自动跳过这些分组。',
+    fallbackUnavailableHint: '当前兜底分组已不可用，保存后将自动清空兜底分组。',
+    primaryUnavailable: '主分组已不可用，请先更换主分组。',
+    fallbackCleared: '兜底分组已不可用，保存后将清空兜底分组。',
+    aggregateChainCleared: '可用分组不足两个，保存后将清空分组链。'
   }
 }

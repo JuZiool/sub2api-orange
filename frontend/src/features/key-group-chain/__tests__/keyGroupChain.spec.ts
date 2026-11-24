@@ -4,23 +4,27 @@ import { nextTick, reactive } from 'vue'
 
 const {
   put,
+  get,
   updateKey,
   showError,
-  showSuccess
+  showSuccess,
+  showWarning
 } = vi.hoisted(() => ({
   put: vi.fn(),
+  get: vi.fn(),
   updateKey: vi.fn(),
   showError: vi.fn(),
-  showSuccess: vi.fn()
+  showSuccess: vi.fn(),
+  showWarning: vi.fn()
 }))
 
 vi.mock('@/api', () => ({
-  apiClient: { get: vi.fn(), put },
+  apiClient: { get, put },
   keysAPI: { update: updateKey, create: vi.fn(), list: vi.fn() }
 }))
 
 vi.mock('@/stores/app', () => ({
-  useAppStore: () => ({ showError, showSuccess })
+  useAppStore: () => ({ showError, showSuccess, showWarning })
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -36,6 +40,7 @@ import KeyGroupChainRowCell from '../KeyGroupChainRowCell.vue'
 import KeyGroupChainFormFields from '../KeyGroupChainFormFields.vue'
 import {
   keyGroupChainForm,
+  hydrateKeyGroupChain,
   prepareKeyGroupChainSubmit,
   resetKeyGroupChainForm,
   handleKeyGroupChainGroupChange
@@ -265,6 +270,232 @@ describe('submit preparation', () => {
     expect(put).toHaveBeenCalledWith('/keys/1/group-chain', { group_ids: [], mode: 'fallback' })
     expect(showSuccess).toHaveBeenCalledWith('keys.groupChangedFallbackClearedSuccess')
     expect(refresh).toHaveBeenCalled()
+  })
+})
+
+describe('unavailable chain members', () => {
+  beforeEach(() => {
+    resetKeyGroupChainForm()
+    vi.clearAllMocks()
+  })
+
+  it('records unavailable members while hydrating the chain', async () => {
+    get.mockResolvedValue({
+      data: {
+        api_key_id: 1,
+        mode: 'aggregate',
+        primary_group_id: 1,
+        members: [
+          { group_id: 1, priority: 1 },
+          { group_id: 99, priority: 2 },
+          { group_id: 2, priority: 3 }
+        ]
+      }
+    })
+    const setPrimary = vi.fn()
+    await hydrateKeyGroupChain(row(), () => true, setPrimary, groupOptions)
+    expect(keyGroupChainForm.aggregateMode).toBe(true)
+    expect(keyGroupChainForm.aggregateGroupIds).toEqual([1, 99, 2])
+    expect(keyGroupChainForm.unavailableGroupIds).toEqual([99])
+    expect(setPrimary).toHaveBeenCalledWith(1)
+  })
+
+  it('marks unavailable aggregate members in the editor and the row cell', async () => {
+    get.mockResolvedValue({
+      data: {
+        api_key_id: 1,
+        mode: 'aggregate',
+        primary_group_id: 1,
+        members: [
+          { group_id: 1, priority: 1 },
+          { group_id: 99, priority: 2 }
+        ]
+      }
+    })
+    const fieldWrapper = mount(KeyGroupChainFormFields, {
+      props: {
+        formData: reactive({ group_id: 1 as number | null }),
+        groupOptions,
+        formGroupOptions: groupOptions,
+        showEdit: true,
+        selectedKey: row({ group_chain_mode: 'aggregate' }),
+        createProvider: 'anthropic'
+      },
+      slots: { default: '<div data-test="primary-field">primary field</div>' },
+      global: {
+        stubs: {
+          ...stubs,
+          Select: { props: ['modelValue', 'options'], template: '<select><slot /></select>' }
+        }
+      }
+    })
+    await flushPromises()
+    expect(fieldWrapper.findAll('[data-test="chain-group-unavailable"]')).toHaveLength(1)
+    expect(fieldWrapper.get('[data-test="chain-unavailable-hint"]').text()).toBe(
+      'orangeKeyGroupChain.unavailableChainHint'
+    )
+    fieldWrapper.unmount()
+
+    const cellWrapper = mount(KeyGroupChainRowCell, {
+      props: {
+        row: row({
+          group_chain_mode: 'aggregate',
+          groups: [
+            { group_id: 1, priority: 1, group: { id: 1, name: 'A', platform: 'anthropic' } },
+            { group_id: 99, priority: 2, group: { id: 99, name: 'Gone', platform: 'anthropic' } }
+          ]
+        }),
+        groupOptions,
+        userGroupRates: {}
+      },
+      global: { stubs }
+    })
+    expect(cellWrapper.findAll('[data-test="chain-member-unavailable"]')).toHaveLength(1)
+    cellWrapper.unmount()
+  })
+
+  it('blocks submit when the chain head becomes unavailable', () => {
+    keyGroupChainForm.isEdit = true
+    keyGroupChainForm.editKeyId = 1
+    keyGroupChainForm.aggregateMode = true
+    keyGroupChainForm.aggregateGroupIds = [99, 1]
+    keyGroupChainForm.unavailableGroupIds = [99]
+    const formData = { group_id: 99 as number | null }
+    expect(prepareKeyGroupChainSubmit(formData, groups, (key) => key)).toBe(false)
+    expect(showError).toHaveBeenCalledWith('orangeKeyGroupChain.primaryUnavailable')
+    expect(put).not.toHaveBeenCalled()
+  })
+
+  it('skips unavailable non-head members and keeps the rest of the chain', async () => {
+    keyGroupChainForm.isEdit = true
+    keyGroupChainForm.editKeyId = 1
+    keyGroupChainForm.aggregateMode = true
+    keyGroupChainForm.aggregateGroupIds = [1, 99, 2]
+    keyGroupChainForm.unavailableGroupIds = [99]
+    const formData = { group_id: 1 as number | null }
+    expect(prepareKeyGroupChainSubmit(formData, groups, (key) => key)).toBe(true)
+    expect(formData.group_id).toBe(1)
+    updateKey.mockResolvedValue({ id: 1 })
+    put.mockResolvedValue({ data: {} })
+    await keysAPI.update(1, { group_id: 1 })
+    expect(put).toHaveBeenCalledWith('/keys/1/group-chain', {
+      group_ids: [1, 2],
+      mode: 'aggregate'
+    })
+    expect(showWarning).not.toHaveBeenCalled()
+  })
+
+  it('clears the chain when fewer than two available groups remain', async () => {
+    keyGroupChainForm.isEdit = true
+    keyGroupChainForm.editKeyId = 1
+    keyGroupChainForm.aggregateMode = true
+    keyGroupChainForm.aggregateGroupIds = [1, 99]
+    keyGroupChainForm.unavailableGroupIds = [99]
+    const formData = { group_id: 1 as number | null }
+    expect(prepareKeyGroupChainSubmit(formData, groups, (key) => key)).toBe(true)
+    // 主分组保持链首，链退化为空（模式仍记录为 aggregate）
+    expect(formData.group_id).toBe(1)
+    expect(showWarning).toHaveBeenCalledWith('orangeKeyGroupChain.aggregateChainCleared')
+    updateKey.mockResolvedValue({ id: 1 })
+    put.mockResolvedValue({ data: {} })
+    await keysAPI.update(1, { group_id: 1 })
+    expect(put).toHaveBeenCalledWith('/keys/1/group-chain', {
+      group_ids: [],
+      mode: 'aggregate'
+    })
+  })
+
+  it('clears an unavailable fallback group before validating', async () => {
+    keyGroupChainForm.isEdit = true
+    keyGroupChainForm.editKeyId = 1
+    keyGroupChainForm.fallbackGroupId = 99
+    keyGroupChainForm.unavailableGroupIds = [99]
+    const formData = { group_id: 1 as number | null }
+    expect(prepareKeyGroupChainSubmit(formData, groups, (key) => key)).toBe(true)
+    expect(keyGroupChainForm.fallbackGroupId).toBeNull()
+    expect(showWarning).toHaveBeenCalledWith('orangeKeyGroupChain.fallbackCleared')
+    updateKey.mockResolvedValue({ id: 1 })
+    put.mockResolvedValue({ data: {} })
+    await keysAPI.update(1, { group_id: 1 })
+    expect(put).toHaveBeenCalledWith('/keys/1/group-chain', { group_ids: [], mode: 'fallback' })
+  })
+
+  it('keeps the existing behaviour when nothing is unavailable', async () => {
+    keyGroupChainForm.isEdit = true
+    keyGroupChainForm.editKeyId = 1
+    keyGroupChainForm.fallbackGroupId = 2
+    keyGroupChainForm.unavailableGroupIds = []
+    const formData = { group_id: 1 as number | null }
+    expect(prepareKeyGroupChainSubmit(formData, groups, (key) => key)).toBe(true)
+    expect(showWarning).not.toHaveBeenCalled()
+    expect(showError).not.toHaveBeenCalled()
+    updateKey.mockResolvedValue({ id: 1 })
+    put.mockResolvedValue({ data: {} })
+    await keysAPI.update(1, { group_id: 1 })
+    expect(put).toHaveBeenCalledWith('/keys/1/group-chain', {
+      group_ids: [1, 2],
+      mode: 'fallback'
+    })
+  })
+
+  it('still rejects duplicate aggregate groups when nothing is unavailable', () => {
+    keyGroupChainForm.aggregateMode = true
+    keyGroupChainForm.aggregateGroupIds = [1, 1]
+    keyGroupChainForm.unavailableGroupIds = []
+    expect(prepareKeyGroupChainSubmit({ group_id: 1 }, groups, (key) => key)).toBe(false)
+    expect(showError).toHaveBeenCalledWith('keys.aggregateGroupDuplicate')
+    expect(showWarning).not.toHaveBeenCalled()
+  })
+
+  it('treats the backend available flag as authoritative over the option list', async () => {
+    get.mockResolvedValue({
+      data: {
+        api_key_id: 1,
+        mode: 'aggregate',
+        primary_group_id: 1,
+        members: [
+          { group_id: 1, priority: 1, available: true },
+          // 分组仍在可绑定列表里，但后端判定"用户已无权限"（同源判定）→ 以 false 为准
+          { group_id: 2, priority: 2, available: false, unavailable_reason: 'not_entitled' }
+        ]
+      }
+    })
+    await hydrateKeyGroupChain(row(), () => true, vi.fn(), groupOptions)
+    expect(keyGroupChainForm.backendAvailability).toEqual({ 1: true, 2: false })
+    expect(keyGroupChainForm.unavailableGroupIds).toEqual([2])
+  })
+
+  it('does not drop members the backend reports as available even if missing from options', async () => {
+    get.mockResolvedValue({
+      data: {
+        api_key_id: 1,
+        mode: 'aggregate',
+        primary_group_id: 1,
+        members: [
+          { group_id: 1, priority: 1, available: true },
+          // 订阅型等场景：选项列表里没有，但后端说可用 → 不能误剔除
+          { group_id: 88, priority: 2, available: true }
+        ]
+      }
+    })
+    await hydrateKeyGroupChain(row(), () => true, vi.fn(), groupOptions)
+    expect(keyGroupChainForm.unavailableGroupIds).toEqual([])
+  })
+
+  it('marks nothing when the option list is empty and the backend gives no flags', async () => {
+    get.mockResolvedValue({
+      data: {
+        api_key_id: 1,
+        mode: 'aggregate',
+        primary_group_id: 1,
+        members: [
+          { group_id: 1, priority: 1 },
+          { group_id: 2, priority: 2 }
+        ]
+      }
+    })
+    await hydrateKeyGroupChain(row(), () => true, vi.fn(), [])
+    expect(keyGroupChainForm.unavailableGroupIds).toEqual([])
   })
 })
 

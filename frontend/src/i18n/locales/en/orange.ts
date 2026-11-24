@@ -55,5 +55,14 @@ export default {
       label: 'Enable token ranking',
       enabledHint: 'When disabled, the user-side navigation entry disappears, direct visits are blocked, and the ranking API returns 403.'
     }
+  },
+  orangeKeyGroupChain: {
+    unavailableBadge: 'Unavailable (no access)',
+    unavailableShort: 'Unavailable',
+    unavailableChainHint: 'Groups marked unavailable are no longer accessible; they are skipped automatically when saving.',
+    fallbackUnavailableHint: 'The current fallback group is no longer available; the fallback group will be cleared after saving.',
+    primaryUnavailable: 'The primary group is no longer available. Please choose another primary group first.',
+    fallbackCleared: 'The fallback group is no longer available; it will be cleared after saving.',
+    aggregateChainCleared: 'Fewer than two available groups remain; the group chain will be cleared after saving.'
   }
 }

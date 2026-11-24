@@ -25,6 +25,15 @@
           :peak-rate-multiplier="entry.group.peak_rate_multiplier"
         />
         <span v-else class="text-sm text-gray-500 dark:text-gray-400">#{{ entry.group_id }}</span>
+        <!-- 不可用标记：该分组已不在用户可绑定分组列表中（例如被改为专属），保存时会被自动跳过 -->
+        <span
+          v-if="!isGroupAvailable(entry.group_id)"
+          data-test="chain-member-unavailable"
+          class="shrink-0 rounded bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-600 dark:bg-red-900/25 dark:text-red-300"
+          :title="t('orangeKeyGroupChain.unavailableBadge')"
+        >
+          {{ t('orangeKeyGroupChain.unavailableShort') }}
+        </span>
       </div>
     </div>
     <template v-else>
@@ -49,12 +58,17 @@
  *
  * 无分组链配置（group_chain_mode 缺省、groups 为空）时，仅渲染上游主分组单元格 +
  * 一行“未设置兜底分组”，不产生任何请求。
+ *
+ * 不可用链成员（分组被改为专属后用户无权绑定）：按 `groupOptions`（当前用户可绑定分组）
+ * 在徽标后追加红色「不可用」标记，与编辑弹窗的标注保持一致。
  */
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import type { ApiKey } from '@/types'
 import { isAggregatedKey, sortedKeyGroups } from './chain'
 import FallbackGroupPicker from './FallbackGroupPicker.vue'
+import { isGroupIdAvailable, groupOptionIdSet } from './useKeyGroupChain'
 import type { GroupOptionView, KeyGroupChainKey } from './types'
 
 const props = defineProps<{
@@ -67,7 +81,18 @@ const emit = defineEmits<{
   (e: 'refresh'): void
 }>()
 
+const { t } = useI18n()
+
 const chainRow = computed(() => props.row as KeyGroupChainKey)
 const isAggregated = computed(() => isAggregatedKey(chainRow.value))
 const sortedGroups = computed(() => sortedKeyGroups(chainRow.value))
+/**
+ * 当前用户可绑定分组的 id 集合：链成员不在其中即视为不可用（分组被改为专属等）。
+ *
+ * 选项列表为空（尚未加载 / 加载失败）时不做判定，避免把整条链误标成不可用；
+ * 列表数据没有 `available` 字段，因此这里只能用「是否在可绑定列表中」这一启发式。
+ */
+const availableGroupIds = computed(() => groupOptionIdSet(props.groupOptions))
+const isGroupAvailable = (groupId: number): boolean =>
+  props.groupOptions.length === 0 || isGroupIdAvailable(groupId, availableGroupIds.value)
 </script>
