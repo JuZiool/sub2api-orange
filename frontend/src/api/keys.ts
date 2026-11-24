@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from './client'
-import type { ApiKey, ApiKeyGroupEntry, CreateApiKeyRequest, UpdateApiKeyRequest, PaginatedResponse } from '@/types'
+import type { ApiKey, CreateApiKeyRequest, UpdateApiKeyRequest, PaginatedResponse } from '@/types'
 
 /**
  * List all API keys for current user
@@ -157,45 +157,6 @@ export async function toggleStatus(id: number, status: 'active' | 'inactive'): P
   return update(id, { status })
 }
 
-// ==================== Orange 特有：密钥分组链 ====================
-
-/** 分组链模式：none = 普通 Key，fallback = 单兜底（链长 2），aggregate = 聚合（链长 ≥3）。 */
-export type ApiKeyGroupChainMode = 'none' | 'fallback' | 'aggregate'
-
-/** Orange 特有：GET/PUT /keys/:id/group-chain 的响应体。members[0] 恒为链首（主分组）。 */
-export interface ApiKeyGroupChain {
-  api_key_id: number
-  mode: ApiKeyGroupChainMode
-  primary_group_id: number
-  members: ApiKeyGroupEntry[]
-}
-
-/**
- * Orange 特有：读取密钥的分组优先级链
- * @param id - API key ID
- */
-export async function getKeyGroupChain(id: number): Promise<ApiKeyGroupChain> {
-  const { data } = await apiClient.get<ApiKeyGroupChain>(`/keys/${id}/group-chain`)
-  return data
-}
-
-/**
- * Orange 特有：保存密钥的分组优先级链（有序，index 0 = 新链首/主分组；[] = 清除链）
- * @param id - API key ID
- * @param groupIds - Ordered group ids
- */
-export async function setKeyGroupChain(
-  id: number,
-  groupIds: number[],
-  mode?: ApiKeyGroupChainMode
-): Promise<ApiKeyGroupChain> {
-  const { data } = await apiClient.put<ApiKeyGroupChain>(`/keys/${id}/group-chain`, {
-    group_ids: groupIds,
-    ...(mode ? { mode } : {})
-  })
-  return data
-}
-
 export const keysAPI = {
   list,
   getById,
@@ -203,9 +164,7 @@ export const keysAPI = {
   update,
   bulkUpdate,
   delete: deleteKey,
-  toggleStatus,
-  getKeyGroupChain,
-  setKeyGroupChain
+  toggleStatus
 }
 
 export default keysAPI

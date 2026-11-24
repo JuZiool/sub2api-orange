@@ -746,13 +746,6 @@ export interface CompositeRouteDecision {
   reason?: string
 }
 
-/** Orange 特有：密钥分组优先级链成员（链首 = api_keys.group_id，priority 从 1 起升序）。 */
-export interface ApiKeyGroupEntry {
-  group_id: number
-  priority: number
-  group?: Group
-}
-
 export interface ApiKey {
   id: number
   user_id: number
@@ -771,10 +764,6 @@ export interface ApiKey {
   updated_at: string
   current_concurrency: number
   group?: Group
-  /** Orange 特有：分组优先级链（含链首，按 priority 升序）。普通 Key 为空数组或缺省。 */
-  groups?: ApiKeyGroupEntry[]
-  /** Orange 特有：分组链意图模式（none=普通 Key，fallback=兜底分组，aggregate=聚合密钥）。 */
-  group_chain_mode?: 'none' | 'fallback' | 'aggregate'
   rate_limit_5h: number
   rate_limit_1d: number
   rate_limit_7d: number

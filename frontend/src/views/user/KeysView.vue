@@ -155,39 +155,11 @@
           </template>
 
           <template #cell-group="{ row }">
-            <div class="flex flex-col gap-1">
-            <!-- 聚合密钥：按优先级展示分组链，不展示兜底 -->
-            <div v-if="isAggregatedKey(row)" class="flex flex-col gap-1" data-test="aggregate-group-chain-cell">
-              <div
-                v-for="entry in sortedKeyGroups(row)"
-                :key="`agg-${row.id}-${entry.group_id}`"
-                class="flex items-center gap-1.5"
-              >
-                <span
-                  class="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-primary-50 text-[10px] font-semibold text-primary-700 dark:bg-primary-500/15 dark:text-primary-300"
-                >
-                  {{ entry.priority }}
-                </span>
-                <GroupBadge
-                  v-if="entry.group"
-                  :name="entry.group.name"
-                  :platform="entry.group.platform"
-                  :subscription-type="entry.group.subscription_type"
-                  :rate-multiplier="entry.group.rate_multiplier"
-                  :user-rate-multiplier="userGroupRates[entry.group.id]"
-                  :peak-rate-enabled="entry.group.peak_rate_enabled"
-                  :peak-start="entry.group.peak_start"
-                  :peak-end="entry.group.peak_end"
-                  :peak-rate-multiplier="entry.group.peak_rate_multiplier"
-                />
-                <span v-else class="text-sm text-gray-500 dark:text-gray-400">#{{ entry.group_id }}</span>
-              </div>
-            </div>
-            <template v-else>
+            <KeyGroupChainRowCell :row="row" :group-options="groupOptions" :user-group-rates="userGroupRates" @refresh="loadApiKeys"><!-- Orange 特有：分组链（兜底/聚合）展示；无该配置时行为与上游一致 -->
             <div class="group/dropdown relative">
               <button
-                :ref="(el) => setGroupButtonRef(row.id, 'primary', el)"
-                @click="openGroupSelector(row, 'primary')"
+                :ref="(el) => setGroupButtonRef(row.id, el)"
+                @click="openGroupSelector(row)"
                 class="-mx-2 -my-1 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 transition-all duration-200 hover:bg-gray-100 dark:hover:bg-dark-700"
                 :title="t('keys.clickToChangeGroup')"
               >
@@ -222,63 +194,7 @@
                 </svg>
               </button>
             </div>
-
-            <div class="group/dropdown relative">
-              <button
-                :ref="(el) => setGroupButtonRef(row.id, 'fallback', el)"
-                data-test="fallback-group-trigger"
-                :disabled="!row.group_id"
-                @click="openGroupSelector(row, 'fallback')"
-                class="-mx-2 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 transition-all duration-200 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-dark-700"
-                :title="t('keys.clickToChangeFallbackGroup')"
-              >
-                <span
-                  class="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/25 dark:text-amber-300"
-                >
-                  {{ t('keys.fallbackGroupShortLabel') }}
-                </span>
-                <!-- Orange 特有：兜底分组取自分组链第二项（group_chain_mode=fallback 且链长 2） -->
-                <template v-for="fallback in [fallbackGroupOf(row)]" :key="`fallback-${fallback?.group_id ?? 'none'}`">
-                  <GroupBadge
-                    v-if="fallback?.group"
-                    :name="fallback.group.name"
-                    :platform="fallback.group.platform"
-                    :subscription-type="fallback.group.subscription_type"
-                    :rate-multiplier="fallback.group.rate_multiplier"
-                    :user-rate-multiplier="userGroupRates[fallback.group.id]"
-                    :peak-rate-enabled="fallback.group.peak_rate_enabled"
-                    :peak-start="fallback.group.peak_start"
-                    :peak-end="fallback.group.peak_end"
-                    :peak-rate-multiplier="fallback.group.peak_rate_multiplier"
-                  />
-                  <span
-                    v-else-if="fallback"
-                    class="text-sm text-gray-500 dark:text-gray-400"
-                  >
-                    #{{ fallback.group_id }}
-                  </span>
-                  <span v-else class="text-sm text-gray-400 dark:text-dark-500">
-                    {{ t('keys.noFallbackGroup') }}
-                  </span>
-                </template>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('keys.selectFallbackGroup') }}</span>
-                <svg
-                  class="h-3.5 w-3.5 text-gray-400 opacity-60 transition-opacity group-hover/dropdown:opacity-100"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="2"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"
-                  />
-                </svg>
-              </button>
-            </div>
-            </template>
-            </div>
+            </KeyGroupChainRowCell>
           </template>
 
           <template #cell-current_concurrency="{ value }">
@@ -628,130 +544,8 @@
           </p>
         </fieldset>
 
-        <!-- 聚合密钥开关：开启后按分组链顺序依次尝试，兜底分组不再生效 -->
-        <div class="flex items-start justify-between gap-3 rounded-lg border border-gray-200 p-3 dark:border-dark-600">
-          <div class="min-w-0">
-            <div class="text-sm font-medium text-gray-900 dark:text-gray-100">
-              {{ t('keys.aggregateModeLabel') }}
-            </div>
-            <p class="mt-0.5 text-xs leading-5 text-gray-500 dark:text-gray-400">
-              {{ t('keys.aggregateModeHint') }}
-            </p>
-          </div>
-          <button
-            type="button"
-            data-test="aggregate-mode-toggle"
-            @click="toggleAggregateMode"
-            :class="[
-              'relative mt-0.5 inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
-              formData.aggregate_mode ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-            ]"
-          >
-            <span
-              :class="[
-                'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                formData.aggregate_mode ? 'translate-x-4' : 'translate-x-0'
-              ]"
-            />
-          </button>
-        </div>
-
-        <!-- 聚合分组链编辑器 -->
-        <div v-if="formData.aggregate_mode" class="space-y-2" data-test="aggregate-group-chain">
-          <label class="input-label">{{ t('keys.aggregateGroupChainLabel') }}</label>
-          <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">
-            {{ t('keys.aggregateGroupChainHint') }}
-          </p>
-          <div
-            v-for="(_, index) in formData.aggregate_group_ids"
-            :key="`chain-${index}`"
-            class="flex items-center gap-2"
-          >
-            <span
-              class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary-50 text-xs font-semibold text-primary-700 dark:bg-primary-500/15 dark:text-primary-300"
-            >
-              {{ index + 1 }}
-            </span>
-            <Select
-              class="min-w-0 flex-1"
-              :model-value="formData.aggregate_group_ids[index]"
-              :options="aggregateGroupOptions(index)"
-              :placeholder="t('keys.selectGroup')"
-              :searchable="true"
-              :search-placeholder="t('keys.searchGroup')"
-              @update:model-value="(value: any) => setAggregateGroup(index, value)"
-            >
-              <template #selected="{ option }">
-                <GroupBadge
-                  v-if="option"
-                  :name="(option as unknown as GroupOption).label"
-                  :platform="(option as unknown as GroupOption).platform"
-                  :subscription-type="(option as unknown as GroupOption).subscriptionType"
-                  :rate-multiplier="(option as unknown as GroupOption).rate"
-                  :user-rate-multiplier="(option as unknown as GroupOption).userRate"
-                  :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
-                  :peak-start="(option as unknown as GroupOption).peakStart"
-                  :peak-end="(option as unknown as GroupOption).peakEnd"
-                  :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
-                />
-                <span v-else class="text-gray-400">{{ t('keys.selectGroup') }}</span>
-              </template>
-              <template #option="{ option, selected }">
-                <GroupOptionItem
-                  :name="(option as unknown as GroupOption).label"
-                  :platform="(option as unknown as GroupOption).platform"
-                  :subscription-type="(option as unknown as GroupOption).subscriptionType"
-                  :rate-multiplier="(option as unknown as GroupOption).rate"
-                  :user-rate-multiplier="(option as unknown as GroupOption).userRate"
-                  :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
-                  :peak-start="(option as unknown as GroupOption).peakStart"
-                  :peak-end="(option as unknown as GroupOption).peakEnd"
-                  :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
-                  :description="(option as unknown as GroupOption).description"
-                  :selected="selected"
-                />
-              </template>
-            </Select>
-            <button
-              type="button"
-              class="rounded p-1 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-dark-700"
-              :disabled="index === 0"
-              :title="t('keys.aggregateMoveUp')"
-              @click="moveAggregateGroup(index, -1)"
-            >
-              <Icon name="chevronUp" size="sm" />
-            </button>
-            <button
-              type="button"
-              class="rounded p-1 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-dark-700"
-              :disabled="index === formData.aggregate_group_ids.length - 1"
-              :title="t('keys.aggregateMoveDown')"
-              @click="moveAggregateGroup(index, 1)"
-            >
-              <Icon name="chevronDown" size="sm" />
-            </button>
-            <button
-              type="button"
-              class="rounded p-1 text-red-500 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-900/20"
-              :disabled="formData.aggregate_group_ids.length <= 2"
-              :title="t('keys.aggregateRemoveGroup')"
-              @click="removeAggregateGroup(index)"
-            >
-              <Icon name="trash" size="sm" />
-            </button>
-          </div>
-          <button
-            type="button"
-            class="btn btn-secondary btn-sm"
-            data-test="aggregate-add-group"
-            @click="addAggregateGroup"
-          >
-            <Icon name="plus" size="sm" class="mr-1" />
-            {{ t('keys.aggregateAddGroup') }}
-          </button>
-        </div>
-
-        <div v-else>
+        <KeyGroupChainFormFields :form-data="formData" :group-options="groupOptions" :form-group-options="formGroupOptions" :show-edit="showEditModal" :selected-key="selectedKey" :create-provider="createProvider"><!-- Orange 特有：聚合/兜底分组链表单区；无该配置时行为与上游一致 -->
+        <div>
           <label class="input-label" for="key-form-group">{{ t('keys.groupLabel') }}</label>
           <Select
             :key="showEditModal ? 'edit' : createProvider"
@@ -797,63 +591,7 @@
             </template>
           </Select>
         </div>
-
-        <div v-if="!formData.aggregate_mode">
-          <label class="input-label">{{ t('keys.fallbackGroupLabel') }}</label>
-          <Select
-            v-model="formData.fallback_group_id"
-            :options="fallbackGroupOptions"
-            :placeholder="t('keys.noFallbackGroup')"
-            :searchable="true"
-            :search-placeholder="t('keys.searchGroup')"
-            data-test="fallback-group-select"
-          >
-            <template #selected="{ option }">
-              <GroupBadge
-                v-if="option && (option as unknown as GroupOption).value !== null"
-                :name="(option as unknown as GroupOption).label"
-                :platform="(option as unknown as GroupOption).platform"
-                :subscription-type="(option as unknown as GroupOption).subscriptionType"
-                :rate-multiplier="(option as unknown as GroupOption).rate"
-                :user-rate-multiplier="(option as unknown as GroupOption).userRate"
-                :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
-                :peak-start="(option as unknown as GroupOption).peakStart"
-                :peak-end="(option as unknown as GroupOption).peakEnd"
-                :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
-              />
-              <span v-else class="text-gray-400">{{ t('keys.noFallbackGroup') }}</span>
-            </template>
-            <template #option="{ option, selected }">
-              <GroupOptionItem
-                v-if="(option as unknown as GroupOption).value !== null"
-                :name="(option as unknown as GroupOption).label"
-                :platform="(option as unknown as GroupOption).platform"
-                :subscription-type="(option as unknown as GroupOption).subscriptionType"
-                :rate-multiplier="(option as unknown as GroupOption).rate"
-                :user-rate-multiplier="(option as unknown as GroupOption).userRate"
-                :peak-rate-enabled="(option as unknown as GroupOption).peakRateEnabled"
-                :peak-start="(option as unknown as GroupOption).peakStart"
-                :peak-end="(option as unknown as GroupOption).peakEnd"
-                :peak-rate-multiplier="(option as unknown as GroupOption).peakRateMultiplier"
-                :description="(option as unknown as GroupOption).description"
-                :selected="selected"
-              />
-              <div v-else class="flex w-full items-center justify-between gap-3">
-                <span class="text-gray-600 dark:text-gray-300">{{ t('keys.noFallbackGroup') }}</span>
-                <Icon
-                  v-if="selected"
-                  name="check"
-                  size="sm"
-                  class="shrink-0 text-primary-500"
-                  :stroke-width="2"
-                />
-              </div>
-            </template>
-          </Select>
-          <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-            {{ t('keys.fallbackGroupHint') }}
-          </p>
-        </div>
+        </KeyGroupChainFormFields>
 
         <!-- Custom Key Section (only for create) -->
         <div v-if="!showEditModal" class="space-y-3">
@@ -1439,14 +1177,14 @@
             :class="[
               'flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm transition-colors',
               'border-b border-gray-100 last:border-0 dark:border-dark-700',
-              currentSelectorGroupId(selectedKeyForGroup) === option.value
+              selectedKeyForGroup?.group_id === option.value ||
+              (!selectedKeyForGroup?.group_id && option.value === null)
                 ? 'bg-primary-50 dark:bg-primary-900/20'
                 : 'hover:bg-gray-100 dark:hover:bg-dark-700'
             ]"
             :title="option.description || undefined"
           >
             <GroupOptionItem
-              v-if="option.value !== null"
               :name="option.label"
               :platform="option.platform"
               :subscription-type="option.subscriptionType"
@@ -1457,18 +1195,11 @@
               :peak-end="option.peakEnd"
               :peak-rate-multiplier="option.peakRateMultiplier"
               :description="option.description"
-              :selected="currentSelectorGroupId(selectedKeyForGroup) === option.value"
+              :selected="
+                selectedKeyForGroup?.group_id === option.value ||
+                (!selectedKeyForGroup?.group_id && option.value === null)
+              "
             />
-            <div v-else class="flex w-full items-center justify-between gap-3">
-              <span class="text-gray-600 dark:text-gray-300">{{ option.label }}</span>
-              <Icon
-                v-if="currentSelectorGroupId(selectedKeyForGroup) === option.value"
-                name="check"
-                size="sm"
-                class="shrink-0 text-primary-500"
-                :stroke-width="2"
-              />
-            </div>
           </button>
           <!-- Empty state when search has no results -->
           <div v-if="filteredGroupOptions.length === 0" class="py-4 text-center text-sm text-gray-400 dark:text-gray-500">
@@ -1489,7 +1220,8 @@
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 
 const { t } = useI18n()
-import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
+import { authAPI, usageAPI, userGroupsAPI } from '@/api'
+import { keysAPI, KeyGroupChainRowCell, KeyGroupChainFormFields, prepareKeyGroupChainSubmit, handleKeyGroupChainGroupChange } from '@/features/key-group-chain' // Orange 特有：分组链组件、keysAPI 包装与提交钩子；无该配置时行为与上游一致
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
@@ -1505,7 +1237,7 @@ import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
 	import EndpointPopover from '@/components/keys/EndpointPopover.vue'
 	import GroupBadge from '@/components/common/GroupBadge.vue'
 	import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
-	import type { ApiKey, ApiKeyGroupEntry, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest } from '@/types'
+	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform, UpdateApiKeyRequest } from '@/types'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
@@ -1527,7 +1259,7 @@ const formatDateTimeLocal = (isoDate: string): string => {
 }
 
 interface GroupOption {
-  value: number | null
+  value: number
   label: string
   description: string | null
   rate: number
@@ -1691,13 +1423,11 @@ const pendingCcsRow = ref<ApiKey | null>(null)
 const selectedKey = ref<ApiKey | null>(null)
 const copiedKeyId = ref<number | null>(null)
 const groupSelectorKeyId = ref<number | null>(null)
-type GroupSelectorTarget = 'primary' | 'fallback'
-const groupSelectorTarget = ref<GroupSelectorTarget>('primary')
 const publicSettings = ref<PublicSettings | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
 const columnDropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
-const groupButtonRefs = ref<Map<string, HTMLElement>>(new Map())
+const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
 let abortController: AbortController | null = null
 
 // Get the currently selected key for group change
@@ -1706,30 +1436,17 @@ const selectedKeyForGroup = computed(() => {
   return apiKeys.value.find((k) => k.id === groupSelectorKeyId.value) || null
 })
 
-const setGroupButtonRef = (keyId: number, target: GroupSelectorTarget, el: Element | ComponentPublicInstance | null) => {
-  const refKey = `${keyId}-${target}`
+const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance | null) => {
   if (el instanceof HTMLElement) {
-    groupButtonRefs.value.set(refKey, el)
+    groupButtonRefs.value.set(keyId, el)
   } else {
-    groupButtonRefs.value.delete(refKey)
+    groupButtonRefs.value.delete(keyId)
   }
-}
-
-// 当前浮层应高亮/判等的分组 ID（主分组或兜底分组）
-const currentSelectorGroupId = (key: ApiKey | null): number | null => {
-  if (!key) return null
-  return groupSelectorTarget.value === 'fallback'
-    ? (fallbackGroupOf(key)?.group_id ?? null)
-    : key.group_id
 }
 
 const formData = ref({
   name: '',
   group_id: null as number | null,
-  fallback_group_id: null as number | null,
-  // 聚合密钥：启用后按 aggregate_group_ids 顺序依次尝试分组，兜底分组不再生效。
-  aggregate_mode: false,
-  aggregate_group_ids: [] as Array<number | null>,
   status: 'active' as 'active' | 'inactive',
   use_custom_key: false,
   custom_key: '',
@@ -1837,124 +1554,10 @@ const formGroupOptions = computed(() => showEditModal.value
   : groupOptions.value.filter((group) => getKeyGroupProvider(group.platform) === createProvider.value)
 )
 
-// ===== 分组优先级链（Orange 特有）：聚合密钥与兜底分组共用同一条链 =====
-
-/** 聚合密钥：意图为聚合且链上分组多于 1 个（兜底链同样是 2 个成员，只能靠 mode 区分）。 */
-const isAggregatedKey = (key: ApiKey) =>
-  key.group_chain_mode === 'aggregate' && (key.groups?.length ?? 0) > 1
-
-/** 链上分组按优先级升序，链首（主分组）恒为 priority 1。 */
-const sortedKeyGroups = (key: ApiKey) =>
-  [...(key.groups ?? [])].sort((a, b) => a.priority - b.priority)
-
-/** 兜底分组：仅 group_chain_mode=fallback 且链长恰好 2 时存在，取非链首的那一项。 */
-const fallbackGroupOf = (key: ApiKey): ApiKeyGroupEntry | null => {
-  if (key.group_chain_mode !== 'fallback' || key.groups?.length !== 2) return null
-  return key.groups.find((entry) => entry.group_id !== key.group_id) ?? null
-}
-
-/** 分组链意图：兜底分组 / 聚合密钥（对应后端 orange_api_key_group_chain_meta.mode）。 */
-type KeyGroupChainMode = 'fallback' | 'aggregate'
-
-/**
- * Orange 特有：保存密钥分组链（PUT /keys/:id/group-chain）。
- * body.group_ids 有序，group_ids[0] 即新主分组，空数组表示清除链；
- * mode 用于区分「兜底分组」与「聚合密钥」两种交互意图（链长为 2 时无法从链推断）。
- */
-const saveKeyGroupChain = async (
-  keyId: number,
-  groupIds: number[],
-  mode: KeyGroupChainMode
-): Promise<void> => {
-  await keysAPI.setKeyGroupChain(keyId, groupIds, mode)
-}
-
-/** 保存分组链失败只提示，不回滚已经保存成功的密钥字段。 */
-const persistKeyGroupChain = async (
-  keyId: number,
-  groupIds: number[],
-  mode: KeyGroupChainMode
-): Promise<void> => {
-  try {
-    await saveKeyGroupChain(keyId, groupIds, mode)
-  } catch (error: any) {
-    appStore.showError(error?.response?.data?.detail || t('keys.groupChain.saveFailed'))
-  }
-}
-
-// 兜底分组选项：与所选主分组同平台、非主分组本身，另含"不设置兜底分组"
-const fallbackGroupOptions = computed(() => {
-  const primary = groups.value.find((group) => group.id === formData.value.group_id)
-  return [
-    { value: null, label: t('keys.noFallbackGroup'), description: '', rate: 0, userRate: null, peakRateEnabled: false, peakStart: '', peakEnd: '', peakRateMultiplier: 0, subscriptionType: '' as SubscriptionType, platform: '' as GroupPlatform },
-    ...groupOptions.value.filter((option) =>
-      option.value !== formData.value.group_id &&
-      (!primary || option.platform === primary.platform)
-    )
-  ]
-})
-
 const selectCreateProvider = (provider: KeyGroupProvider) => {
   if (createProvider.value === provider) return
   createProvider.value = provider
   formData.value.group_id = null
-  // 聚合链与供应商绑定：切换供应商即清空链，避免残留跨平台选择。
-  formData.value.aggregate_group_ids = []
-}
-
-// ===== 聚合密钥（Orange 特有）=====
-// 聚合链候选分组：编辑模式不限供应商；创建模式限定为当前供应商。
-const aggregateGroupBaseOptions = computed(() => formGroupOptions.value)
-
-// 指定链位可选的候选：排除其他链位已选的分组（避免同一分组重复出现）。
-const aggregateGroupOptions = (index: number) => {
-  const taken = new Set(
-    formData.value.aggregate_group_ids.filter((_, i) => i !== index && _ !== null) as number[]
-  )
-  return aggregateGroupBaseOptions.value.filter((option) => !taken.has(option.value))
-}
-
-const toggleAggregateMode = () => {
-  const next = !formData.value.aggregate_mode
-  formData.value.aggregate_mode = next
-  if (next) {
-    // 进入聚合模式：沿用当前主分组作为链首，并补一个空位。
-    const current = formData.value.group_id
-    formData.value.aggregate_group_ids = current ? [current, null] : [null, null]
-    // 聚合密钥不使用单兜底分组。
-    formData.value.fallback_group_id = null
-  } else {
-    // 退出聚合模式：主分组保留链首，链清空。
-    formData.value.group_id = formData.value.aggregate_group_ids[0] ?? null
-    formData.value.aggregate_group_ids = []
-  }
-}
-
-const setAggregateGroup = (index: number, value: number | null) => {
-  formData.value.aggregate_group_ids[index] = value
-  // 链首即主分组，保持同步，供非聚合路径与展示使用。
-  if (index === 0) {
-    formData.value.group_id = value
-  }
-}
-
-const addAggregateGroup = () => {
-  formData.value.aggregate_group_ids.push(null)
-}
-
-const removeAggregateGroup = (index: number) => {
-  if (formData.value.aggregate_group_ids.length <= 2) return
-  formData.value.aggregate_group_ids.splice(index, 1)
-  formData.value.group_id = formData.value.aggregate_group_ids[0] ?? null
-}
-
-const moveAggregateGroup = (index: number, offset: number) => {
-  const target = index + offset
-  const list = formData.value.aggregate_group_ids
-  if (target < 0 || target >= list.length) return
-  const [item] = list.splice(index, 1)
-  list.splice(target, 0, item)
-  formData.value.group_id = list[0] ?? null
 }
 
 // Also handles groups arriving after the create dialog has already opened.
@@ -1971,25 +1574,9 @@ watch([showCreateModal, createProviderOptions], ([isOpen, providers], [wasOpen])
 // Group dropdown search
 const groupSearchQuery = ref('')
 const filteredGroupOptions = computed(() => {
-  const key = selectedKeyForGroup.value
-  let options: GroupOption[] = groupOptions.value
-
-  if (groupSelectorTarget.value === 'fallback' && key) {
-    // 兜底分组：与主分组同平台且不能是主分组本身
-    const primary = key.group || groups.value.find((group) => group.id === key.group_id)
-    options = options.filter((opt) =>
-      opt.value !== key.group_id && (!primary || opt.platform === primary.platform)
-    )
-    // 头部插入"不设置兜底分组"选项
-    options = [
-      { value: null, label: t('keys.noFallbackGroup'), description: '', rate: 0, userRate: null, peakRateEnabled: false, peakStart: '', peakEnd: '', peakRateMultiplier: 0, subscriptionType: '' as SubscriptionType, platform: '' as GroupPlatform },
-      ...options
-    ]
-  }
-
   const query = groupSearchQuery.value.trim().toLowerCase()
-  if (!query) return options
-  return options.filter((opt) => {
+  if (!query) return groupOptions.value
+  return groupOptions.value.filter((opt) => {
     return opt.label.toLowerCase().includes(query) ||
       (opt.description && opt.description.toLowerCase().includes(query))
   })
@@ -2130,51 +1717,13 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   loadApiKeys()
 }
 
-/**
- * Orange 特有：编辑弹窗打开后按 GET /keys/:id/group-chain 回填分组链。
- * 列表响应里的 groups 只用于首屏占位，链的权威数据以该接口为准。
- */
-const hydrateGroupChain = async (key: ApiKey) => {
-  try {
-    const chain = await keysAPI.getKeyGroupChain(key.id)
-    // 用户可能已关闭弹窗或改选其它密钥，避免覆盖当前表单
-    if (!showEditModal.value || selectedKey.value?.id !== key.id) return
-    const members = [...(chain.members ?? [])].sort((a, b) => a.priority - b.priority)
-    const primaryId = members[0]?.group_id ?? key.group_id ?? null
-    if (chain.mode === 'aggregate' && members.length > 1) {
-      formData.value.aggregate_mode = true
-      formData.value.aggregate_group_ids = members.map((member) => member.group_id)
-      formData.value.fallback_group_id = null
-      formData.value.group_id = primaryId
-      return
-    }
-    const fallbackId =
-      chain.mode === 'fallback' && members.length === 2
-        ? (members.find((member) => member.group_id !== primaryId)?.group_id ?? null)
-        : null
-    formData.value.aggregate_mode = false
-    formData.value.fallback_group_id = fallbackId
-    formData.value.group_id = primaryId
-    formData.value.aggregate_group_ids = primaryId === null ? [] : [primaryId]
-  } catch (error) {
-    // 接口不可用时保留列表字段的回填结果，弹窗仍可正常使用
-    console.error('Failed to load key group chain:', error)
-  }
-}
-
 const editKey = (key: ApiKey) => {
   selectedKey.value = key
   const hasIPRestriction = (key.ip_whitelist?.length > 0) || (key.ip_blacklist?.length > 0)
   const hasExpiration = !!key.expires_at
-  const aggregate = isAggregatedKey(key)
   formData.value = {
     name: key.name,
     group_id: key.group_id,
-    fallback_group_id: fallbackGroupOf(key)?.group_id ?? null,
-    aggregate_mode: aggregate,
-    aggregate_group_ids: aggregate
-      ? sortedKeyGroups(key).map((entry) => entry.group_id)
-      : (key.group_id ? [key.group_id] : []),
     status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
     use_custom_key: false,
     custom_key: '',
@@ -2192,8 +1741,6 @@ const editKey = (key: ApiKey) => {
     expiration_date: key.expires_at ? formatDateTimeLocal(key.expires_at) : ''
   }
   showEditModal.value = true
-  // 列表里的链字段可能不完整，打开弹窗后按分组链接口回填一次
-  void hydrateGroupChain(key)
 }
 
 const toggleKeyStatus = async (key: ApiKey) => {
@@ -2209,12 +1756,12 @@ const toggleKeyStatus = async (key: ApiKey) => {
   }
 }
 
-const openGroupSelector = (key: ApiKey, target: GroupSelectorTarget = 'primary') => {
-  if (groupSelectorKeyId.value === key.id && groupSelectorTarget.value === target) {
+const openGroupSelector = (key: ApiKey) => {
+  if (groupSelectorKeyId.value === key.id) {
     groupSelectorKeyId.value = null
     dropdownPosition.value = null
   } else {
-    const buttonEl = groupButtonRefs.value.get(`${key.id}-${target}`)
+    const buttonEl = groupButtonRefs.value.get(key.id)
     if (buttonEl) {
       const rect = buttonEl.getBoundingClientRect()
       const dropdownEstHeight = 400 // estimated max dropdown height
@@ -2238,68 +1785,24 @@ const openGroupSelector = (key: ApiKey, target: GroupSelectorTarget = 'primary')
         }
       }
     }
-    groupSelectorTarget.value = target
     groupSelectorKeyId.value = key.id
     groupSearchQuery.value = ''
   }
 }
 
 const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
-  const target = groupSelectorTarget.value
   groupSelectorKeyId.value = null
   dropdownPosition.value = null
-
-  // 兜底行：改的是分组链第二项，主分组不变；清除兜底时传空链
-  if (target === 'fallback') {
-    const currentFallbackId = fallbackGroupOf(key)?.group_id ?? null
-    if (currentFallbackId === newGroupId) return
-    if (key.group_id === null) return
-    try {
-      const groupIds = newGroupId === null ? [] : [key.group_id, newGroupId]
-      await saveKeyGroupChain(key.id, groupIds, 'fallback')
-      appStore.showSuccess(t('keys.fallbackGroupChangedSuccess'))
-      loadApiKeys()
-    } catch (error) {
-      appStore.showError(t('keys.failedToChangeFallbackGroup'))
-    }
-    return
-  }
-
+  if (await handleKeyGroupChainGroupChange(key, newGroupId, groups.value, loadApiKeys, t)) return // Orange 特有：列表改主分组时同步分组链；无该配置时行为与上游一致
   if (key.group_id === newGroupId) return
-
-  // 更换主分组时，链上的兜底分组需要一起同步：与新主分组不兼容则清空
-  const fallbackEntry = fallbackGroupOf(key)
-  let fallbackCleared = false
-  if (fallbackEntry) {
-    const primary = groups.value.find((group) => group.id === newGroupId)
-    const fallback =
-      fallbackEntry.group ||
-      groups.value.find((group) => group.id === fallbackEntry.group_id)
-    if (
-      !fallback ||
-      !primary ||
-      primary.id === fallback.id ||
-      primary.platform !== fallback.platform
-    ) {
-      fallbackCleared = true
-    }
-  }
 
   try {
     await keysAPI.update(key.id, { group_id: newGroupId })
+    appStore.showSuccess(t('keys.groupChangedSuccess'))
+    loadApiKeys()
   } catch (error) {
     appStore.showError(t('keys.failedToChangeGroup'))
-    return
   }
-  if (fallbackEntry) {
-    // 兼容则保留兜底（链首随主分组变更），不兼容或主分组被清空则清链
-    const groupIds =
-      fallbackCleared || newGroupId === null ? [] : [newGroupId, fallbackEntry.group_id]
-    // 链写入失败由 persistKeyGroupChain 内部提示，主分组本身已经改成功
-    await persistKeyGroupChain(key.id, groupIds, 'fallback')
-  }
-  appStore.showSuccess(t(fallbackCleared ? 'keys.groupChangedFallbackClearedSuccess' : 'keys.groupChangedSuccess'))
-  loadApiKeys()
 }
 
 const closeGroupSelector = (event: MouseEvent) => {
@@ -2373,58 +1876,13 @@ const handleSubmit = async () => {
     rate_limit_7d: formData.value.rate_limit_7d && formData.value.rate_limit_7d > 0 ? formData.value.rate_limit_7d : 0,
   } : { rate_limit_5h: 0, rate_limit_1d: 0, rate_limit_7d: 0 }
 
-  // 校验兜底分组：必须与主分组不同且同平台（聚合模式下不校验兜底）
-  if (!formData.value.aggregate_mode && formData.value.fallback_group_id !== null) {
-    const primary = groups.value.find((group) => group.id === formData.value.group_id)
-    const fallback = groups.value.find((group) => group.id === formData.value.fallback_group_id)
-    if (
-      !primary ||
-      !fallback ||
-      primary.id === fallback.id ||
-      primary.platform !== fallback.platform
-    ) {
-      appStore.showError(t('keys.fallbackGroupInvalid'))
-      return
-    }
-  }
-
-  // 聚合链校验：至少 2 组、同平台、无重复
-  let aggregateGroupIds: number[] | undefined
-  if (formData.value.aggregate_mode) {
-    const ids = formData.value.aggregate_group_ids.filter((id) => id !== null) as number[]
-    if (new Set(ids).size !== ids.length) {
-      appStore.showError(t('keys.aggregateGroupDuplicate'))
-      return
-    }
-    if (ids.length < 2) {
-      appStore.showError(t('keys.aggregateGroupTooFew'))
-      return
-    }
-    const platforms = new Set(
-      ids.map((id) => groups.value.find((group) => group.id === id)?.platform).filter(Boolean)
-    )
-    if (platforms.size > 1) {
-      appStore.showError(t('keys.aggregateGroupPlatformMismatch'))
-      return
-    }
-    aggregateGroupIds = ids
-  }
-
-  // 分组链：聚合密钥提交完整优先级链；普通密钥提交 [主分组, 兜底分组]，未设兜底则清链
-  const primaryGroupId = aggregateGroupIds ? aggregateGroupIds[0] : (formData.value.group_id as number)
-  const chainGroupIds: number[] =
-    aggregateGroupIds ??
-    (formData.value.fallback_group_id !== null
-      ? [primaryGroupId, formData.value.fallback_group_id]
-      : [])
-  const chainMode: KeyGroupChainMode = aggregateGroupIds ? 'aggregate' : 'fallback'
-
+  if (!prepareKeyGroupChainSubmit(formData.value, groups.value, t)) return // Orange 特有：分组链（兜底/聚合）校验与暂存；无该配置时行为与上游一致
   submitting.value = true
   try {
     if (showEditModal.value && selectedKey.value) {
       const updates: UpdateApiKeyRequest = {
         name: formData.value.name,
-        group_id: primaryGroupId,
+        group_id: formData.value.group_id,
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: quota,
@@ -2437,14 +1895,12 @@ const handleSubmit = async () => {
         updates.status = formData.value.status
       }
       await keysAPI.update(selectedKey.value.id, updates)
-      // 官方更新成功后再写分组链（隔离表），链失败不影响密钥本身的保存结果
-      await persistKeyGroupChain(selectedKey.value.id, chainGroupIds, chainMode)
       appStore.showSuccess(t('keys.keyUpdatedSuccess'))
     } else {
       const customKey = formData.value.use_custom_key ? formData.value.custom_key : undefined
-      const created = await keysAPI.create(
+      await keysAPI.create(
         formData.value.name,
-        primaryGroupId,
+        formData.value.group_id,
         customKey,
         ipWhitelist,
         ipBlacklist,
@@ -2452,7 +1908,6 @@ const handleSubmit = async () => {
         expiresInDays,
         rateLimitData
       )
-      await persistKeyGroupChain(created.id, chainGroupIds, chainMode)
       appStore.showSuccess(t('keys.keyCreatedSuccess'))
       // Only advance tour if active, on submit step, and creation succeeded
       if (onboardingStore.isCurrentStep('[data-tour="key-form-submit"]')) {
@@ -2497,9 +1952,6 @@ const closeModals = () => {
   formData.value = {
     name: '',
     group_id: null,
-    fallback_group_id: null,
-    aggregate_mode: false,
-    aggregate_group_ids: [],
     status: 'active',
     use_custom_key: false,
     custom_key: '',
