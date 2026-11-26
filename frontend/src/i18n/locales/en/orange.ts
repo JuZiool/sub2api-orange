@@ -1,7 +1,7 @@
 /**
  * Orange 特有：Orange 页面与组件的英文文案命名空间。
  *
- * 顶层键与中文侧完全对称（`orangeNav` / `orangeTokenRanking` / `orangeSettings` / `orangeKeyChain`），
+ * 顶层键与中文侧完全对称（`orangeNav` / `orangeTokenRanking` / `orangeSettings`），
  * 避免与上游常见顶层键（`nav` / `dashboard` / `admin` 等）碰撞后静默覆盖。
  */
 export default {
@@ -55,25 +55,5 @@ export default {
       label: 'Enable token ranking',
       enabledHint: 'When disabled, the user-side navigation entry disappears, direct visits are blocked, and the ranking API returns 403.'
     }
-  },
-  // Orange 特有：密钥分组链成员可用性标注 / 移除确认 / 自动修复（v0.2.25-8）
-  orangeKeyChain: {
-    nameSeparator: ', ',
-    stateDisabled: 'Group disabled',
-    stateScopeMismatch: 'Platform or subscription type mismatch',
-    stateNoPermission: 'No permission',
-    stateMissing: 'Group deleted',
-    pruneTitle: 'Saving removes {n} group(s)',
-    pruneHint: 'These groups still exist in the server-side group chain: {names}. Saving removes them from the chain — tick the checkbox below to confirm, otherwise the change cannot be saved.',
-    pruneConfirmLabel: 'I confirm removing {n} group(s): {names}',
-    pruneConfirmRequired: 'Saving removes {n} group(s): {names}. Tick "I confirm removing" first and retry.',
-    // Appended after the server-side 409: the locally cached chain members are stale, so the
-    // dialog must be reopened to re-read the chain before confirming again.
-    pruneReopenHint: '; please reopen the edit dialog to confirm the change and save again.',
-    healButton: 'Auto-fix unavailable groups',
-    healing: 'Fixing…',
-    healHint: 'Only groups with no permission or deleted groups are removed; disabled groups and groups with a platform or subscription mismatch are kept and must be replaced manually.',
-    healSuccess: 'Removed {n} unavailable group(s) automatically',
-    healFailed: 'Failed to auto-fix the group chain. Please try again later.'
   }
 }

@@ -6,8 +6,8 @@
 //
 //  1. 请求时：链成员按用户权限过滤（不进路由链 / 不进模型目录 / 不放行白名单 / 不放行生图）；
 //     链首失去权限时请求内自愈（提升第一个可用成员），避免整条 Key 直接 403；
-//  2. 显式 heal 接口（v0.2.25-8 起 GET 是纯读，不再写库）：把失去权限/已删除的成员从链里剔除并写库；
-//     读视图本身返回全部成员 + state，界面据此置灰提示（不再"直接不显示"）。
+//  2. 读接口（打开密钥编辑弹窗）：把失去权限的成员从链里剔除并写库（站长要求"直接不显示 +
+//     自动更新密钥"）。
 //
 // 本文件锁定上述口径（含"不能误伤仍可用的分组"）。
 package service
@@ -196,9 +196,7 @@ func TestOrangeChainWithoutUserSnapshotKeepsMembers(t *testing.T) {
 	}
 }
 
-// 兼容视图（网关/旧调用方用的 OrangeBuildAPIKeyGroupChainView）仍只返回可用成员；
-// v0.2.25-8 的链详情/列表一律用 OrangeBuildAPIKeyGroupChainViewFull（返回全部成员 + state，
-// 见 orange_api_key_group_chain_state_test.go）。授权恢复后同一接口必须立刻重新可见。
+// 链详情接口不再返回失去权限的成员（站长要求"直接不显示"）；授权恢复后立刻重新出现。
 func TestOrangeBuildAPIKeyGroupChainViewHidesUnavailableMember(t *testing.T) {
 	head := orangePolicyTestGroup(11, PlatformAnthropic)
 	exclusive := orangeEntitlementTestExclusiveGroup(12)
