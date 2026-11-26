@@ -422,6 +422,18 @@ func (s *APIKeyService) OrangeGetAPIKeyGroupChain(ctx context.Context, userID, a
 	if err != nil || apiKey == nil {
 		return empty, ErrAPIKeyNotFound
 	}
+	if s.userRepo == nil {
+		return empty, ErrOrangeGroupChainUnavailable
+	}
+	owner, err := s.userRepo.GetByID(ctx, apiKey.UserID)
+	if err != nil {
+		// 权限数据不可用时必须中止；不能让后续自愈把授权状态未知误判为无权限并写库。
+		return empty, fmt.Errorf("load api key owner permissions for group chain: %w", err)
+	}
+	if owner == nil {
+		return empty, ErrAPIKeyNotFound
+	}
+	apiKey.User = owner
 	healed := s.OrangeSelfHealKeyGroupChain(ctx, apiKey)
 	view := s.OrangeBuildAPIKeyGroupChainView(ctx, apiKey)
 	view.AutoPrunedGroupIDs = healed.PrunedGroupIDs
