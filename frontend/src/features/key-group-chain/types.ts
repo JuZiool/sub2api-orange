@@ -14,15 +14,36 @@ export type ApiKeyGroupChainMode = 'none' | 'fallback' | 'aggregate'
 export type KeyGroupChainIntent = 'fallback' | 'aggregate'
 
 /**
+ * Orange 特有：链成员的可用性状态（v0.2.25-8 起见 GET/PUT/heal 与列表接口 groups[]）。
+ *
+ * 判定优先级与后端一致：missing → disabled → no_permission → scope_mismatch → available：
+ * - available       可用；
+ * - disabled        分组停用 / 分组上下文不合法；
+ * - scope_mismatch  平台或订阅类型与链首不一致；
+ * - no_permission   用户无绑定权限（专属未授权）；
+ * - missing         分组已删除 / 读不到。
+ *
+ * 只有 available 的成员会被网关用于选号；其余成员仍会出现在接口返回里（不再静默丢弃）。
+ */
+export type KeyGroupChainMemberState =
+  | 'available'
+  | 'disabled'
+  | 'scope_mismatch'
+  | 'no_permission'
+  | 'missing'
+
+/**
  * 分组链成员（链首 = api_keys.group_id，priority 从 1 起升序）。
  *
- * 后端在读取链（GET /keys/:id/group-chain）与列表接口里就已剔除用户无权绑定的成员，
- * 因此前端不需要任何可用性字段。
+ * v0.2.25-8 起接口返回链上**全部**成员（链首 + 全部候选），用 `state` 标出可用性；
+ * 旧后端 / 旧数据缺省该字段，按 available 处理。
  */
 export interface ApiKeyGroupEntry {
   group_id: number
   priority: number
   group?: Group
+  /** 成员可用性状态（字符串，取值见 KeyGroupChainMemberState）；缺省视为 available。 */
+  state?: string
 }
 
 /** Orange 特有：带分组链字段的 API Key 视图。 */
@@ -34,19 +55,20 @@ export type KeyGroupChainKey = ApiKey & {
 }
 
 /**
- * GET/PUT /keys/:id/group-chain 的响应体。members[0] 恒为链首（主分组）。
+ * GET/PUT /keys/:id/group-chain 与 POST /keys/:id/group-chain/heal 的响应体。
+ * members[0] 恒为链首（主分组）。
  *
- * 打开编辑弹窗读取链时，后端会把用户已无权限的成员剔除、必要时把第一个可用成员提升为主分组，
- * 并把结果写回数据库；界面只按返回的 members 展示（站长要求静默自愈，不做提示）。
- * `auto_pruned_*` / `auto_promoted_*` 是后端留下的诊断信息，前端不展示。
+ * v0.2.25-8 起 GET 是**纯读**接口：members 返回链上全部成员（含不可用成员）并带上 state，
+ * 不再静默剔除、也不再自动重置链首；显式自愈改走 /heal。
+ * `auto_pruned_*` / `auto_promoted_*` 是自愈接口留下的诊断信息（GET 恒为空数组 / 0）。
  */
 export interface ApiKeyGroupChain {
   api_key_id: number
   mode: ApiKeyGroupChainMode
   primary_group_id: number
-  /** 已剔除无权限成员后的链成员，按 priority 升序。 */
+  /** 链上全部成员（含不可用成员），按 priority 升序。 */
   members: ApiKeyGroupEntry[]
-  /** 本次自动移除的分组 id（无则为空数组）。 */
+  /** 本次自动移除的分组 id（heal 之外恒为空数组）。 */
   auto_pruned_group_ids?: number[]
   /** 本次自动移除的分组（含名称）。 */
   auto_pruned_groups?: ApiKeyPrunedGroup[]
@@ -54,7 +76,7 @@ export interface ApiKeyGroupChain {
   auto_promoted_group_id?: number
 }
 
-/** 链自愈时被移除的分组（后端诊断信息，前端不展示）。 */
+/** 链自愈时被移除的分组（含名称，用于提示「已自动移除 N 个不可用分组」）。 */
 export interface ApiKeyPrunedGroup {
   group_id: number
   name: string
@@ -92,6 +114,14 @@ export interface KeyGroupChainFormState {
   isEdit: boolean
   /** 当前编辑的密钥 id（关闭弹窗后上游会清空 selectedKey，这里提前记住）。 */
   editKeyId: number | null
+  /** 上次读链（GET / heal）返回的完整成员 ID（含不可用成员），用于保存前的移除确认。 */
+  serverMemberIds: number[]
+  /** group_id → 分组名（读链返回；用于「确认移除 N 个分组：a、b」这类提示）。 */
+  serverMemberNames: Record<number, string>
+  /** group_id → 成员状态（available | disabled | scope_mismatch | no_permission | missing）。 */
+  memberStates: Record<number, string>
+  /** 用户是否已显式勾选确认「保存会移除服务器上仍存在的成员」。 */
+  pruneConfirmed: boolean
 }
 
 /** 与 useI18n().t 兼容的最小翻译函数签名（用于非组件模块发提示文案）。 */

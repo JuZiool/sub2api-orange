@@ -47,8 +47,19 @@ type OrangeGroupChainMember struct {
 
 // APIKeyGroupEntry 是分组优先级链上的一项（含链首）。
 type APIKeyGroupEntry struct {
+	// GroupID 是成员分组 ID（正常情况下等于 Group.ID）。列表视图里 state=missing 的成员
+	// （分组已被删除）没有 *Group 可展示，只有本字段能表达"这一行是哪个分组"，
+	// 因此**任何构造入口都必须填它**（见 orangeBuildAPIKeyGroupEntries*）。
+	GroupID int64
+	// Group 是成员分组详情；分组已被删除（state=missing）时为 nil。
 	Group    *Group
 	Priority int
+	// State 是成员在「当前用户权限 + 当前分组配置」下的可用性状态，取值见
+	// orange_api_key_group_chain_state.go（json 字段由 handler dto 控制，service 层只存值）。
+	//
+	// 鉴权/网关路径装载的链只包含 available 成员（见 orangeBuildAPIKeyGroupEntries），
+	// 列表与链详情装载全部成员，靠 State 区分「看得到」与「本次能用」。
+	State OrangeChainMemberState
 }
 
 // orangeKeyGroupRouting 是请求内的分组路由链。普通 Key 长度 1，兜底 Key 长度 2，聚合 Key 更长。
@@ -116,13 +127,10 @@ func (k *APIKey) OrangeGroupChainMode() string {
 // 链首不靠这里兜底：链首失去权限时由上游鉴权中间件返回 403 GROUP_NOT_ALLOWED
 // （与普通 Key 语义一致），静默换组会掩盖"管理员收回了该分组"这件事。
 func orangeChainMemberUsableForUser(user *User, group *Group) bool {
-	if group == nil || group.ID <= 0 {
-		return false
-	}
-	if !group.IsActive() || !IsGroupContextValid(group) {
-		return false
-	}
-	return orangeGroupBindableForUser(user, group)
+	// 统一走唯一判定入口（head 传 nil 表示这里只判「成员自身可用性」）：
+	// Scope 一致性由调用方（orangeUsableKeyChain / OrangeChainGroups）按链首另行比较，
+	// 因此这里不传 head，行为与改造前逐条等价。
+	return orangeChainMemberStateUsable(orangeChainMemberStateOf(nil, group, user))
 }
 
 // orangeUsableKeyChain 按 priority 顺序构建"本次请求可用"的链：过滤空项、软删（GetByID 已剔除）、
@@ -282,11 +290,11 @@ func activateOrangeKeyRouting(ctx context.Context, routedGroupID int64) bool {
 }
 
 // healOrangeKeyChainHead 在链首分组失效（删除/停用/上下文不完整/**失去绑定权限**）时，把本请求的
-// 主分组换成链上第一个可用成员。只改请求内指针，不写库（写库由读接口的自愈负责，见
-// orange_api_key_group_chain_selfheal.go）；下次请求会再次自愈（幂等）。
+// 主分组换成链上第一个可用成员。只改请求内指针，不写库（v0.2.25-8 起写库只由显式 heal 接口触发，
+// 见 orange_api_key_group_chain_selfheal.go）；下次请求会再次自愈（幂等）。
 //
-// 失去绑定权限也归入"失效"的原因：分组链是用户配置的候选列表，站长要求"不显示 + 自动更新"，
-// 因此当链首被改成专属且未授权时，聚合 Key 应继续沿链工作，而不是整条 Key 直接 403。
+// 失去绑定权限也归入"失效"的原因：分组链是用户配置的候选列表，当链首被改成专属且未授权时，
+// 聚合 Key 应继续沿链工作，而不是整条 Key 直接 403。
 func healOrangeKeyChainHead(ctx context.Context, apiKey *APIKey) bool {
 	if apiKey == nil || len(apiKey.Groups) == 0 {
 		return false

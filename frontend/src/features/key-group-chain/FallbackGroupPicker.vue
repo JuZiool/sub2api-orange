@@ -33,6 +33,15 @@
       <span v-else class="text-sm text-gray-400 dark:text-dark-500">
         {{ t('keys.noFallbackGroup') }}
       </span>
+      <!-- 兜底成员不可用（含契约 B 的 state=missing：无 group 详情，只有 #group_id）时的原因标签 -->
+      <span
+        v-if="fallbackStateLabel"
+        data-test="fallback-group-state"
+        class="flex-shrink-0 whitespace-nowrap text-[11px] text-gray-400 dark:text-dark-400"
+        :title="fallbackStateLabel"
+      >
+        {{ fallbackStateLabel }}
+      </span>
       <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('keys.selectFallbackGroup') }}</span>
       <svg
         class="h-3.5 w-3.5 text-gray-400 opacity-60 transition-opacity group-hover:opacity-100"
@@ -146,8 +155,10 @@
  * 交互与改造前的分组选择浮层保持一致：
  * - 选项为“与主分组同平台、且不是主分组本身”的分组，首项是“不设置兜底分组”；
  * - 支持按分组名/描述搜索（首项也参与搜索）；
- * - 选中后写入分组链（PUT /keys/:id/group-chain，mode=fallback），重新拉取列表；
+ * - 选中后写入分组链（PUT /keys/:id/group-chain，mode=fallback，confirm_prune=true），重新拉取列表；
  * - 与当前兜底相同则静默返回；主分组为空时不处理；失败只提示。
+ *
+ * 契约 B：兜底成员同样带 state，state=missing 时没有 group 详情，退回 #group_id + 「分组已删除」标签。
  *
  * 未配置兜底分组时只展示“未设置兜底分组”，不产生任何请求。
  */
@@ -158,7 +169,7 @@ import GroupOptionItem from '@/components/common/GroupOptionItem.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { ApiKey } from '@/types'
 import { fallbackGroupOf } from './chain'
-import { saveFallbackGroupSelection } from './useKeyGroupChain'
+import { chainMemberStateLabelKey, saveFallbackGroupSelection } from './useKeyGroupChain'
 import type { GroupOptionView, KeyGroupChainKey } from './types'
 
 const props = defineProps<{
@@ -182,6 +193,12 @@ const pickerPosition = ref<{ top?: number; bottom?: number; left: number } | nul
 const chainRow = computed(() => props.row as KeyGroupChainKey)
 const fallbackEntry = computed(() => fallbackGroupOf(chainRow.value))
 const currentFallbackId = computed(() => fallbackEntry.value?.group_id ?? null)
+
+/** 兜底成员不可用时的原因标签（available / 缺省 state 返回 null，不展示）。 */
+const fallbackStateLabel = computed<string | null>(() => {
+  const key = chainMemberStateLabelKey(fallbackEntry.value?.state)
+  return key ? t(key) : null
+})
 
 /** 候选分组：与主分组同平台、且不是主分组本身（与改造前一致）。 */
 const candidateOptions = computed(() => {

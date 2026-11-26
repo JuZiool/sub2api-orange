@@ -1,7 +1,7 @@
 /**
  * Orange 特有：Orange 页面与组件的中文文案命名空间。
  *
- * 顶层键统一加 `orange` 前缀（`orangeNav` / `orangeTokenRanking` / `orangeSettings`），
+ * 顶层键统一加 `orange` 前缀（`orangeNav` / `orangeTokenRanking` / `orangeSettings` / `orangeKeyChain`），
  * 避免与上游常见顶层键（`nav` / `dashboard` / `admin` 等）碰撞后静默覆盖。
  */
 export default {
@@ -55,5 +55,24 @@ export default {
       label: '启用 Token 排行榜',
       enabledHint: '关闭后用户侧导航入口消失、直接访问会被拦截，排行接口返回 403。'
     }
+  },
+  // Orange 特有：密钥分组链成员可用性标注 / 移除确认 / 自动修复（v0.2.25-8）
+  orangeKeyChain: {
+    nameSeparator: '、',
+    stateDisabled: '分组已停用',
+    stateScopeMismatch: '平台或订阅类型不一致',
+    stateNoPermission: '无权限',
+    stateMissing: '分组已删除',
+    pruneTitle: '保存将移除 {n} 个分组',
+    pruneHint: '这些分组仍存在于服务器上的分组链中：{names}。保存后它们会从链里移除，请确认后勾选下方复选框，否则无法保存。',
+    pruneConfirmLabel: '我确认移除 {n} 个分组：{names}',
+    pruneConfirmRequired: '保存将移除 {n} 个分组：{names}；请先勾选「我确认移除」再保存',
+    // 服务端 409 拦截后追加的提示：此刻本地读到的链成员集合已过期，只能重新打开编辑窗口再确认。
+    pruneReopenHint: '；请重新打开编辑窗口确认后再保存。',
+    healButton: '自动修复不可用分组',
+    healing: '正在修复…',
+    healHint: '只移除「无权限」「分组已删除」的分组；已停用、平台或订阅类型不一致的分组会保留，需要手动替换。',
+    healSuccess: '已自动移除 {n} 个不可用分组',
+    healFailed: '自动修复分组失败，请稍后重试。'
   }
 }

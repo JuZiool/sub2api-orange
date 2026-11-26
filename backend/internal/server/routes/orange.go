@@ -47,6 +47,8 @@ func RegisterOrangeRoutes(
 	authenticated.Use(gin.HandlerFunc(auditLog))
 	{
 		authenticated.GET("/usage/ranking", panelRateLimiter.Heavy(), h.Usage.OrangeRanking)
+		// Orange 特有：分组链显式自愈（GET 已改为纯读，写库只在这里触发）。
+		authenticated.POST("/keys/:id/group-chain/heal", h.APIKey.HealGroupChain)
 	}
 
 	// ③ 管理端：守卫链与 routes/admin.go（以及 routes/payment.go 的 /admin/payment 组）同构
