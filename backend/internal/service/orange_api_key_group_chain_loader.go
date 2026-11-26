@@ -422,16 +422,9 @@ func (s *APIKeyService) OrangeGetAPIKeyGroupChain(ctx context.Context, userID, a
 	if err != nil || apiKey == nil {
 		return empty, ErrAPIKeyNotFound
 	}
-	if s.userRepo == nil {
-		return empty, ErrOrangeGroupChainUnavailable
-	}
-	owner, err := s.userRepo.GetByID(ctx, apiKey.UserID)
+	owner, err := s.orangeLoadGroupChainOwner(ctx, apiKey.UserID)
 	if err != nil {
-		// 权限数据不可用时必须中止；不能让后续自愈把授权状态未知误判为无权限并写库。
-		return empty, fmt.Errorf("load api key owner permissions for group chain: %w", err)
-	}
-	if owner == nil {
-		return empty, ErrAPIKeyNotFound
+		return empty, err
 	}
 	apiKey.User = owner
 	healed := s.OrangeSelfHealKeyGroupChain(ctx, apiKey)
@@ -528,12 +521,16 @@ func (s *APIKeyService) OrangeSetAPIKeyGroupChain(ctx context.Context, userID, a
 
 	unique := orangeDedupeGroupIDs(groupIDs)
 	if len(unique) == 0 {
+		owner, err := s.orangeLoadGroupChainOwner(ctx, apiKey.UserID)
+		if err != nil {
+			return empty, err
+		}
 		// 清链：链候选与模式元数据在同一事务内删除（仓储层负责），保留当前主分组。
 		if err := repo.OrangeReplaceGroupChain(ctx, apiKeyID, nil); err != nil {
 			return empty, fmt.Errorf("replace orange key group chain: %w", err)
 		}
 		s.orangeInvalidateAfterChainWrite(ctx, apiKey)
-		return s.orangeReloadGroupChainView(ctx, apiKeyID)
+		return s.orangeReloadGroupChainView(ctx, apiKeyID, owner)
 	}
 	if len(unique) > orangeChainMaxCandidates+1 {
 		return empty, ErrOrangeGroupChainTooLong
@@ -543,9 +540,9 @@ func (s *APIKeyService) OrangeSetAPIKeyGroupChain(ctx context.Context, userID, a
 		return empty, err
 	}
 
-	user, err := s.userRepo.GetByID(ctx, userID)
+	owner, err := s.orangeLoadGroupChainOwner(ctx, apiKey.UserID)
 	if err != nil {
-		return empty, fmt.Errorf("get user: %w", err)
+		return empty, err
 	}
 	groups := make([]*Group, 0, len(unique))
 	for _, groupID := range unique {
@@ -553,7 +550,7 @@ func (s *APIKeyService) OrangeSetAPIKeyGroupChain(ctx context.Context, userID, a
 		if getErr != nil || group == nil {
 			return empty, ErrGroupNotFound
 		}
-		if !group.IsActive() || !s.canUserBindGroup(ctx, user, group) {
+		if !group.IsActive() || !s.canUserBindGroup(ctx, owner, group) {
 			return empty, ErrOrangeGroupChainInvalid
 		}
 		groups = append(groups, group)
@@ -575,16 +572,32 @@ func (s *APIKeyService) OrangeSetAPIKeyGroupChain(ctx context.Context, userID, a
 		return empty, fmt.Errorf("replace orange key group chain: %w", err)
 	}
 	s.orangeInvalidateAfterChainWrite(ctx, apiKey)
-	return s.orangeReloadGroupChainView(ctx, apiKeyID)
+	return s.orangeReloadGroupChainView(ctx, apiKeyID, owner)
 }
 
-// orangeReloadGroupChainView 重新装载 Key 并返回链视图（写操作后返回最新状态）。
-func (s *APIKeyService) orangeReloadGroupChainView(ctx context.Context, apiKeyID int64) (OrangeAPIKeyGroupChainView, error) {
+// orangeLoadGroupChainOwner 用仓储读取完整用户授权，避免把未加载的 AllowedGroups 当作无授权。
+func (s *APIKeyService) orangeLoadGroupChainOwner(ctx context.Context, userID int64) (*User, error) {
+	if s == nil || s.userRepo == nil {
+		return nil, ErrOrangeGroupChainUnavailable
+	}
+	owner, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("load api key owner permissions for group chain: %w", err)
+	}
+	if owner == nil {
+		return nil, ErrAPIKeyNotFound
+	}
+	return owner, nil
+}
+
+// orangeReloadGroupChainView 重新装载 Key 并用写入前已验证的所有者权限返回链视图。
+func (s *APIKeyService) orangeReloadGroupChainView(ctx context.Context, apiKeyID int64, owner *User) (OrangeAPIKeyGroupChainView, error) {
 	InvalidateOrangeGroupChainCache(apiKeyID)
 	apiKey, err := s.apiKeyRepo.GetByID(ctx, apiKeyID)
 	if err != nil || apiKey == nil {
 		return OrangeAPIKeyGroupChainView{}, ErrAPIKeyNotFound
 	}
+	apiKey.User = owner
 	return s.OrangeBuildAPIKeyGroupChainView(ctx, apiKey), nil
 }
 
