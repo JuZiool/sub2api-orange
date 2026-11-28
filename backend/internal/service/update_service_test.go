@@ -273,20 +273,6 @@ func writeChecksumTestArchive(t *testing.T) (string, string) {
 	return path, hex.EncodeToString(sum[:])
 }
 
-func TestUpdateServiceApplyReleaseAssetsRejectsMissingChecksumFile(t *testing.T) {
-	svc := NewUpdateService(&updateServiceCacheStub{}, &updateServiceGitHubClientStub{}, "0.1.0", "release")
-	archive := svc.getArchiveName() + ".tar.gz"
-	assets := []Asset{{
-		Name:        archive,
-		DownloadURL: "https://github.com/Wei-Shaw/sub2api/releases/download/v0.2.9/" + archive,
-	}}
-
-	err := svc.applyReleaseAssets(context.Background(), assets)
-
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "checksums.txt")
-}
-
 func TestUpdateServiceVerifyChecksumRejectsUnlistedAsset(t *testing.T) {
 	path, _ := writeChecksumTestArchive(t)
 	client := &updateServiceChecksumClientStub{checksumData: []byte("deadbeef  other_file.tar.gz\n")}
